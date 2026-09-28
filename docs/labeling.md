@@ -1,0 +1,74 @@
+# Labeling
+
+The target variable is created by hand. A trader marks pump intervals on the charts, and every hourly
+bar inside a marked interval becomes a positive example.
+
+## What counts as a pump
+
+- **Start:** open interest begins to rise steadily above its normal level. A long preparatory phase is
+  not required.
+- **End:** the sharp drop in open interest after the price peak. The bar of the collapse is the last bar.
+- **Pump (`pump`):** the move develops, with strong growth in both OI and price (typically tens to
+  hundreds of percent).
+- **False start (`false_start`):** looks like the beginning of a pump (OI and/or price jump) but does not
+  develop. These are valuable negative examples: they teach the model not to react to every spike.
+- **Other (`other`):** anything worth recording that fits neither type.
+
+For training, `pump` = 1 and everything else = 0. The `false_start` label is kept so that errors on
+false starts can be analysed separately.
+
+## Guidelines
+
+- **Consistency matters more than precise boundaries.** Similar situations must get the same label.
+- **Do not overlap intervals** on the same ticker. Two waves are two separate pumps; the gap between them
+  stays 0.
+- **Label ambiguous cases as `false_start` rather than skipping them.** Borderline examples carry the most
+  information.
+- **Label with hindsight, as a trader who knows the outcome.** Whether the pump was recognisable in
+  advance is the model's job to find out.
+- **Do not label listing artefacts.** A step in summed OI when a new exchange lists the coin is marked
+  on the chart with a dashed line and is not a pump.
+- **Use the notes column** when something other than OI drove the decision (funding, liquidations,
+  news). It helps compare the model's feature importance with trader intuition later.
+
+## `pumps.csv`
+
+`pumps.csv` is the single source of truth for labels. The `pumps` table in the database is rebuilt from it.
+
+```csv
+base_asset,start_ts,end_ts,pattern_type,notes
+AKE,2026-09-18 13:00,2026-09-20 09:00,pump,
+G,2026-09-08 05:00,2026-09-08 12:00,false_start,OI up 30% without follow-through
+```
+
+| Column | Meaning |
+|---|---|
+| `base_asset` | Base asset, as in `tickers.txt` (`AKE`, not `AKEUSDT`). A label applies to all exchanges. |
+| `start_ts` | First bar of the interval, UTC, `YYYY-MM-DD HH:MM`, bar open time |
+| `end_ts` | **Last bar of the interval, inclusive** |
+| `pattern_type` | `pump`, `false_start` or `other` |
+| `notes` | Free text, optional |
+
+In the database, `end_ts` is stored as an **exclusive** bound (`end_ts + 1 hour`), so a one-bar interval
+still satisfies `end_ts > start_ts`. A bar with open time `t` is labeled when
+`start_ts <= t < end_ts` (database form).
+
+`load_pumps.py` rejects the file if a row has an unknown type, ends before it starts, or overlaps another
+interval of the same ticker.
+
+## Labeling tool
+
+```bash
+python label.py
+```
+
+This opens http://127.0.0.1:8765, a local page served only to this computer.
+
+- Three synced panels: price (Binance), open interest (sum across exchanges, USD), volume (USD).
+- Hover shows the exact UTC hour, price and OI with their 24-hour change, and OI per exchange.
+- Mouse wheel zooms, drag pans, and the 7 / 14 / 30 / 60-day buttons set the window. **Лог. шкала** (log scale) helps with large moves.
+- Click the first bar of an interval, then the last. Pick the type, add a note, press **Додати в список** (add to list). The UI is in Ukrainian.
+- Each change is written to `pumps.csv` immediately and synced to the database.
+- Labeled intervals stay on the chart, numbered; each ticker button shows how many intervals it has.
+
+To label a new ticker: add it to `tickers.txt`, run `python fetch.py <TICKER>`, restart `label.py`.
