@@ -1,0 +1,25 @@
+# Локальна база для Pump Detector.
+# Запуск:  docker compose up -d     Зупинка:  docker compose down
+# Пароль береться з POSTGRES_PASSWORD у .env.
+# schema.sql виконується автоматично лише при першому створенні бази (порожній том).
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?заповни POSTGRES_PASSWORD у .env}
+      POSTGRES_DB: pump_detector
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pump_detector"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

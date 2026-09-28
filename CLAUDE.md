@@ -45,6 +45,9 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 
 ## Структура
 - `schema.sql`, `fetch.py` — готові
+- Локальне оточення: `.venv` (Python 3.14, залежності встановлені), PostgreSQL — у Docker
+  (`docker-compose.yml`, schema.sql підхоплюється автоматично при першому старті).
+  WSL2 встановлено 2026-09-29. Наступний крок: `docker compose up -d` → пробний `python fetch.py AKE --days 7`.
 - далі: `pumps.csv` + завантажувач, `features.py`, `train.py`, `app/streamlit_app.py`, `screener.py`
 
 ## Стиль роботи
