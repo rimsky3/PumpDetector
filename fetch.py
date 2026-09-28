@@ -6,8 +6,9 @@ Aster, Hyperliquid і MEXC та тягне шість рядів: open interest,
 predicted funding, ліквідації, long/short ratio.
 
 Приклади:
+    python fetch.py                  # усі тікери з tickers.txt
     python fetch.py AKE
-    python fetch.py AKE LSK MYX G --days 60
+    python fetch.py AKE LSK MYX G --days 30
 
 Налаштування — у файлі .env поруч зі скриптом (див. .env.example).
 """
@@ -29,6 +30,7 @@ WANTED_EXCHANGES = ["binance", "bybit", "okx", "aster", "hyperliquid", "mexc"]
 QUOTE_ASSETS = {"USDT", "USD", "USDC"}
 RATE_LIMIT_PER_MIN = 40      # кожен символ у запиті = один виклик
 MAX_SYMBOLS_PER_REQUEST = 20
+TICKERS_FILE = "tickers.txt"
 
 # (ендпоінт, таблиця, [(колонка в БД, поле в JSON)], додаткові параметри, прапорець з future-markets)
 ENDPOINTS = [
@@ -153,9 +155,18 @@ def fetch_endpoint(client, conn, markets, endpoint, table, columns, extra, flag,
     return total
 
 
+def read_tickers_file(path: str) -> list[str]:
+    """Тікери з файлу: один на рядок, після # — коментар, порожні рядки пропускаються."""
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as f:
+        return [t for line in f if (t := line.split("#")[0].strip())]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Збір 1h-даних Coinalyze у PostgreSQL")
-    parser.add_argument("tickers", nargs="+", help="базові активи, напр. AKE LSK MYX")
+    parser.add_argument("tickers", nargs="*",
+                        help=f"базові активи, напр. AKE LSK MYX (без аргументів — з {TICKERS_FILE})")
     parser.add_argument("--days", type=int, default=60,
                         help="скільки днів історії тягнути (1h зберігається ~60-80 днів)")
     args = parser.parse_args()
@@ -166,7 +177,9 @@ def main() -> None:
     if not api_key or not db_url:
         sys.exit("Заповни COINALYZE_API_KEY і DATABASE_URL у файлі .env")
 
-    bases = [t.upper() for t in args.tickers]
+    bases = [t.upper() for t in (args.tickers or read_tickers_file(TICKERS_FILE))]
+    if not bases:
+        sys.exit(f"Немає тікерів: передай їх аргументами або додай у {TICKERS_FILE}")
     now = datetime.now(timezone.utc)
     ts_to = int(now.timestamp())
     ts_from = int((now - timedelta(days=args.days)).timestamp())

@@ -15,7 +15,11 @@
 ## Дані
 - Джерело: Coinalyze API (ключ у `.env`), ліміт 40 викликів/хв, кожен символ у запиті = 1 виклик.
 - Біржі: Binance, Bybit, OKX, Aster, Hyperliquid, MEXC. Агрегацію між біржами робимо самі.
-- 1h-історія в Coinalyze ≈ 60–80 днів, 5m ≈ тиждень.
+- Беремо 60 днів 1h-історії (`--days` за замовчуванням), довше не потрібно.
+  Coinalyze зберігає OI ≈ 63 дні, решту ≈ 90 днів; 5m ≈ тиждень.
+- Список тікерів — `tickers.txt` (один на рядок); `python fetch.py` без аргументів бере його.
+- Покриття бірж неповне: Aster без OI/ліквідацій, OKX без predicted funding і L/S; для AKE/LSK/MYX/G
+  Hyperliquid і MEXC не знайдено. Години без ліквідацій відсутні в таблиці → у ознаках це 0.
 - OI і ліквідації тягнемо в USD (convert_to_usd). Обсяг OHLCV буває в монетах або USD —
   див. `markets.volume_denominated`, приводити до однієї одиниці в `features.py`.
 - Сховище: PostgreSQL, схема в `schema.sql`. Сирі таблиці: upsert по (symbol, interval, ts).
@@ -27,7 +31,10 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 `features.py` — один модуль для тренування, інференсу і скринера, без копій логіки.
 
 ## Розмітка
-- `pumps.csv` → таблиця `pumps`: symbol, start_ts, end_ts, pattern_type, notes. Усі часи в UTC.
+- `pumps.csv` (джерело істини) → `python load_pumps.py` → таблиця `pumps` (перезаписується повністю).
+  Колонки: base_asset, start_ts, end_ts, pattern_type (pump / false_start / other), notes.
+  Часи UTC, "YYYY-MM-DD HH:MM", час відкриття бару; end_ts у CSV — останній бар включно,
+  у БД зберігається як виключна межа (+1 год). Для навчання: pump = 1, false_start = 0 (мітку зберігаємо для аналізу помилок).
 - Початок: OI стійко зростає над звичайним рівнем (довга передфаза не обов'язкова).
 - Кінець: різкий обвал OI після піку ціни.
 - Приклади v1: LSKUSDT, GUSDT (був фальстарт без OI — цінний негативний приклад), MYXUSDT, AKEUSDT.
@@ -47,8 +54,13 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 - `schema.sql`, `fetch.py` — готові
 - Локальне оточення: `.venv` (Python 3.14, залежності встановлені), PostgreSQL — у Docker
   (`docker-compose.yml`, schema.sql підхоплюється автоматично при першому старті).
-  WSL2 встановлено 2026-09-29. Наступний крок: `docker compose up -d` → пробний `python fetch.py AKE --days 7`.
-- далі: `pumps.csv` + завантажувач, `features.py`, `train.py`, `app/streamlit_app.py`, `screener.py`
+  Docker disk image — на `D:\Docker` (диск C: майже повний, туди нічого великого не класти).
+  2026-09-29: зібрано AKE, LSK, MYX, G (пробно за 90 днів, в БД є рядки старші за 60 днів).
+- 2026-09-29: розмічено 6 тікерів (AIN, AKE, G, LSK, MYX, QNT): 10 pump, 8 false_start, ≈270 год класу 1 (~3%).
+- Розмітка: `python label.py` — локальний сервер (stdlib http.server, 127.0.0.1:8765) + `tools/label.html`;
+  графіки з БД, кожна зміна одразу пишеться в pumps.csv і синхронізується з таблицею pumps.
+  Спільна логіка читання/запису/перевірки CSV — у `load_pumps.py`.
+- далі: `features.py`, `train.py`, `app/streamlit_app.py`, `screener.py`
 
 ## Стиль роботи
 Спілкування українською. Власник проєкту — досвідчений трейдер, у ML новачок-практик:

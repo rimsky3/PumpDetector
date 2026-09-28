@@ -1,0 +1,598 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Розмітка пампів</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: робочий інструмент — тікери і масштаб угорі, три синхронні панелі (ціна / OI / обсяг), під ними розмітка і готові рядки CSV */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3ea; --grid: #edf0f4;
+  --fg: #111418; --fg2: #515966; --fg3: #808895;
+  --price: #2a78d6; --oi: #1baf7a; --vol: #aab2bf; --sel: rgba(235,104,52,.13); --sel-edge: #eb6834; --mark: #7a6bd1;
+  --saved: rgba(122,107,209,.14); --saved-alt: rgba(128,136,149,.16);
+  --accent: #2a78d6; --accent-fg: #ffffff;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
+  --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --saved-alt: rgba(126,135,148,.2);
+  --accent: #3987e5; --accent-fg: #ffffff; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
+  --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --saved-alt: rgba(126,135,148,.2);
+  --accent: #3987e5; --accent-fg: #ffffff; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 16px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; text-wrap: balance; }
+.sub { color: var(--fg2); margin: 2px 0 0; font-size: 13px; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg3); margin-right: 4px; }
+button, .chip { font: 500 13px var(--sans); border: 1px solid var(--line); background: var(--panel); color: var(--fg); padding: 5px 11px; border-radius: 6px; cursor: pointer; }
+button:hover { border-color: var(--fg3); }
+button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tk { font-family: var(--mono); }
+.chart { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; position: relative; overflow: hidden; }
+canvas { display: block; width: 100%; height: 560px; touch-action: pan-y; cursor: crosshair; }
+@media (max-width: 600px) { canvas { height: 460px; } }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 12px/1.45 var(--mono); box-shadow: 0 4px 16px rgba(0,0,0,.12); min-width: 190px; font-variant-numeric: tabular-nums; }
+.tip .ts { color: var(--fg2); margin-bottom: 4px; }
+.tip .row { display: flex; justify-content: space-between; gap: 14px; }
+.tip .row span:first-child { color: var(--fg2); display: flex; align-items: center; gap: 6px; }
+.tip .row b { font-weight: 500; color: var(--fg); }
+.tip .sub2 span:first-child { padding-left: 16px; color: var(--fg3); }
+.key { width: 10px; height: 2px; display: inline-block; border-radius: 1px; }
+.hint { color: var(--fg3); font-size: 12px; margin: 0; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; }
+@media (max-width: 860px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.card h2 { font-size: 14px; font-weight: 600; margin: 0; }
+dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-variant-numeric: tabular-nums; }
+dt { color: var(--fg2); }
+dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+.fields { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; align-items: center; }
+select, input[type=text] { font: 13px var(--sans); padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); width: 100%; min-width: 0; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.csv { font: 12px/1.6 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 0; overflow-x: auto; white-space: pre; min-height: 64px; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+.tbl { overflow-x: auto; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 500; color: var(--fg2); font-size: 12px; }
+td.m { font-family: var(--mono); font-size: 12px; }
+td button { padding: 2px 8px; font-size: 12px; }
+.empty { color: var(--fg3); font-size: 13px; }
+.status { margin: 4px 0 0; font-size: 13px; color: var(--oi); min-height: 1.5em; }
+.status.err { color: #e34948; }
+.note { font-size: 12px; color: var(--fg2); margin: 0; }
+.selbar { position: sticky; bottom: env(safe-area-inset-bottom, 0px); z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+.selbar.active { border-color: var(--sel-edge); box-shadow: 0 -6px 20px rgba(0,0,0,.18); }
+.selbody { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 24px; align-items: start; }
+@media (max-width: 860px) { .selbody { grid-template-columns: minmax(0, 1fr); } }
+.sel-dl { font-size: 13px; }
+.sel-form { display: grid; gap: 10px; min-width: 0; }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Розмітка пампів</h1>
+    <p class="status" id="status" role="status" aria-live="polite"></p>
+    <p class="sub">Годинні дані Coinalyze за <span id="days">60</span> днів. Ціна — Binance, OI і обсяг — сума по біржах у USD. Час — UTC, бар позначено часом відкриття.</p>
+  </header>
+
+  <div class="bar">
+    <div class="group" id="tickers"><span class="label">Тікер</span></div>
+    <div class="group">
+      <span class="label">Період</span>
+      <button data-days="7">7 д</button><button data-days="14">14 д</button><button data-days="30">30 д</button><button data-days="60" aria-pressed="true">60 д</button>
+      <span class="label" style="margin-left:10px">Ціна</span>
+      <button id="logBtn" aria-pressed="false">Лог. шкала</button>
+    </div>
+  </div>
+
+  <div class="chart" id="chart">
+    <canvas id="cv" aria-label="Графіки ціни, open interest і обсягу" role="img"></canvas>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+
+  <section class="selbar" id="selbar" aria-label="Виділений памп">
+    <p class="hint" id="selHint">Клік на графіку ставить початок пампу, другий клік — кінець. Колесо миші — масштаб, перетягування — зсув. На одному тікері можна розмітити кілька пампів.</p>
+    <div class="selbody" id="selBody" hidden>
+      <dl class="sel-dl">
+        <dt>Тікер</dt><dd id="sTk">—</dd>
+        <dt>Інтервал</dt><dd><span id="sA">—</span> → <span id="sB">—</span></dd>
+        <dt>Тривалість</dt><dd id="sDur">—</dd>
+        <dt>Ціна</dt><dd id="sPx">—</dd>
+        <dt>OI</dt><dd id="sOi">—</dd>
+      </dl>
+      <div class="sel-form">
+        <div class="fields">
+          <label for="pType">Тип</label>
+          <select id="pType">
+            <option value="pump">pump — класичний памп</option>
+            <option value="false_start">false_start — фальстарт</option>
+            <option value="other">other</option>
+          </select>
+          <label for="pNote">Нотатка</label>
+          <input type="text" id="pNote" placeholder="напр. OI x3 за 2 дні, потім обвал">
+        </div>
+        <div class="actions">
+          <button class="primary" id="addBtn" disabled>Додати в список</button>
+          <button id="clrBtn">Скинути виділення</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" aria-labelledby="listH">
+    <h2 id="listH">Розмічені пампи</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>Тікер</th><th>Початок (UTC)</th><th>Кінець (UTC)</th><th>Тип</th><th>Нотатка</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table></div>
+    <p class="empty" id="emptyRows">Поки нічого. Виділи памп на графіку і натисни «Додати в список».</p>
+    <p class="note" id="rowCount"></p>
+    <p class="note">Кожна зміна одразу записується в pumps.csv і таблицю pumps у базі.</p>
+  </section>
+</div>
+<script>
+(() => {
+  const DATA = {};          // кеш рядів по тікерах
+  let TICKERS = [];
+  const H = 3600;
+
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d");
+  const tip = document.getElementById("tip");
+  const $ = (id) => document.getElementById(id);
+
+  // ---------- API локального сервера (label.py) ----------
+  const api = async (method, path, body) => {
+    const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  };
+  const parseTs = (s) => {
+    const [d, t] = s.split(" ");
+    const [y, m, dd] = d.split("-").map(Number), [hh, mm] = t.split(":").map(Number);
+    return Date.UTC(y, m - 1, dd, hh, mm) / 1000;
+  };
+  const fromServer = (list) => list.map((r) => ({ tk: r.base_asset, a: parseTs(r.start_ts), b: parseTs(r.end_ts), type: r.pattern_type, note: r.notes || "" }));
+  const status = (msg, isErr) => { const el = $("status"); el.textContent = msg; el.classList.toggle("err", !!isErr); };
+
+  let rows = [];
+  const st = { tk: null, x0: 0, x1: 0, log: false, a: null, b: null, hover: null };
+
+  // ---------- форматування ----------
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmtTs = (t) => { const d = new Date(t * 1000); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:00`; };
+  const fmtUsd = (v) => {
+    if (v == null) return "—";
+    const a = Math.abs(v);
+    if (a >= 1e9) return "$" + (v / 1e9).toFixed(2) + "B";
+    if (a >= 1e6) return "$" + (v / 1e6).toFixed(a >= 1e8 ? 0 : a >= 1e7 ? 1 : 2) + "M";
+    if (a >= 1e3) return "$" + (v / 1e3).toFixed(a >= 1e5 ? 0 : 1) + "K";
+    return "$" + v.toFixed(0);
+  };
+  const fmtPx = (v) => {
+    if (v == null) return "—";
+    if (v >= 1000) return v.toFixed(1);
+    if (v >= 100) return v.toFixed(2);
+    if (v >= 1) return v.toFixed(4);
+    return v.toPrecision(4);
+  };
+  const fmtPct = (v) => v == null || !isFinite(v) ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(1) + "%";
+
+  // ---------- кольори і шрифти з токенів ----------
+  let C = {}, FONT = {};
+  const readColors = () => {
+    const s = getComputedStyle(document.documentElement);
+    ["panel", "line", "grid", "fg", "fg2", "fg3", "price", "oi", "vol", "sel", "sel-edge", "mark", "saved", "saved-alt"].forEach((k) => C[k] = s.getPropertyValue("--" + k).trim());
+    FONT.mono = s.getPropertyValue("--mono").trim();
+    FONT.sans = s.getPropertyValue("--sans").trim();
+  };
+
+  // ---------- дані тікера ----------
+  const D = () => DATA[st.tk] || { t: [], price: [], oi: [], vol: [], oiBy: {}, oiStart: {} };
+  const idxAt = (t) => { // перший індекс з ts >= t
+    const a = D().t; let lo = 0, hi = a.length;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < t) lo = m + 1; else hi = m; }
+    return lo;
+  };
+  const nearestIdx = (t) => {
+    const a = D().t; const i = idxAt(t);
+    if (i <= 0) return 0;
+    if (i >= a.length) return a.length - 1;
+    return (t - a[i - 1] <= a[i] - t) ? i - 1 : i;
+  };
+  const fullDomain = () => { const t = D().t; return [t[0], t[t.length - 1] + H]; };
+
+  // ---------- геометрія ----------
+  const M = { l: 70, r: 14, t: 10, b: 26 };
+  const PANES = [{ key: "price", h: .46, name: "Ціна" }, { key: "oi", h: .34, name: "Open interest" }, { key: "vol", h: .20, name: "Обсяг" }];
+  const GAP = 22;
+  let W = 0, Hh = 0, dpr = 1, paneBox = [];
+
+  const layout = () => {
+    dpr = window.devicePixelRatio || 1;
+    W = cv.clientWidth; Hh = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(Hh * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const avail = Hh - M.t - M.b - GAP * (PANES.length - 1);
+    let y = M.t;
+    paneBox = PANES.map((p) => { const h = avail * p.h; const b = { ...p, y, h }; y += h + GAP; return b; });
+  };
+  const PW = () => W - M.l - M.r;
+  const X = (t) => M.l + (t - st.x0) / (st.x1 - st.x0) * PW();
+  const Tx = (x) => st.x0 + (x - M.l) / PW() * (st.x1 - st.x0);
+
+  const niceTicks = (lo, hi, n) => {
+    const span = hi - lo;
+    if (!(span > 0)) return [lo];
+    const raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const step = [1, 2, 2.5, 5, 10].map((k) => k * mag).find((s) => s >= raw);
+    const out = [];
+    for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9 * span; v += step) out.push(+v.toPrecision(12));
+    return out;
+  };
+
+  // ---------- малювання ----------
+  const draw = () => {
+    const d = D();
+    ctx.clearRect(0, 0, W, Hh);
+    if (!d.t.length) return;
+    const i0 = Math.max(0, idxAt(st.x0) - 1), i1 = Math.min(d.t.length - 1, idxAt(st.x1));
+    const pw = PW();
+    const barW = pw / Math.max(1, (st.x1 - st.x0) / H);
+
+    // уже додані пампи цього тікера
+    const saved = rows.filter((r) => r.tk === st.tk).sort((x, y) => x.a - y.a);
+    const drawSaved = (b, labels) => {
+      ctx.save(); ctx.beginPath(); ctx.rect(M.l, b.y, pw, b.h); ctx.clip();
+      saved.forEach((r, k) => {
+        const xa = X(r.a), xb = X(r.b + H);
+        ctx.fillStyle = r.type === "pump" ? C.saved : C["saved-alt"];
+        ctx.fillRect(xa, b.y, xb - xa, b.h);
+        if (labels) {
+          ctx.fillStyle = C.fg2; ctx.textAlign = "left"; ctx.textBaseline = "top";
+          ctx.font = "500 11px " + FONT.mono;
+          ctx.fillText(`#${k + 1}${r.type === "pump" ? "" : " " + r.type}`, xa + 4, b.y + 22);
+        }
+      });
+      ctx.restore();
+    };
+
+    const drawSel = (b) => {
+      if (st.a == null) return;
+      const xa = X(st.a), xb = st.b != null ? X(st.b + H) : null;
+      ctx.save(); ctx.beginPath(); ctx.rect(M.l, b.y, pw, b.h); ctx.clip();
+      if (xb != null) { ctx.fillStyle = C.sel; ctx.fillRect(xa, b.y, xb - xa, b.h); }
+      ctx.strokeStyle = C["sel-edge"]; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(xa, b.y); ctx.lineTo(xa, b.y + b.h); ctx.stroke();
+      if (xb != null) { ctx.beginPath(); ctx.moveTo(xb, b.y); ctx.lineTo(xb, b.y + b.h); ctx.stroke(); }
+      ctx.restore();
+    };
+
+    // x-тики: години або дні, не частіше ніж раз на 70 px
+    const spanH = (st.x1 - st.x0) / H;
+    const stepH = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336].find((s) => pw / (spanH / s) >= 70) || 336;
+    const xt = [];
+    for (let t = Math.ceil(st.x0 / (stepH * H)) * stepH * H; t <= st.x1; t += stepH * H) xt.push(t);
+    const xLabel = (t) => {
+      const dd = new Date(t * 1000);
+      const day = `${pad(dd.getUTCDate())}.${pad(dd.getUTCMonth() + 1)}`;
+      return stepH < 24 && dd.getUTCHours() !== 0 ? `${pad(dd.getUTCHours())}:00` : day;
+    };
+
+    paneBox.forEach((b) => {
+      const vals = d[b.key];
+      let lo = Infinity, hi = -Infinity;
+      for (let i = i0; i <= i1; i++) { const v = vals[i]; if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } }
+      if (!isFinite(lo)) { lo = 0; hi = 1; }
+      const useLog = b.key === "price" && st.log && lo > 0;
+      if (b.key === "vol") lo = 0;
+      else if (!useLog) { const p = (hi - lo) * .08 || hi * .05 || 1; lo -= p; hi += p; if (b.key === "oi" && lo < 0) lo = 0; }
+      const f = useLog ? Math.log : (v) => v;
+      let flo = f(lo), fhi = f(hi);
+      if (useLog) { const p = (fhi - flo) * .08 || .05; flo -= p; fhi += p; }
+      const Y = (v) => b.y + b.h - (f(v) - flo) / (fhi - flo) * b.h;
+
+      ctx.font = "11px " + FONT.mono;
+      ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      const ticks = useLog
+        ? niceTicks(Math.exp(flo), Math.exp(fhi), 4).filter((v) => v > 0)
+        : niceTicks(lo, hi, b.key === "vol" ? 2 : 4);
+      ticks.forEach((v) => {
+        const y = Math.round(Y(v)) + .5;
+        if (y < b.y - 1 || y > b.y + b.h + 1) return;
+        ctx.strokeStyle = C.grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(M.l, y); ctx.lineTo(W - M.r, y); ctx.stroke();
+        ctx.fillStyle = C.fg3; ctx.fillText(b.key === "price" ? fmtPx(v) : fmtUsd(v), M.l - 8, y);
+      });
+      xt.forEach((t) => { const x = Math.round(X(t)) + .5; ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(x, b.y); ctx.lineTo(x, b.y + b.h); ctx.stroke(); });
+
+      drawSaved(b, b.key === "price");
+      drawSel(b);
+
+      ctx.save(); ctx.beginPath(); ctx.rect(M.l, b.y, pw, b.h); ctx.clip();
+      if (b.key === "vol") {
+        ctx.fillStyle = C.vol;
+        const bw = Math.max(1, barW - (barW > 4 ? 2 : 0));
+        for (let i = i0; i <= i1; i++) {
+          const v = vals[i]; if (v == null) continue;
+          const x = X(d.t[i]), y = Y(v);
+          ctx.fillRect(x, y, bw, b.y + b.h - y);
+        }
+      } else {
+        const col = b.key === "price" ? C.price : C.oi;
+        const path = new Path2D();
+        let open = false, firstX = null, lastX = null;
+        for (let i = i0; i <= i1; i++) {
+          const v = vals[i];
+          if (v == null || (useLog && v <= 0)) { open = false; continue; }
+          const x = X(d.t[i] + H / 2), y = Y(v);
+          if (!open) { path.moveTo(x, y); open = true; if (firstX == null) firstX = x; } else path.lineTo(x, y);
+          lastX = x;
+        }
+        if (b.key === "oi" && firstX != null) {
+          const area = new Path2D(path);
+          area.lineTo(lastX, b.y + b.h); area.lineTo(firstX, b.y + b.h); area.closePath();
+          ctx.globalAlpha = .12; ctx.fillStyle = col; ctx.fill(area); ctx.globalAlpha = 1;
+        }
+        ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.lineJoin = "round"; ctx.stroke(path);
+
+        // біржа додалась пізніше за початок вікна — сума OI стрибає
+        if (b.key === "oi") {
+          Object.entries(d.oiStart).forEach(([ex, t0]) => {
+            if (t0 - d.t[0] < 36 * H || t0 < st.x0 || t0 > st.x1) return;
+            const x = Math.round(X(t0)) + .5;
+            ctx.strokeStyle = C.mark; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+            ctx.beginPath(); ctx.moveTo(x, b.y); ctx.lineTo(x, b.y + b.h); ctx.stroke(); ctx.setLineDash([]);
+            const right = x > W - 200;
+            ctx.fillStyle = C.fg2; ctx.textAlign = right ? "right" : "left"; ctx.textBaseline = "top";
+            ctx.font = "11px " + FONT.sans;
+            ctx.fillText(`+${ex}: стрибок суми, не памп`, x + (right ? -5 : 5), b.y + 22);
+          });
+        }
+        if (st.hover != null && vals[st.hover] != null) {
+          const x = X(d.t[st.hover] + H / 2), y = Y(vals[st.hover]);
+          ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fillStyle = col; ctx.fill();
+          ctx.lineWidth = 2; ctx.strokeStyle = C.panel; ctx.stroke();
+        }
+      }
+      ctx.restore();
+
+      // назва панелі
+      ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = C.fg2;
+      ctx.font = "500 12px " + FONT.sans;
+      ctx.fillText(b.name + (useLog ? " · log" : ""), M.l + 8, b.y + 4);
+
+      ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+      const yb = Math.round(b.y + b.h) + .5;
+      ctx.beginPath(); ctx.moveTo(M.l, yb); ctx.lineTo(W - M.r, yb); ctx.stroke();
+    });
+
+    const last = paneBox[paneBox.length - 1];
+    ctx.fillStyle = C.fg3; ctx.textAlign = "center"; ctx.textBaseline = "top";
+    ctx.font = "11px " + FONT.mono;
+    xt.forEach((t) => { const x = X(t); if (x < M.l + 16 || x > W - M.r - 16) return; ctx.fillText(xLabel(t), x, last.y + last.h + 7); });
+
+    if (st.hover != null) {
+      const x = Math.round(X(d.t[st.hover] + H / 2)) + .5;
+      ctx.strokeStyle = C.fg3; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, M.t); ctx.lineTo(x, last.y + last.h); ctx.stroke();
+    }
+  };
+
+  // ---------- підказка ----------
+  const row = (label, val, color, sub) => {
+    const r = document.createElement("div"); r.className = "row" + (sub ? " sub2" : "");
+    const l = document.createElement("span");
+    if (color) { const k = document.createElement("i"); k.className = "key"; k.style.background = color; l.appendChild(k); }
+    l.appendChild(document.createTextNode(label));
+    const v = document.createElement("b"); v.textContent = val;
+    r.append(l, v);
+    return r;
+  };
+  const showTip = (px) => {
+    const d = D(), i = st.hover;
+    if (i == null) { tip.hidden = true; return; }
+    tip.replaceChildren();
+    const ts = document.createElement("div"); ts.className = "ts"; ts.textContent = fmtTs(d.t[i]) + " UTC";
+    tip.appendChild(ts);
+    const j = nearestIdx(d.t[i] - 24 * H);
+    const chg = (a, b) => (a != null && b != null && b !== 0 && d.t[i] - d.t[j] >= 20 * H) ? a / b - 1 : null;
+    tip.appendChild(row("Ціна", fmtPx(d.price[i]), C.price));
+    tip.appendChild(row("Ціна за 24 год", fmtPct(chg(d.price[i], d.price[j]))));
+    tip.appendChild(row("OI", fmtUsd(d.oi[i]), C.oi));
+    tip.appendChild(row("OI за 24 год", fmtPct(chg(d.oi[i], d.oi[j]))));
+    const exs = Object.keys(d.oiBy);
+    if (exs.length > 1) exs.forEach((ex) => tip.appendChild(row(ex, fmtUsd(d.oiBy[ex][i]), null, true)));
+    tip.appendChild(row("Обсяг", fmtUsd(d.vol[i]), C.vol));
+    tip.hidden = false;
+    const bw = cv.clientWidth, bh = cv.clientHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = px + 16;
+    if (left + tw > bw - 8) left = px - tw - 16;
+    if (left < 8) left = 8;
+    tip.style.left = left + "px";
+    tip.style.top = Math.max(8, Math.min(bh - th - 8, 40)) + "px";
+  };
+
+  // ---------- панель виділення ----------
+  const renderSel = () => {
+    const d = D();
+    $("sTk").textContent = st.a != null ? st.tk : "—";
+    $("sA").textContent = st.a != null ? fmtTs(st.a) : "—";
+    $("sB").textContent = st.b != null ? fmtTs(st.b) : (st.a != null ? "клікни ще раз" : "—");
+    if (st.a != null && st.b != null) {
+      const hrs = (st.b - st.a) / H + 1;
+      $("sDur").textContent = `${hrs} год (${(hrs / 24).toFixed(1)} д)`;
+      const ia = idxAt(st.a), ib = nearestIdx(st.b);
+      let pmax = -Infinity, omax = -Infinity;
+      for (let i = ia; i <= ib; i++) {
+        if (d.price[i] != null && d.price[i] > pmax) pmax = d.price[i];
+        if (d.oi[i] != null && d.oi[i] > omax) omax = d.oi[i];
+      }
+      $("sPx").textContent = d.price[ia] ? `${fmtPx(d.price[ia])} → макс ${fmtPx(pmax)} (${fmtPct(pmax / d.price[ia] - 1)})` : "—";
+      $("sOi").textContent = d.oi[ia] ? `${fmtUsd(d.oi[ia])} → макс ${fmtUsd(omax)} (${fmtPct(omax / d.oi[ia] - 1)})` : "—";
+    } else {
+      $("sDur").textContent = "—"; $("sPx").textContent = "—"; $("sOi").textContent = "—";
+    }
+    const done = st.a != null && st.b != null;
+    $("addBtn").disabled = !done;
+    $("selBody").hidden = st.a == null;
+    $("selHint").hidden = st.a != null;
+    $("selbar").classList.toggle("active", st.a != null);
+  };
+
+  const renderRows = () => {
+    const tb = $("rows"); tb.replaceChildren();
+    rows.sort((x, y) => x.tk.localeCompare(y.tk) || x.a - y.a);
+    rows.forEach((r, k) => {
+      const tr = document.createElement("tr");
+      [[r.tk, "m"], [fmtTs(r.a), "m"], [fmtTs(r.b), "m"], [r.type, ""], [r.note, ""]].forEach(([v, c]) => {
+        const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.appendChild(td);
+      });
+      const td = document.createElement("td"); const btn = document.createElement("button"); btn.textContent = "Видалити";
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        try {
+          rows = fromServer((await api("DELETE", "/api/pumps", { base_asset: r.tk, start_ts: fmtTs(r.a) })).rows);
+          status(`Видалено ${r.tk} ${fmtTs(r.a)}, pumps.csv оновлено`);
+        } catch (e) { status(e.message, true); btn.disabled = false; }
+        renderRows(); draw();
+      });
+      td.appendChild(btn); tr.appendChild(td); tb.appendChild(tr);
+    });
+    $("emptyRows").hidden = rows.length > 0;
+    const n = (t) => rows.filter((r) => r.type === t).length;
+    $("rowCount").textContent = rows.length
+      ? `${rows.length} інтервалів: pump — ${n("pump")}, false_start — ${n("false_start")}` + (n("other") ? `, other — ${n("other")}` : "")
+      : "";
+    document.querySelectorAll("#tickers button").forEach((b) => {
+      const k = rows.filter((r) => r.tk === b.dataset.tk).length;
+      b.textContent = k ? `${b.dataset.tk} · ${k}` : b.dataset.tk;
+    });
+  };
+
+  // ---------- керування ----------
+  const setRangeBtn = (days) => document.querySelectorAll("[data-days]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.days === days)));
+  const clampDomain = () => {
+    const [f0, f1] = fullDomain();
+    const span = Math.max(24 * H, Math.min(f1 - f0, st.x1 - st.x0));
+    if (st.x0 < f0) { st.x0 = f0; st.x1 = f0 + span; }
+    if (st.x1 > f1) { st.x1 = f1; st.x0 = f1 - span; }
+    if (st.x1 - st.x0 !== span) st.x1 = st.x0 + span;
+  };
+  const setTicker = async (tk) => {
+    if (!DATA[tk]) {
+      status(`Завантажую ${tk}…`);
+      try { DATA[tk] = await api("GET", `/api/data?ticker=${encodeURIComponent(tk)}`); status(""); }
+      catch (e) { status(`Не вдалося завантажити ${tk}: ${e.message}`, true); return; }
+    }
+    st.tk = tk; st.a = st.b = null; st.hover = null;
+    [st.x0, st.x1] = fullDomain();
+    document.querySelectorAll("#tickers button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tk === tk)));
+    setRangeBtn(60); renderSel(); draw();
+  };
+
+  document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
+    const days = +b.dataset.days, [f0, f1] = fullDomain();
+    if (days >= 60) { st.x0 = f0; st.x1 = f1; }
+    else {
+      const center = st.a != null ? (st.a + (st.b != null ? st.b : st.a)) / 2 : (st.x0 + st.x1) / 2;
+      st.x0 = center - days * 12 * H; st.x1 = center + days * 12 * H;
+    }
+    clampDomain(); setRangeBtn(days); draw();
+  }));
+  $("logBtn").addEventListener("click", () => { st.log = !st.log; $("logBtn").setAttribute("aria-pressed", String(st.log)); draw(); });
+
+  let drag = null;
+  const localX = (e) => e.clientX - cv.getBoundingClientRect().left;
+  const hoverAt = (x) => (x >= M.l && x <= W - M.r) ? nearestIdx(Tx(x) - H / 2) : null;
+  cv.addEventListener("pointerdown", (e) => { drag = { x: localX(e), x0: st.x0, x1: st.x1, moved: false, id: e.pointerId }; });
+  cv.addEventListener("pointermove", (e) => {
+    const x = localX(e);
+    if (drag && Math.abs(x - drag.x) > 4) {
+      if (!drag.moved) { drag.moved = true; try { cv.setPointerCapture(drag.id); } catch (err) {} }
+      const dt = (x - drag.x) / PW() * (drag.x1 - drag.x0);
+      st.x0 = drag.x0 - dt; st.x1 = drag.x1 - dt; clampDomain(); setRangeBtn(-1);
+    }
+    st.hover = hoverAt(x); draw(); showTip(x);
+  });
+  cv.addEventListener("pointerup", (e) => {
+    if (drag && !drag.moved) {
+      const x = localX(e);
+      if (x >= M.l && x <= W - M.r) {
+        const t = D().t[nearestIdx(Tx(x) - H / 2)];
+        if (st.a == null || st.b != null) { st.a = t; st.b = null; }
+        else { st.b = t; if (st.b < st.a) [st.a, st.b] = [st.b, st.a]; }
+        renderSel(); draw();
+      }
+    }
+    drag = null;
+  });
+  cv.addEventListener("pointercancel", () => { drag = null; });
+  cv.addEventListener("pointerleave", () => { if (!drag) { st.hover = null; tip.hidden = true; draw(); } });
+  cv.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const x = localX(e), t = Tx(x), k = e.deltaY > 0 ? 1.2 : 1 / 1.2;
+    st.x0 = t - (t - st.x0) * k; st.x1 = t + (st.x1 - t) * k; clampDomain(); setRangeBtn(-1);
+    st.hover = hoverAt(x); draw(); showTip(x);
+  }, { passive: false });
+
+  $("clrBtn").addEventListener("click", () => { st.a = st.b = null; renderSel(); draw(); });
+  $("addBtn").addEventListener("click", async () => {
+    if (st.a == null || st.b == null) return;
+    $("addBtn").disabled = true;
+    const tk = st.tk, a = st.a;
+    try {
+      const res = await api("POST", "/api/pumps", {
+        base_asset: tk, start_ts: fmtTs(st.a), end_ts: fmtTs(st.b),
+        pattern_type: $("pType").value, notes: $("pNote").value.trim(),
+      });
+      rows = fromServer(res.rows);
+      st.a = st.b = null; $("pNote").value = "";
+      status(`Додано ${tk} ${fmtTs(a)}, збережено в pumps.csv і базі`);
+    } catch (e) { status(e.message, true); }
+    renderSel(); renderRows(); draw();
+  });
+
+  const refresh = () => { readColors(); layout(); draw(); };
+  new ResizeObserver(refresh).observe(cv);
+  window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", refresh);
+  new MutationObserver(refresh).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+  if (document.fonts) document.fonts.ready.then(refresh);
+
+  (async () => {
+    readColors(); layout();
+    try {
+      const [tk, pumps] = await Promise.all([api("GET", "/api/tickers"), api("GET", "/api/pumps")]);
+      TICKERS = tk.tickers; rows = fromServer(pumps.rows);
+      $("days").textContent = tk.days;
+    } catch (e) { status(`Сервер не відповідає: ${e.message}. Чи запущено python label.py?`, true); return; }
+    if (!TICKERS.length) { status("У базі немає тікерів. Спершу запусти python fetch.py", true); return; }
+    TICKERS.forEach((tk) => {
+      const b = document.createElement("button"); b.className = "tk"; b.dataset.tk = tk; b.textContent = tk;
+      b.addEventListener("click", () => setTicker(tk));
+      $("tickers").appendChild(b);
+    });
+    renderRows();
+    await setTicker(TICKERS[0]);
+  })();
+})();
+</script>
+</body>
+</html>
