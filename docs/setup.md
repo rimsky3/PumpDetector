@@ -66,14 +66,29 @@ pip install -r requirements.txt
 
 | Command | What it does |
 |---|---|
-| `python fetch.py` | Collects 60 days of hourly data for every ticker in `tickers.txt` |
+| `python fetch.py` | Collects 60 days of hourly data for **every** ticker in `tickers.txt` |
+| `python fetch.py --new` | Collects only tickers from `tickers.txt` that are not in the database yet |
 | `python fetch.py AKE QNT` | Collects only the given tickers |
 | `python fetch.py --days 30` | Changes the history depth |
 | `python label.py` | Opens the labeling tool at http://127.0.0.1:8765 |
 | `python load_pumps.py` | Validates `pumps.csv` and reloads it into the `pumps` table |
 
-Re-running `fetch.py` is safe: rows are upserted, never duplicated. Because the provider keeps only
-~2 months of hourly history, run it regularly (for example weekly) to keep extending the dataset.
+Re-running `fetch.py` is safe: rows are upserted, never duplicated.
+
+### Adding a ticker vs refreshing everything
+
+The API limit is counted **per symbol per request**, not per row, so fetching fewer days does not make a
+run cheaper. The cost is driven by the number of markets: roughly 3 markets per ticker × 6 series.
+A full run over 7 tickers is ~126 calls, about 3–4 minutes at 40 calls/min, and grows with the list.
+
+| Situation | Command |
+|---|---|
+| Added a ticker to `tickers.txt` | `python fetch.py --new`, which takes seconds and fetches only the new ones |
+| Regular refresh (for example weekly) | `python fetch.py`, which also appends the latest hours for existing tickers |
+
+The provider keeps only ~2 months of hourly history, so the regular full refresh is what extends the
+dataset over time. A ticker counts as "in the database" once its markets are stored; a ticker that was
+not found on any exchange is retried on every `--new` run.
 
 ## Troubleshooting
 

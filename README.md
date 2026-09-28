@@ -50,6 +50,7 @@ pip install -r requirements.txt
 cp .env.example .env                 # add your Coinalyze API key and a database password
 
 python fetch.py                      # collect data for all tickers in tickers.txt
+python fetch.py --new                # ...or only tickers not yet in the database
 python label.py                      # open the labeling tool in the browser
 python load_pumps.py                 # (optional) reload pumps.csv into the database
 ```

@@ -71,4 +71,4 @@ This opens http://127.0.0.1:8765, a local page served only to this computer.
 - Each change is written to `pumps.csv` immediately and synced to the database.
 - Labeled intervals stay on the chart, numbered; each ticker button shows how many intervals it has.
 
-To label a new ticker: add it to `tickers.txt`, run `python fetch.py <TICKER>`, restart `label.py`.
+To label a new ticker: add it to `tickers.txt`, run `python fetch.py --new`, restart `label.py`.

@@ -7,6 +7,7 @@ predicted funding, ліквідації, long/short ratio.
 
 Приклади:
     python fetch.py                  # усі тікери з tickers.txt
+    python fetch.py --new            # лише тікери з tickers.txt, яких ще немає в базі
     python fetch.py AKE
     python fetch.py AKE LSK MYX G --days 30
 
@@ -169,6 +170,8 @@ def main() -> None:
                         help=f"базові активи, напр. AKE LSK MYX (без аргументів — з {TICKERS_FILE})")
     parser.add_argument("--days", type=int, default=60,
                         help="скільки днів історії тягнути (1h зберігається ~60-80 днів)")
+    parser.add_argument("--new", action="store_true",
+                        help="лише тікери, яких ще немає в базі (таблиця markets)")
     args = parser.parse_args()
 
     load_dotenv()
@@ -180,6 +183,15 @@ def main() -> None:
     bases = [t.upper() for t in (args.tickers or read_tickers_file(TICKERS_FILE))]
     if not bases:
         sys.exit(f"Немає тікерів: передай їх аргументами або додай у {TICKERS_FILE}")
+    if args.new:
+        with psycopg.connect(db_url) as conn:
+            known = {r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM markets")}
+        skipped = [b for b in bases if b in known]
+        bases = [b for b in bases if b not in known]
+        if skipped:
+            print(f"Вже в базі, пропускаю: {', '.join(skipped)}")
+        if not bases:
+            sys.exit("Нових тікерів немає — нічого збирати.")
     now = datetime.now(timezone.utc)
     ts_to = int(now.timestamp())
     ts_from = int((now - timedelta(days=args.days)).timestamp())
