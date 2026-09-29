@@ -72,4 +72,5 @@ CREATE TABLE IF NOT EXISTS pumps (
     CHECK (end_ts > start_ts)
 );
 
--- Таблиці features і signals додамо разом із features.py та скринером.
+-- Таблицю features створює features.py (вона повністю похідна і перебудовується при зміні ознак).
+-- Таблицю signals додамо разом зі скринером.

@@ -8,7 +8,7 @@ so it shows up in **open interest** before or together with the price. The model
 with price, volume, funding, liquidations and long/short ratio to answer one question every hour:
 *is a pump in progress right now?*
 
-> **Status:** work in progress. Data collection and labeling are done; feature engineering and modelling are next.
+> **Status:** work in progress. Data collection, labeling and feature engineering are done; modelling is next.
 > No model results are reported yet.
 
 ## Approach
@@ -18,8 +18,8 @@ with price, volume, funding, liquidations and long/short ratio to answer one que
 | Data | Hourly OI, OHLCV, funding, predicted funding, liquidations and long/short ratio from [Coinalyze](https://coinalyze.net), aggregated across Binance, Bybit, OKX, Aster, Hyperliquid and MEXC | done |
 | Storage | PostgreSQL in Docker; idempotent upserts keyed by `(symbol, interval, ts)` | done |
 | Labels | Manual labeling of pump intervals in a purpose-built local tool | done (first batch) |
-| Features | Features relative to each ticker's own history (z-scores, ratios, % changes), one module shared by training, inference and screener | next |
-| Models | Simple OI + volume rule → Logistic Regression → LightGBM | planned |
+| Features | 24 features relative to each ticker's own history (z-scores, ratios, log changes), one module shared by training, inference and screener; verified free of look-ahead | done |
+| Models | Simple OI + volume rule → Logistic Regression → LightGBM | next |
 | Validation | Leave-ticker-out cross-validation; precision / recall / F1, not accuracy | planned |
 | Screener | 24/7 screener and public demo on a VPS | planned |
 
@@ -34,9 +34,9 @@ beat it, that is reported as an honest negative result.
 
 ## Current dataset
 
-- 6 tickers (AIN, AKE, G, LSK, MYX, QNT), 60 days of hourly bars
-- 18 labeled intervals: 10 pumps and 8 false starts (moves that looked like a pump but did not develop)
-- About 270 pump hours, roughly 3% of all bars, so class imbalance is handled explicitly
+- 8 tickers, about 10 500 hourly bars with a full feature history
+- 17 pump intervals and 11 false starts (moves that looked like a pump but did not develop)
+- 380 pump hours, 3.6% of all bars, so class imbalance is handled explicitly
 
 The dataset is intentionally small at this stage and will grow: Coinalyze keeps only ~2 months of
 hourly open-interest history, so new tickers are collected and labeled continuously.
@@ -53,6 +53,7 @@ python fetch.py                      # collect data for all tickers in tickers.t
 python fetch.py --new                # ...or only tickers not yet in the database
 python label.py                      # open the labeling tool in the browser
 python load_pumps.py                 # (optional) reload pumps.csv into the database
+python features.py                   # compute features and labels into the features table
 ```
 
 Full instructions, including Windows specifics: [docs/setup.md](docs/setup.md).
@@ -66,6 +67,7 @@ label.py            local labeling server (127.0.0.1) for tools/label.html
 tools/label.html    labeling UI: synced price / OI / volume charts, click to mark intervals
 pumps.csv           manual labels, the source of truth for the target variable
 load_pumps.py       validates pumps.csv and syncs it to the database
+features.py         raw series → hourly features + labels (shared by training and screener)
 schema.sql          database schema
 docker-compose.yml  local PostgreSQL
 docs/               documentation
@@ -76,6 +78,7 @@ docs/               documentation
 - [Setup](docs/setup.md): installation, configuration, troubleshooting
 - [Data](docs/data.md): sources, series, units, coverage and known gaps
 - [Labeling](docs/labeling.md): what counts as a pump, labeling rules, file format, tool usage
+- [Features](docs/features.md): aggregation, feature definitions, look-ahead and listing safeguards
 
 ## Limitations
 

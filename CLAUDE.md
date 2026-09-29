@@ -62,7 +62,8 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 - Розмітка: `python label.py` — локальний сервер (stdlib http.server, 127.0.0.1:8765) + `tools/label.html`;
   графіки з БД, кожна зміна одразу пишеться в pumps.csv і синхронізується з таблицею pumps.
   Спільна логіка читання/запису/перевірки CSV — у `load_pumps.py`.
-- далі: `features.py`, `train.py`, `app/streamlit_app.py`, `screener.py`
+- `features.py` готовий (24 ознаки, таблиця `features`, перевірено на відсутність lookahead); опис — docs/features.md.
+- далі: `train.py` (правило-baseline → LogReg → LightGBM, leave-ticker-out), `train.py`, `app/streamlit_app.py`, `screener.py`
 
 ## Документація
 - `README.md` + `docs/` (setup, data, labeling) — англійською, для GitHub-портфоліо. Коментарі в коді — українською.
