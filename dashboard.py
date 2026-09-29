@@ -28,14 +28,15 @@ from dotenv import load_dotenv
 from features import aggregate, compute_features, load_raw, query_df
 from fetch import Coinalyze, collect, read_tickers_file
 from risk import EXIT_BARS, TRAIL_NATR, position_state
-from screener import FETCH_DAYS, RUN_MINUTE, WATCHLIST_FILE, load_models, score_bases
+from screener import FETCH_DAYS, RUN_MINUTE, STATUS_FILE, WATCHLIST_FILE, load_models, score_bases
+import journal as J
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(ROOT, "app", "dashboard.html")
 VENDOR = os.path.join(ROOT, "app", "vendor")
 MODEL_NAMES = {"lightgbm": "LightGBM", "logreg": "Логістична регресія"}
 CANDIDATE_SHARE = 0.5     # «Кандидат»: ймовірність ≥ половини порогу сигналу
-SPARK_HOURS = 48
+SPARK_HOURS = 24
 refresh_lock = threading.Lock()
 
 
@@ -47,6 +48,8 @@ def clean(o):
         return {str(k): clean(v) for k, v in o.items()}
     if isinstance(o, (list, tuple)):
         return [clean(v) for v in o]
+    if o is pd.NaT:
+        return None
     if isinstance(o, (pd.Timestamp, datetime)):
         return int(o.timestamp())
     if isinstance(o, (np.integer,)):
@@ -76,6 +79,14 @@ def latest_signals(conn, base: str | None = None) -> pd.DataFrame:
           ON s.model = m.model AND s.model_version = m.v
         {where}
         ORDER BY s.base_asset, s.ts""", (base,) if base else ())
+
+
+def screener_status() -> dict | None:
+    try:
+        with open(os.path.join(ROOT, STATUS_FILE), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
 
 
 def next_scan(now: datetime) -> datetime:
@@ -109,49 +120,61 @@ def meta(conn) -> dict:
         "watchlist": watch,
         "exchanges": exchanges,
         "last_scored_at": sig["last"].iloc[0] if len(sig) else None,
+        "screener": screener_status(),
         "next_scan": next_scan(now),
         "now": now,
     }
 
 
-def scanner(conn, model: str) -> dict:
+def episodes(sig: pd.DataFrame) -> list[dict]:
+    """Початок кожного епізоду сигналу (сусідні години з сигналом = один епізод)."""
+    out = []
+    for base, g in sig.sort_values("ts").groupby("base_asset"):
+        prev_ts, prev_sig = None, False
+        for r in g.itertuples():
+            if r.signal and not (prev_sig and prev_ts is not None and r.ts - prev_ts == pd.Timedelta(hours=1)):
+                kind = "live" if r.live else ("in-sample" if r.in_sample else "history")
+                out.append({"ticker": base, "ts": r.ts, "probability": r.probability, "kind": kind})
+            prev_ts, prev_sig = r.ts, r.signal
+    return sorted(out, key=lambda e: e["ts"], reverse=True)
+
+
+def watch_list(conn, model: str) -> dict:
+    """Права панель: тікери з ймовірністю, міні-графіком P за 24 год, Δ OI і зміною ціни за 24 год."""
     sig = latest_signals(conn)
     sig = sig[sig["model"] == model]
     if sig.empty:
-        return {"rows": [], "log": []}
+        return {"rows": [], "recent": [], "alerts": []}
     raw = load_raw(conn, sorted(sig["base_asset"].unique()))
     rows = []
     for base, g in sig.groupby("base_asset"):
         g = g.sort_values("ts")
         last = g.iloc[-1]
         streak = 0
-        for s in reversed(g["signal"].tolist()):
-            if not s:
+        for x in reversed(g["signal"].tolist()):
+            if not x:
                 break
             streak += 1
         h = aggregate(raw, base)
-        spark = h["price"].dropna().iloc[-SPARK_HOURS:] if not h.empty else pd.Series(dtype=float)
+        h = h[h.index <= last["ts"]] if not h.empty else h
+        spark = g.set_index("ts")["probability"].reindex(pd.date_range(last["ts"] - pd.Timedelta(hours=SPARK_HOURS - 1), last["ts"], freq="h"))
+        chg = oi24 = None
+        if len(h) > 24:
+            p0, p1 = h["price"].iloc[-25], h["price"].iloc[-1]
+            chg = p1 / p0 - 1 if p0 else None
+            oi24 = math.expm1(h["oi_log_idx"].iloc[-1] - h["oi_log_idx"].iloc[-25])   # без стрибків від лістингів
         rows.append({
             "ticker": base, "probability": last["probability"], "threshold": last["threshold"],
             "status": status_of(last["probability"], last["threshold"]),
             "streak": streak, "in_sample": bool(last["in_sample"]), "last_bar": last["ts"],
-            "spark": spark.tolist(),
-            "change_48h": (spark.iloc[-1] / spark.iloc[0] - 1) if len(spark) > 1 else None,
+            "spark": spark.tolist(), "chg_24h": chg, "oi_24h": oi24,
         })
     rows.sort(key=lambda r: -(r["probability"] or 0))
-
-    # лог: початок кожного епізоду сигналу (сусідні години з сигналом = один епізод)
-    log = []
-    for base, g in sig.sort_values("ts").groupby("base_asset"):
-        prev_ts, prev_sig = None, False
-        for r in g.itertuples():
-            starts = r.signal and not (prev_sig and prev_ts is not None and r.ts - prev_ts == pd.Timedelta(hours=1))
-            if starts:
-                kind = "live" if r.live else ("in-sample" if r.in_sample else "history")
-                log.append({"ticker": base, "ts": r.ts, "probability": r.probability, "kind": kind})
-            prev_ts, prev_sig = r.ts, r.signal
-    log.sort(key=lambda e: e["ts"], reverse=True)
-    return {"rows": rows, "log": log[:30]}
+    ep = episodes(sig)
+    # для сповіщень: live-епізоди, що почались за останні 6 годин
+    recent_cut = pd.Timestamp(datetime.now(timezone.utc) - timedelta(hours=6))
+    alerts = [e for e in ep if e["kind"] == "live" and e["ts"] >= recent_cut]
+    return {"rows": rows, "recent": ep[:6], "alerts": alerts}
 
 
 def ticker(conn, base: str, model: str, days: int) -> dict:
@@ -176,8 +199,16 @@ def ticker(conn, base: str, model: str, days: int) -> dict:
     last = sig[sig["model"] == model].iloc[-1] if (sig["model"] == model).any() else None
 
     view = h[h.index > h.index.max() - pd.Timedelta(days=days)]
+    streak = 0
+    for x in reversed(sig[sig["model"] == model]["signal"].tolist()):
+        if not x:
+            break
+        streak += 1
+    chg24 = (h["price"].iloc[-1] / h["price"].iloc[-25] - 1) if len(h) > 24 and h["price"].iloc[-25] else None
     return {
-        "ticker": base, "model": model, "threshold": thr, "k": k,
+        "ticker": base, "model": model, "threshold": thr, "k": k, "streak": streak, "chg_24h": chg24,
+        "price": h["price"].iloc[-1] if len(h) else None,
+        "ls_long_pct": h["ls_long_pct"].dropna().iloc[-1] if h["ls_long_pct"].notna().any() else None,
         "trail_natr": TRAIL_NATR, "exit_bars": EXIT_BARS,
         "last_bar": view.index.max(),
         "in_sample": bool(last["in_sample"]) if last is not None else None,
@@ -196,6 +227,7 @@ def ticker(conn, base: str, model: str, days: int) -> dict:
             # свічки OI у монетах (без впливу ціни) — див. features.aggregate
             "coinO": view["oi_coins_o"].tolist(), "coinH": view["oi_coins_h"].tolist(),
             "coinL": view["oi_coins_l"].tolist(), "coin": view["oi_coins_c"].tolist(),
+            "usdO": view["oi_usd_o"].tolist(), "usdH": view["oi_usd_h"].tolist(), "usdL": view["oi_usd_l"].tolist(),
             "prob": {m: s.reindex(view.index).tolist() for m, s in probs.items()},
         },
         "thresholds": thresholds,
@@ -246,6 +278,29 @@ def rescore_on_start() -> None:
         print(f"! не вдалося оцінити тікери при старті: {e}")
 
 
+_journal_cache: dict = {}
+
+
+def journal_view(conn, q: dict) -> dict:
+    rule = {
+        "horizon": max(1, min(168, int(q.get("horizon", J.DEFAULT_RULE["horizon"])))),
+        "price": float(q.get("price", J.DEFAULT_RULE["price"])),
+        "oi": float(q.get("oi", J.DEFAULT_RULE["oi"])),
+    }
+    days = None if q.get("days", "30") == "all" else max(1, int(q.get("days", 30)))
+    model, kind = q.get("model", "lightgbm"), q.get("kind", "live")
+    last = conn.execute("SELECT max(scored_at) FROM signals").fetchone()[0]
+    labels_mtime = os.path.getmtime(os.path.join(ROOT, "pumps.csv")) if os.path.exists(os.path.join(ROOT, "pumps.csv")) else 0
+    key = (model, days, kind, tuple(rule.values()), last, labels_mtime)
+    if key not in _journal_cache:
+        _journal_cache.clear()
+        bundles = {m["name"]: m for m in State.models}
+        res = J.journal(conn, bundles, model, days, kind, rule)
+        res["validation"] = {m["name"]: m["validation"] for m in State.models}
+        _journal_cache[key] = res
+    return _journal_cache[key]
+
+
 # ---------------------------------------------------------------- сервер
 
 class Handler(BaseHTTPRequestHandler):
@@ -285,8 +340,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, f.read(), "text/javascript; charset=utf-8")
         if url.path == "/api/meta":
             return self._route(meta)
-        if url.path == "/api/scanner":
-            return self._route(lambda c: scanner(c, model))
+        if url.path == "/api/list":
+            return self._route(lambda c: watch_list(c, model))
+        if url.path == "/api/journal":
+            return self._route(lambda c: journal_view(c, q))
         if url.path == "/api/ticker":
             days = max(1, min(60, int(q.get("days", 30))))
             return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days))

@@ -162,8 +162,9 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str) -> pd.DataFrame:
     h["buy_volume"] = wide(ohlcv, "bv_usd").sum(axis=1, min_count=1)
     h["oi"] = oi_w.sum(axis=1, min_count=1)
     h["oi_log_idx"] = chained_log_index(oi_w)
-    for k in ("o", "h", "l", "c"):           # свічки OI у монетах для графіків
+    for k in ("o", "h", "l", "c"):           # свічки OI (у монетах і в USD) для графіків
         h[f"oi_coins_{k}"] = coins[k].sum(axis=1, min_count=1)
+        h[f"oi_usd_{k}"] = wide(part["oi"], k).sum(axis=1, min_count=1)
     h["oi_coins"] = h["oi_coins_c"]
     h["oi_coin_log_idx"] = chained_log_index(coins["c"])
 

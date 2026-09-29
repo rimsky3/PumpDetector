@@ -5,240 +5,362 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pump Detector</title>
 <style>
-/* Макет «Pump Detector App»: бічне меню + екран. Темна тема з макету. */
+/* Макет «Pump Detector App» v2: ліва панель (модель і метрики) | графік | список тікерів. Темна тема. */
 :root {
-  --bg: #0f0f0e; --side: #141413; --card: #1c1c1a; --line: #262622; --line2: #33332e; --row: #201f1d;
-  --fg: #f0efec; --fg2: #a8a79f; --fg3: #6b6a64;
+  --bg: #0f0f0e; --side: #141413; --card: #1c1c1a; --line: #262622; --line2: #33332e; --line3: #3a3a35; --row: #201f1d;
+  --fg: #f0efec; --fg2: #a8a79f; --fg3: #6b6a64; --pop: #d6d5cf;
   --accent: #d85a30; --accent-fg: #4a1b0c;
-  --price: #378add; --hot: #e24b4a; --hot-soft: #f09595; --warm: #f0997b; --amber: #ef9f27; --ok: #97c459; --muted: #5f5e5a;
-  --alert-bg: #4a1b0c; --cand-bg: #412402; --calm-bg: #262622; --calm-fg: #888780; --ok-border: #173404;
-  --link: #85b7eb;
+  --hot: #e24b4a; --hot-soft: #f09595; --warm: #f0997b; --amber: #ef9f27; --ok: #97c459; --muted: #5f5e5a; --oi: #1baf7a;
+  --alert-bg: #4a1b0c; --cand-bg: #412402; --ok-bg: #173404; --live-bg: #0c2a44; --link: #85b7eb;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
-button, select { font: inherit; color: inherit; }
-button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
-.num { font-variant-numeric: tabular-nums; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 
-.app { display: flex; min-height: 100%; }
-.side { width: 220px; flex-shrink: 0; padding: 24px 16px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--line); background: var(--side); position: sticky; top: 0; height: 100vh; }
-.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 24px; }
+.app { display: grid; grid-template-columns: 248px minmax(0, 1fr) 392px; height: 100vh; }
+.app.journal { grid-template-columns: 248px minmax(0, 1fr); }
+.side { background: var(--side); border-right: 1px solid var(--line); padding: 18px 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.right { background: var(--side); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.center { padding: 16px 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow-y: auto; }
+
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 6px; }
 .logo { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--accent-fg); }
 .brand span { font-size: 15px; font-weight: 500; }
-.nav { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: var(--fg2); text-decoration: none; }
-.nav:hover { color: var(--fg); background: #1c1c1a; }
-.nav[aria-current="page"] { background: var(--line); color: var(--fg); }
-.nav svg { width: 18px; height: 18px; flex: none; }
-.side-model { margin-top: 20px; padding: 0 4px; display: grid; gap: 6px; }
-.side-model label { font-size: 11px; color: var(--fg3); letter-spacing: .04em; text-transform: uppercase; padding-left: 4px; }
-.foot { margin-top: auto; padding: 12px; border-radius: 8px; background: var(--card); font-size: 12px; color: var(--fg2); line-height: 1.5; }
+.seg { display: flex; gap: 4px; padding: 3px; background: var(--card); border-radius: 8px; }
+.seg > * { flex: 1; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--fg2); font-size: 12px; display: flex; align-items: center; justify-content: center; }
+.seg > [aria-pressed="true"], .seg > [aria-current="page"] { background: var(--line2); color: var(--fg); }
+.seg.col { flex-direction: column; } .seg.col > * { justify-content: flex-start; padding: 0 10px; flex: none; height: 28px; }
+.seg.sm > * { height: 28px; flex: none; padding: 0 10px; }
+.lbl { display: flex; align-items: center; justify-content: space-between; padding: 0 2px 0 4px; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--fg3); }
+.group { display: flex; flex-direction: column; gap: 6px; }
 
-.main { flex: 1; min-width: 0; padding: 28px 36px; display: flex; flex-direction: column; gap: 20px; }
-.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.sel { height: 38px; background: var(--card); border: 1px solid var(--line2); border-radius: 8px; padding: 0 12px; font-size: 14px; min-width: 150px; }
-.btn { height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line2); background: var(--card); font-size: 14px; cursor: pointer; }
-.btn:hover { border-color: var(--fg3); }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
-.btn.primary:hover { filter: brightness(1.08); }
-.btn:disabled { opacity: .55; cursor: progress; }
-.seg { display: flex; border: 1px solid var(--line2); border-radius: 8px; overflow: hidden; }
-.seg button { height: 36px; padding: 0 12px; border: 0; background: var(--card); color: var(--fg2); cursor: pointer; font-size: 13px; }
-.seg button + button { border-left: 1px solid var(--line2); }
-.seg button[aria-pressed="true"] { background: var(--line2); color: var(--fg); }
-.live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg2); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
-.dot.warn { background: var(--amber); } .dot.bad { background: var(--hot); }
+.card { background: var(--card); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; border: 1px solid transparent; }
+.card.alert { border-color: var(--alert-bg); }
+.card .t { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 11px; color: var(--fg2); }
+.card .t > span:first-child { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.big { font-size: 34px; font-weight: 500; line-height: 1; }
+.bar { position: relative; height: 6px; border-radius: 3px; background: var(--line); }
+.bar > i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.bar > b { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--fg); }
+.scale { display: flex; justify-content: space-between; font-size: 10px; color: var(--fg3); }
+.kv { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 12px; }
+.kv:last-child { border-bottom: 0; }
+.kv > span { color: var(--fg2); display: flex; align-items: center; gap: 6px; }
+.kv > b { font-weight: 500; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.tile { background: var(--side); border-radius: 6px; padding: 7px; border: 1px solid var(--muted); }
+.tile .k { font-size: 10px; color: var(--fg3); } .tile .v { font-size: 12px; font-weight: 500; }
+.small { font-size: 11px; color: var(--fg3); }
+.foot { margin-top: auto; padding: 10px 12px; border-radius: 8px; background: var(--card); font-size: 11px; color: var(--fg2); line-height: 1.5; }
+.pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
+.pill.alert { background: var(--alert-bg); color: var(--warm); } .pill.candidate { background: var(--cand-bg); color: var(--amber); }
+.pill.calm, .pill.none { background: var(--line); color: #888780; }
+.hot { color: var(--hot-soft); } .warm { color: var(--warm); } .amber { color: var(--amber); } .ok { color: var(--ok); } .dim { color: var(--fg2); } .red { color: var(--hot); }
 
-.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-@media (max-width: 1000px) { .grid3 { grid-template-columns: minmax(0, 1fr); } }
-.card { background: var(--card); border-radius: 10px; padding: 16px; border: 1px solid transparent; min-width: 0; }
-.card .k { font-size: 12px; color: var(--fg2); margin-bottom: 6px; }
-.card .k span { color: var(--fg3); }
-.card .v { font-size: 26px; font-weight: 500; }
-.card .vs { font-size: 22px; font-weight: 500; }
-.card .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.card .sub { font-size: 12px; color: var(--fg2); }
-.card .note { font-size: 11px; color: var(--fg3); margin-top: 4px; }
-.card.stop { border-color: var(--alert-bg); } .card.exit { border-color: var(--ok-border); } .card.trail { border-color: var(--muted); }
-.hot { color: var(--hot-soft); } .warm { color: var(--warm); } .amber { color: var(--amber); } .ok { color: var(--ok); } .dim { color: var(--fg2); }
+/* підказки «?» */
+.help { width: 16px; height: 16px; border-radius: 50%; border: 1px solid var(--line3); background: transparent; color: #8a897f; font-size: 10px; line-height: 14px; padding: 0; flex-shrink: 0; }
+.help:hover, .help[aria-expanded="true"] { color: var(--fg); border-color: var(--fg3); }
+.pop { position: fixed; z-index: 100; width: 270px; padding: 10px 12px; border-radius: 8px; background: #262622; border: 1px solid var(--line3); box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 12px; line-height: 1.5; color: var(--pop); }
 
-.chart-card { background: var(--card); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.chart-head .t { font-size: 13px; color: var(--fg2); }
-.legend { display: flex; gap: 14px; font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
-.legend span { display: flex; align-items: center; gap: 5px; }
-.sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-.sw.line { height: 2px; width: 12px; border-radius: 1px; }
-.sw.dash { height: 0; width: 12px; border-top: 2px dashed; border-radius: 0; }
-.chart-wrap { position: relative; }
-#chart { width: 100%; height: 560px; }
-@media (max-width: 800px) { #chart { height: 460px; } }
-.ohlc { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; min-height: 18px; }
-.ohlc span { display: inline-flex; gap: 4px; }
-.ohlc i { font-style: normal; color: var(--fg3); }
-.ohlc b { font-weight: 500; }
+/* центр: графік */
+.head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.head .l { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.tk-name { font-size: 20px; font-weight: 600; } .tk-price { font-size: 18px; font-weight: 500; }
+.badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line2); color: var(--fg2); }
+.head .r { display: flex; gap: 8px; align-items: center; }
+.ohlc { display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 11px; color: var(--fg2); min-height: 16px; }
+.ohlc b { color: var(--fg); font-weight: 500; }
+.chart-card { flex: 1; min-height: 420px; background: var(--card); border-radius: 10px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+#chart { flex: 1; min-height: 380px; }
+.chart-help { position: absolute; left: 10px; top: 8px; z-index: 5; }
 .hint { font-size: 11px; color: var(--fg3); margin: 0; }
-.tip { position: absolute; pointer-events: none; background: #141413; border: 1px solid var(--line2); border-radius: 6px; padding: 8px 10px; font-size: 12px; min-width: 180px; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
-.tip .ts { color: var(--fg2); margin-bottom: 4px; }
-.tip .r { display: flex; justify-content: space-between; gap: 14px; }
-.tip .r span { color: var(--fg2); }
-.pos-line { font-size: 12px; color: var(--fg2); }
-.banner { font-size: 12px; color: var(--amber); background: var(--cand-bg); border-radius: 8px; padding: 8px 12px; }
 .error { font-size: 13px; color: var(--hot-soft); background: var(--alert-bg); border-radius: 8px; padding: 10px 14px; }
+.toast { position: absolute; top: 12px; right: 76px; z-index: 6; display: flex; gap: 10px; background: var(--side); border: 1px solid var(--alert-bg); border-radius: 10px; padding: 10px 12px; width: 270px; box-shadow: 0 8px 24px rgba(0,0,0,.45); }
+.toast .ic { width: 26px; height: 26px; border-radius: 6px; background: var(--alert-bg); color: var(--warm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.toast .tt { font-size: 12px; font-weight: 600; } .toast .ts { font-size: 11px; color: var(--fg2); }
+.toast .x { margin-left: auto; background: none; border: 0; color: var(--fg3); font-size: 14px; align-self: flex-start; }
 
-.h1 { font-size: 18px; font-weight: 500; }
-.h1sub { font-size: 13px; color: var(--fg2); margin-top: 2px; }
-.split { display: flex; gap: 20px; align-items: flex-start; }
-@media (max-width: 1000px) { .split { flex-direction: column; align-items: stretch; } }
-.table { flex: 2; background: var(--card); border-radius: 10px; padding: 4px 0; overflow: hidden; min-width: 0; }
-.tr { display: grid; grid-template-columns: minmax(110px, 1fr) 150px 90px 110px; gap: 8px; padding: 12px 20px; align-items: center; border-bottom: 1px solid var(--row); width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; }
-.tr.head { font-size: 11px; color: var(--fg3); border-bottom-color: var(--line); padding-block: 12px; }
-button.tr { cursor: pointer; }
-button.tr:hover { background: #22221f; }
-.tr:last-child { border-bottom: 0; }
-.tk { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
-.tag { font-size: 10px; color: var(--fg3); border: 1px solid var(--line2); border-radius: 4px; padding: 0 4px; font-weight: 400; }
-.pill { font-size: 11px; padding: 3px 9px; border-radius: 20px; width: fit-content; }
-.pill.alert { background: var(--alert-bg); color: var(--warm); }
-.pill.candidate { background: var(--cand-bg); color: var(--amber); }
-.pill.calm, .pill.none { background: var(--calm-bg); color: var(--calm-fg); }
-.log { flex: 1; background: var(--card); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; min-width: 0; }
-.log h2 { font-size: 13px; color: var(--fg2); font-weight: 400; margin: 0 0 8px; }
-.ev { padding: 10px 0; border-bottom: 1px solid var(--line); }
-.ev:last-child { border-bottom: 0; }
-.ev .top { display: flex; justify-content: space-between; align-items: baseline; }
-.ev .top b { font-size: 13px; font-weight: 500; }
-.ev .top span { font-size: 11px; color: var(--fg3); }
-.ev .d { font-size: 12px; color: var(--fg2); margin-top: 2px; }
-.empty { color: var(--fg3); font-size: 13px; padding: 16px 20px; }
-.explain { font-size: 12px; color: var(--fg3); line-height: 1.5; }
+/* права панель */
+.rtop { padding: 14px 14px 10px; display: flex; flex-direction: column; gap: 10px; }
+.search { display: flex; gap: 8px; align-items: center; }
+.search input { flex: 1; min-width: 0; height: 34px; background: var(--card); border: 1px solid var(--line2); border-radius: 8px; padding: 0 10px; font-size: 13px; }
+.btn-primary { height: 34px; padding: 0 14px; border-radius: 8px; border: 0; background: var(--accent); color: var(--accent-fg); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.btn-primary:disabled { opacity: .6; cursor: progress; }
+.status { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--fg3); }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
+.dot.warn { background: var(--amber); } .dot.bad { background: var(--hot); }
+.notify { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 7px; font-size: 11px; text-align: left; background: var(--card); border: 1px solid var(--line2); color: var(--fg2); flex: 1; }
+.notify[aria-pressed="true"] { background: var(--cand-bg); border-color: #633806; color: var(--amber); }
+.cols, .trow { display: grid; grid-template-columns: 18px minmax(0, 1fr) 56px 40px 58px 54px; gap: 6px; align-items: center; padding: 0 14px; }
+.cols { padding-block: 6px; font-size: 10px; color: var(--fg3); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.cols button { background: none; border: 0; padding: 0; font-size: 10px; color: var(--fg3); text-align: right; }
+.cols button[aria-pressed="true"] { color: var(--fg); }
+.tlist { flex: 1; overflow-y: auto; min-height: 0; }
+.trow { height: 36px; border-bottom: 1px solid var(--card); cursor: pointer; }
+.trow:hover { background: #1a1a18; }
+.trow.sel { background: var(--line); box-shadow: inset 2px 0 0 var(--accent); }
+.trow .star { background: none; border: 0; padding: 0; font-size: 12px; color: var(--line2); }
+.trow .star.on { color: var(--amber); }
+.trow .name { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+.trow .name .dot { flex-shrink: 0; }
+.trow .num { text-align: right; font-size: 12px; }
+.trow .p { font-size: 13px; font-weight: 500; }
+.keys { padding: 6px 14px; font-size: 10px; color: var(--fg3); border-top: 1px solid var(--line); display: flex; gap: 12px; }
+.keys b { color: var(--fg2); font-weight: 500; }
+.recent { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+.recent .t { font-size: 11px; color: var(--fg2); display: flex; align-items: center; gap: 6px; }
+.recent .e { display: flex; justify-content: space-between; font-size: 12px; cursor: pointer; }
+.recent .e:hover b { color: var(--link); }
 
-@media (max-width: 800px) {
-  .app { flex-direction: column; }
-  .side { width: auto; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px 16px; }
-  .brand { padding: 0 8px 0 0; }
-  .side-model, .foot { display: none; }
-  .main { padding: 20px 16px; }
-  .tr { grid-template-columns: minmax(90px, 1fr) 90px 70px 90px; }
+/* журнал */
+.jmain { padding: 18px 24px; display: flex; flex-direction: column; gap: 16px; min-width: 0; overflow-y: auto; }
+.jtitle { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.jtitle .h { font-size: 18px; font-weight: 500; }
+.panel { background: var(--card); border-radius: 10px; min-width: 0; }
+.mgrid { display: grid; grid-template-columns: 170px repeat(6, minmax(0, 1fr)); gap: 8px; padding: 11px 18px; align-items: baseline; border-bottom: 1px solid var(--row); font-size: 14px; }
+.mgrid.h { font-size: 10px; color: var(--fg3); border-bottom-color: var(--line); align-items: center; }
+.mgrid > :not(:first-child) { text-align: right; }
+.jcols { display: grid; grid-template-columns: 96px 78px 84px 48px 80px 150px 70px minmax(0, 1fr); gap: 8px; padding: 9px 18px; align-items: center; font-size: 12px; border-bottom: 1px solid var(--row); }
+.jcols.h { font-size: 10px; color: var(--fg3); border-bottom-color: var(--line); }
+.jcols .r { text-align: right; }
+.kind { font-size: 11px; padding: 2px 7px; border-radius: 4px; width: fit-content; }
+.kind.live { background: var(--live-bg); color: var(--link); } .kind.history { background: var(--line); color: var(--fg2); } .kind.in-sample { background: var(--line); color: var(--fg3); }
+.oc { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+.oc.pump { background: var(--ok-bg); color: var(--ok); } .oc.fp { background: var(--alert-bg); color: var(--warm); } .oc.wait { background: var(--cand-bg); color: var(--amber); }
+.src { font-size: 10px; } .src.label { color: var(--link); } .src.auto { color: var(--amber); } .src.wait { color: var(--fg3); }
+.jsplit { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.phead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.phead .t { font-size: 13px; color: var(--fg2); display: flex; align-items: center; gap: 6px; }
+.stat { display: flex; justify-content: space-between; font-size: 12px; } .stat span { color: var(--fg2); } .stat b { font-weight: 500; }
+.field { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--fg2); }
+.field input { width: 64px; height: 26px; background: var(--side); border: 1px solid var(--line2); border-radius: 6px; font-size: 12px; text-align: right; padding: 0 6px; }
+.empty { color: var(--fg3); font-size: 12px; padding: 14px 18px; }
+.sysrow { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; } .sysrow > span:first-child { display: flex; align-items: center; gap: 6px; } .sysrow > span:last-child { color: var(--fg2); text-align: right; }
+
+@media (max-width: 1100px) {
+  .app { grid-template-columns: 220px minmax(0, 1fr); } .right { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--line); height: 60vh; }
+  .app { height: auto; } .jsplit { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .app, .app.journal { grid-template-columns: minmax(0, 1fr); } .side { border-right: 0; }
+  .mgrid { grid-template-columns: 120px repeat(3, minmax(0, 1fr)); } .mgrid > :nth-child(n+5) { display: none; }
+  .jcols { grid-template-columns: 80px 64px 50px 1fr; } .jcols > :nth-child(3), .jcols > :nth-child(4), .jcols > :nth-child(5), .jcols > :nth-child(8) { display: none; }
 }
 </style>
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
-<div class="app">
-  <nav class="side" aria-label="Розділи">
-    <div class="brand"><div class="logo">P</div><span>Pump Detector</span></div>
-    <a class="nav" href="#forecast" id="navForecast">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 17l5-5 4 4 8-8"></path><path d="M15 8h6v6"></path></svg>
-      <span>Прогноз</span>
-    </a>
-    <a class="nav" href="#scanner" id="navScanner">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
-      <span>Скринер</span>
-    </a>
-    <div class="side-model">
-      <label for="modelSel">Модель</label>
-      <select class="sel" id="modelSel"></select>
-    </div>
-    <div class="foot" id="foot">…</div>
-  </nav>
+<div class="app" id="app">
 
-  <main class="main" id="viewForecast" hidden>
-    <div class="topbar">
-      <div class="controls">
-        <select class="sel" id="tickerSel" aria-label="Тікер"></select>
-        <button class="btn primary" id="refreshBtn">Прогнозувати</button>
-        <div class="seg" role="group" aria-label="Період графіка">
-          <button data-days="1">1 д</button><button data-days="3" aria-pressed="true">3 д</button><button data-days="7">7 д</button><button data-days="30">30 д</button>
+  <!-- ================= ЛІВА ПАНЕЛЬ ================= -->
+  <aside class="side">
+    <div class="brand"><div class="logo">P</div><span>Pump Detector</span></div>
+    <nav class="seg" aria-label="Розділи">
+      <a href="#forecast" id="navForecast">Прогноз</a>
+      <a href="#journal" id="navJournal">Журнал</a>
+    </nav>
+    <div class="group">
+      <div class="lbl"><span>Модель</span><button class="help" data-help="model" aria-label="Що це?">?</button></div>
+      <div class="seg" id="modelSeg" role="group" aria-label="Модель"></div>
+    </div>
+
+    <!-- ліва частина «Прогнозу» -->
+    <div id="leftForecast" class="group" style="gap: 12px;">
+      <div class="card" id="probCard">
+        <div class="t"><span>Ймовірність пампу <button class="help" data-help="prob" aria-label="Що це?">?</button></span><span class="pill none" id="probPill">—</span></div>
+        <div class="big" id="probVal">—</div>
+        <div class="bar"><i id="probBar" style="width:0"></i><b id="probThr" style="left:80%"></b></div>
+        <div class="scale"><span>0</span><span id="probThrTxt">поріг —</span><span>1</span></div>
+      </div>
+      <div class="card" style="padding-block: 2px;">
+        <div class="kv"><span>Δ OI, 4 год <button class="help" data-help="metrics" aria-label="Що це?">?</button></span><b id="mOi">—</b></div>
+        <div class="kv"><span>Volume z-score</span><b id="mVol">—</b></div>
+        <div class="kv"><span>Частка лонгів</span><b id="mLs">—</b></div>
+      </div>
+      <div class="card">
+        <div class="t"><span>Позиція моделі <button class="help" data-help="position" aria-label="Що це?">?</button></span><b id="posRes" style="font-size:13px;font-weight:500">—</b></div>
+        <div class="small" id="posLine">—</div>
+        <div class="tiles">
+          <div class="tile" style="border-color:var(--alert-bg)"><div class="k">Стоп</div><div class="v warm" id="tStop">—</div></div>
+          <div class="tile"><div class="k">Trailing</div><div class="v" id="tTrail">—</div></div>
+          <div class="tile" style="border-color:var(--ok-bg)"><div class="k">Вихід</div><div class="v" id="tExit">—</div></div>
+        </div>
+        <div class="small" id="posRule">—</div>
+      </div>
+    </div>
+
+    <!-- ліва частина «Журналу» -->
+    <div id="leftJournal" class="group" style="gap: 12px;" hidden>
+      <div class="group">
+        <div class="lbl"><span>Період</span><button class="help" data-help="period" aria-label="Що це?">?</button></div>
+        <div class="seg" id="periodSeg" role="group" aria-label="Період">
+          <button data-days="7">7 д</button><button data-days="30" aria-pressed="true">30 д</button><button data-days="all">Усе</button>
         </div>
       </div>
-      <div class="live" id="fresh"><span class="dot"></span><span>…</span></div>
+      <div class="group">
+        <div class="lbl"><span>Які оцінки рахувати</span><button class="help" data-help="kinds" aria-label="Що це?">?</button></div>
+        <div class="seg col" id="kindSeg" role="group" aria-label="Які оцінки рахувати">
+          <button data-kind="live" aria-pressed="true">Лише live</button><button data-kind="hist">+ історія</button><button data-kind="all">+ in-sample</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="t"><span>Автоправило «Памп»</span><button class="help" data-help="rule" aria-label="Що це?">?</button></div>
+        <label class="field">Горизонт, год <input id="rHorizon" type="number" min="1" max="168" step="1" value="24"></label>
+        <label class="field">Ціна, не менше % <input id="rPrice" type="number" min="0" max="500" step="1" value="15"></label>
+        <label class="field">OI, не менше % <input id="rOi" type="number" min="0" max="500" step="1" value="20"></label>
+      </div>
+      <div class="card">
+        <div class="t"><span>Перевірено розміткою</span><button class="help" data-help="labels" aria-label="Що це?">?</button></div>
+        <div><span style="font-size:20px;font-weight:500" id="lblN">—</span> <span class="small" id="lblOf"></span></div>
+        <div class="bar"><i id="lblBar" style="width:0;background:var(--link)"></i></div>
+        <div class="small" id="lblRest"></div>
+        <a href="http://127.0.0.1:8765/" target="_blank" rel="noopener" style="font-size:12px">Розмітити в label.py →</a>
+      </div>
+    </div>
+
+    <div class="card" id="sysCard" style="margin-top:auto">
+      <div class="t"><span>Стан системи</span><button class="help" data-help="system" aria-label="Що це?">?</button></div>
+      <div id="sysRows" class="group" style="gap:6px"></div>
+    </div>
+  </aside>
+
+  <!-- ================= ПРОГНОЗ: ЦЕНТР ================= -->
+  <main class="center" id="viewForecast">
+    <div class="head">
+      <div class="l">
+        <span class="tk-name" id="tkName">—</span><span class="small">USDT Perp · 1h</span>
+        <span class="tk-price" id="tkPrice">—</span><span id="tkChg">—</span>
+        <span class="badge" id="tkInSample" hidden>in-sample</span><button class="help" id="tkInSampleHelp" data-help="insample" aria-label="Що це?" hidden>?</button>
+      </div>
+      <div class="r">
+        <div class="seg sm" id="daySeg" role="group" aria-label="Період графіка">
+          <button data-days="1">1д</button><button data-days="3" aria-pressed="true">3д</button><button data-days="7">7д</button><button data-days="30">30д</button>
+        </div>
+        <button class="help" data-help="oiunit" aria-label="Що це?">?</button>
+        <div class="seg sm" id="oiSeg" role="group" aria-label="Одиниці OI">
+          <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
+        </div>
+      </div>
     </div>
     <div id="fError" class="error" hidden></div>
-    <div id="fBanner" class="banner" hidden></div>
-
-    <div class="grid3">
-      <div class="card"><div class="k">Поточна ймовірність пампу</div><div class="v num" id="cProb">—</div><div class="note" id="cProbNote"></div></div>
-      <div class="card"><div class="k">Дельта OI, 4 год</div><div class="v num" id="cOi">—</div><div class="note">сума по біржах, без стрибків від лістингів</div></div>
-      <div class="card"><div class="k">Volume z-score</div><div class="v num" id="cVol">—</div><div class="note">відносно попередніх 7 днів</div></div>
-    </div>
-
-    <div class="grid3">
-      <div class="card stop">
-        <div class="k">Стоп <span>· 75-й перц. MAE</span></div>
-        <div class="row"><span class="vs warm num" id="rStop">—</span><span class="sub num" id="rStopSub"></span></div>
-        <div class="note" id="rStopNote"></div>
-      </div>
-      <div class="card exit">
-        <div class="k">Сигнал виходу <span id="rExitK"></span></div>
-        <div class="row"><span class="vs" id="rExit">—</span></div>
-        <div class="note" id="rExitNote"></div>
-      </div>
-      <div class="card trail">
-        <div class="k">Trailing stop <span>· страховка</span></div>
-        <div class="row"><span class="vs num" id="rTrail">—</span><span class="sub" id="rTrailSub"></span></div>
-        <div class="note" id="rTrailNote"></div>
-      </div>
-    </div>
-
+    <div class="ohlc" id="ohlc"></div>
     <section class="chart-card" aria-label="Графік тікера">
-      <div class="chart-head">
-        <span class="t" id="chartTitle">—</span>
-        <div class="legend">
-          <span><i class="sw" style="background:var(--hot);opacity:.4"></i>Зона сигналу</span>
-          <span><b class="warm">▲</b>Вхід</span>
-          <span><b class="dim">▼</b>Вихід</span>
-          <span><i class="sw dash" style="border-color:var(--warm)"></i>Стоп</span>
-          <span><i class="sw dash" style="border-color:var(--fg2)"></i>Trailing</span>
-        </div>
+      <div class="chart-help"><button class="help" data-help="chart" aria-label="Що це?">?</button></div>
+      <div id="toast" class="toast" role="status" hidden>
+        <div class="ic"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg></div>
+        <div><div class="tt" id="toastT"></div><div class="ts" id="toastS"></div><a href="#" id="toastA" style="font-size:11px">Відкрити</a></div>
+        <button class="x" id="toastX" aria-label="Закрити">×</button>
       </div>
-      <div class="ohlc num" id="ohlc"></div>
       <div id="chart" role="img" aria-label="Свічковий графік ціни з зонами сигналу, OI, обсяг і ймовірність пампу"></div>
-      <p class="hint">Колесо миші — масштаб, перетягування — зсув. Межі між панелями можна тягнути.</p>
-      <div class="pos-line num" id="posLine"></div>
     </section>
-    <p class="explain">Ймовірність — оцінка моделі, що на тікері зараз триває памп. Стоп, trailing і вихід рахуються від першої години з ймовірністю вище порогу. Не торгова рекомендація.</p>
+    <p class="hint">Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. Ймовірність — оцінка моделі, не торгова рекомендація.</p>
   </main>
 
-  <main class="main" id="viewScanner" hidden>
-    <div class="topbar">
-      <div>
-        <div class="h1">Скринер</div>
-        <div class="h1sub" id="sSub">—</div>
+  <!-- ================= ПРОГНОЗ: ПРАВА ПАНЕЛЬ ================= -->
+  <aside class="right" id="rightPanel" aria-label="Тікери">
+    <div class="rtop">
+      <div class="search">
+        <input id="search" placeholder="Пошук тікера" aria-label="Пошук тікера" autocomplete="off">
+        <button class="btn-primary" id="refreshBtn">Прогнозувати</button>
+        <button class="help" data-help="search" aria-label="Що це?">?</button>
       </div>
-      <div class="live" id="sLive"><span class="dot"></span><span>…</span></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div class="seg" id="tabSeg" role="group" aria-label="Фільтр" style="flex:1">
+          <button data-tab="all" aria-pressed="true">Усі</button><button data-tab="alert">Alert</button><button data-tab="cand">Кандидати</button><button data-tab="fav" aria-label="Обрані">★</button>
+        </div>
+        <button class="help" data-help="filters" aria-label="Що це?">?</button>
+      </div>
+      <div class="status"><span style="display:flex;align-items:center;gap:6px"><span class="dot" id="freshDot"></span><span id="freshTxt">—</span></span><span id="countdown">—</span></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="notify" id="notifyBtn" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>
+          <span id="notifyTxt">Звук і сповіщення про новий Alert: вимкнено</span>
+        </button>
+        <button class="help" data-help="notify" aria-label="Що це?">?</button>
+      </div>
     </div>
-    <div id="sError" class="error" hidden></div>
-    <div class="split">
-      <div class="table" role="table" aria-label="Тікери скринера">
-        <div class="tr head" role="row"><span>Тікер</span><span>Ціна, 48 год</span><span>Ймовірн.</span><span>Статус</span></div>
-        <div id="sRows"></div>
+    <div class="cols" role="row">
+      <span></span><span style="display:flex;align-items:center;gap:6px">Тікер <button class="help" data-help="list" aria-label="Що це?">?</button></span><span>P, 24 год</span>
+      <button data-sort="p" aria-pressed="true">P ↓</button><button data-sort="oi">Δ OI 24г</button><button data-sort="chg">24 год</button>
+    </div>
+    <div class="tlist" id="tlist" role="listbox" aria-label="Тікери"></div>
+    <div class="keys"><span><b>↑ ↓</b> наступний тікер</span><span><b>Enter</b> прогнозувати</span><span><b>F</b> в обрані</span></div>
+    <div class="recent">
+      <div class="t">Останні сигнали <button class="help" data-help="recent" aria-label="Що це?">?</button></div>
+      <div id="recent"></div>
+    </div>
+  </aside>
+
+  <!-- ================= ЖУРНАЛ ================= -->
+  <main class="jmain" id="viewJournal" hidden>
+    <div class="jtitle">
+      <div><div class="h">Журнал і статистика</div><div class="small" style="color:var(--fg2)">Forward-тест: що модель сказала в реальному часі і що сталося потім.</div></div>
+      <span class="small" id="jSince">—</span>
+    </div>
+    <div id="jError" class="error" hidden></div>
+    <section class="panel" aria-label="Порівняння моделей">
+      <div class="mgrid h">
+        <span style="display:flex;align-items:center;gap:6px">Модель <button class="help" data-help="compare" aria-label="Що це?">?</button></span>
+        <span>Сигналів</span><span>З них пампи</span><span>Пампів спіймано</span><span>Сер. затримка</span><span>Сер. угода</span><span>Хибних / 30 д</span>
       </div>
-      <section class="log" aria-labelledby="logH">
-        <h2 id="logH">Лог сигналів</h2>
-        <div id="sLog"></div>
+      <div id="mRows"></div>
+      <div class="small" style="padding:8px 18px" id="mValid"></div>
+    </section>
+    <div class="jsplit">
+      <section class="panel" aria-label="Журнал сигналів">
+        <div class="phead">
+          <span class="t">Журнал сигналів <button class="help" data-help="journal" aria-label="Що це?">?</button></span>
+          <div class="seg sm" id="outSeg" role="group" aria-label="Фільтр результату">
+            <button data-out="all" aria-pressed="true">Усі</button><button data-out="pump">Памп</button><button data-out="fp">Хибні</button><button data-out="auto">Авто, перевірити</button><button data-out="wait">Очікують</button>
+          </div>
+        </div>
+        <div class="jcols h">
+          <span>Вхід, UTC</span><span>Тікер</span><span>Тип</span><span class="r">P макс</span><span>Джерело</span>
+          <span style="display:flex;align-items:center;gap:6px">Результат <button class="help" data-help="outcome" aria-label="Що це?">?</button></span><span class="r">Угода</span><span>Вихід</span>
+        </div>
+        <div id="jRows"></div>
       </section>
+      <div class="group" style="gap:16px">
+        <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+          <div class="phead" style="padding:0;border:0"><span class="t">Угоди моделі, % <button class="help" data-help="trades" aria-label="Що це?">?</button></span><span class="small" id="tRule">—</span></div>
+          <svg id="tBars" viewBox="0 0 300 150" width="100%" height="150" role="img" aria-label="Результат кожної угоди у відсотках"></svg>
+          <div class="stat"><span>Прибуткових</span><b id="tWin">—</b></div>
+          <div class="stat"><span>Сер. виграш / програш</span><b id="tAvg">—</b></div>
+          <div class="stat"><span>Виходів по стопу</span><b id="tStops">—</b></div>
+        </section>
+        <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:8px">
+          <span class="phead" style="padding:0;border:0"><span class="t">За тікерами <button class="help" data-help="tickers" aria-label="Що це?">?</button></span></span>
+          <div id="byTk" class="group" style="gap:8px"></div>
+          <span class="small">частка сигналів, що виявились пампом</span>
+        </section>
+      </div>
     </div>
-    <p class="explain">Статус: <b class="warm">Alert</b> — ймовірність вище порогу сигналу моделі; <b class="amber">Кандидат</b> — вище половини порогу; інакше «Спокійно».
-      Позначка «навч.» — тікер з навчальної вибірки: його години до моменту навчання модель уже бачила. У лозі <b>live</b> — чесна оцінка в реальному часі, <b>історія</b> — дозаповнення при першому запуску.</p>
   </main>
 </div>
+<div class="pop" id="pop" role="tooltip" hidden></div>
 
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
   const H = 3600;
-  const st = { view: "forecast", model: "lightgbm", ticker: null, days: 3, meta: null, data: null, hover: null };
-  try { st.model = localStorage.getItem("pd-model") || st.model; st.ticker = localStorage.getItem("pd-ticker"); } catch (e) {}
+  const LS = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+               set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+  const st = {
+    view: "forecast", model: LS.get("pd-model", "lightgbm"), ticker: LS.get("pd-ticker", null), days: 3, oiUsd: LS.get("pd-oiusd", false),
+    meta: null, data: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])),
+    notify: LS.get("pd-notify", false), seen: new Set(LS.get("pd-seen", [])),
+    jDays: "30", jKind: "live", jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
+  };
 
   // ---------- форматування ----------
   const pad = (n) => String(n).padStart(2, "0");
   const fmtTs = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:00`; };
-  const fmtHM = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
   const fmtPx = (v) => v == null ? "—" : Math.abs(v) < 1e-9 ? "0" : v >= 1000 ? v.toFixed(1) : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toPrecision(4);
   const fmtPct = (v, d = 1) => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
   const fmtNum = (v) => v == null ? "—" : Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(2) + "B" : Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M"
@@ -248,6 +370,8 @@ button.tr:hover { background: #22221f; }
   const ago = (t) => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? "щойно" : m < 60 ? `${m} хв тому` : `${Math.round(m / 60)} год тому`; };
   const STATUS = { alert: "Alert", candidate: "Кандидат", calm: "Спокійно", none: "—" };
   const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const pctCls = (v) => v == null ? "" : v >= 0 ? "ok" : "red";
 
   const api = async (path, opts) => {
     const res = await fetch(path, opts);
@@ -255,123 +379,168 @@ button.tr:hover { background: #22221f; }
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     return data;
   };
-  const show = (el, msg) => { el.textContent = msg || ""; el.hidden = !msg; };
+  const show = (e, msg) => { e.textContent = msg || ""; e.hidden = !msg; };
   const modelInfo = () => (st.meta?.models || []).find((m) => m.name === st.model);
+
+  // ---------- підказки «?» ----------
+  const HELP = {
+    model: "Яка модель рахує ймовірність. LightGBM — дерева рішень, ловить поєднання ознак. Логістична регресія — простіша і прозоріша. Перемикач змінює всі цифри на обох екранах.",
+    prob: "Оцінка моделі, що на тікері зараз триває памп: від 0 до 1. Біла риска — поріг сигналу, вище неї — Alert. Число поруч зі статусом — скільки годин поспіль сигнал тримається.",
+    metrics: "Ключові ознаки, на які дивиться модель: зміна open interest за 4 год (у USD, як бачить модель, без стрибків від лістингів), обсяг відносно звичайного за 7 днів (у σ), частка акаунтів у лонг.",
+    position: "Симуляція угоди за сигналами моделі. Вхід — перша година з P вище порогу. Стоп — під входом на k ATR (75-й перцентиль просідання на розмічених пампах), trailing — 1.5 ATR під максимумом, вихід — P нижче порогу 2 години поспіль. Не торгова рекомендація.",
+    insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
+    oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
+    chart: "Свічки ціни, OI, обсяг і ймовірність за годинами (UTC). Червона зона — години з P вище порогу, ▲ — вхід, ▼ — вихід з результатом, пунктири — стоп і trailing відкритої угоди.",
+    search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Прогнозувати» підтягує свіжі дані з Coinalyze, якщо останньої години ще немає в базі, і переоцінює тікер обома моделями.",
+    filters: "Фільтр списку: усі тікери, лише Alert (P вище порогу), кандидати (вище половини порогу) або обрані ★ (зірочка в рядку або клавіша F).",
+    notify: "Коли на новій live-годині починається Alert — звук і системне сповіщення браузера, навіть якщо вкладка у фоні. Старі й in-sample оцінки мовчать. Дашборд має бути відкритим.",
+    list: "Тікери скринера (watchlist.txt). Міні-графік — ймовірність за 24 год з пунктиром порогу. Δ OI 24г — зміна open interest за добу. Клік по заголовку — сортування, ↑/↓ — наступний тікер.",
+    recent: "Останні епізоди сигналу моделі (початок серії годин з P вище порогу). Повний журнал з результатами — на вкладці «Журнал».",
+    period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду).",
+    kinds: "Live — оцінки в реальному часі на годинах, яких модель не бачила: єдина чесна перевірка. Історія — дозаповнення при першому запуску. In-sample — години з навчання, лише для порівняння.",
+    rule: "Автоматична перевірка сигналу, коли розмітки ще немає: якщо за вказаний час після входу ціна і OI виросли не менше порогів — «Памп · авто», інакше «Хибний · авто». Результат попередній: розмітка його перекриває.",
+    labels: "Скільки угод у вибраному обсязі вже перевірено твоєю розміткою в label.py. Автоматичні результати варто переглянути: вони грубіші. Фільтр «Авто, перевірити» показує саме їх.",
+    system: "Чи все працює: коли скринер востаннє оновив дані, скільки викликів Coinalyze і відповідей 429, яким тікерам бракує 7 днів історії, яка версія моделі активна.",
+    compare: "Як моделі показують себе на вибраних оцінках. «З них пампи» — частка сигналів, що виявились пампом (precision). «Пампів спіймано» — з розмічених пампів. Нижче — валідація на навчанні для порівняння.",
+    journal: "Кожна угода моделі: від першої години з P вище порогу до виходу за правилами стопу й виходу — з результатом і відсотком угоди.",
+    outcome: "«розмітка» — за твоєю розміткою в label.py, остаточно. «авто» — за автоправилом, попередньо. «Очікує» — горизонт автоправила ще не минув і розмітки немає.",
+    trades: "Результат кожної закритої угоди у % (хронологічно) і підсумки: частка прибуткових, середній виграш і програш, скільки виходів по стопу.",
+    tickers: "На яких монетах сигнали частіше виявляються правдою: частка вирішених угод (памп або хибний), що виявились пампом.",
+  };
+  const pop = $("pop");
+  let popBtn = null;
+  const closePop = () => { pop.hidden = true; if (popBtn) popBtn.setAttribute("aria-expanded", "false"); popBtn = null; };
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest(".help");
+    if (!b) { if (!pop.contains(e.target)) closePop(); return; }
+    e.preventDefault(); e.stopPropagation();
+    if (popBtn === b) { closePop(); return; }
+    closePop();
+    pop.textContent = HELP[b.dataset.help] || "";
+    pop.hidden = false; popBtn = b; b.setAttribute("aria-expanded", "true");
+    const r = b.getBoundingClientRect(), w = pop.offsetWidth, h = pop.offsetHeight;
+    let left = r.left; if (left + w > innerWidth - 8) left = Math.max(8, r.right - w);
+    let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    pop.style.left = left + "px"; pop.style.top = top + "px";
+  }, true);
+  addEventListener("keydown", (e) => { if (e.key === "Escape") closePop(); });
+  addEventListener("scroll", closePop, true);
 
   // ---------- навігація ----------
   const route = () => {
-    // #scanner або #forecast[/ТІКЕР]
     const [view, tk] = location.hash.slice(1).split("/");
-    st.view = view === "scanner" ? "scanner" : "forecast";
-    if (tk && st.meta?.tickers.includes(tk.toUpperCase())) selectTicker(tk.toUpperCase());
-    $("viewForecast").hidden = st.view !== "forecast";
-    $("viewScanner").hidden = st.view !== "scanner";
-    $("navForecast").removeAttribute("aria-current"); $("navScanner").removeAttribute("aria-current");
-    $(st.view === "forecast" ? "navForecast" : "navScanner").setAttribute("aria-current", "page");
-    renderFoot();
-    if (st.view === "scanner") loadScanner(); else loadTicker();
+    st.view = view === "journal" ? "journal" : "forecast";
+    if (tk && st.meta?.tickers.includes(tk.toUpperCase())) selectTicker(tk.toUpperCase(), false);
+    const j = st.view === "journal";
+    $("app").classList.toggle("journal", j);
+    $("viewForecast").hidden = j; $("rightPanel").hidden = j; $("leftForecast").hidden = j;
+    $("viewJournal").hidden = !j; $("leftJournal").hidden = !j;
+    $("navForecast").toggleAttribute("aria-current", !j); $("navJournal").toggleAttribute("aria-current", j);
+    if (!j) { $("navForecast").setAttribute("aria-current", "page"); loadTicker(); } else { $("navJournal").setAttribute("aria-current", "page"); loadJournal(); }
+    closePop();
+  };
+  const selectTicker = (t, go = true) => {
+    st.ticker = t; LS.set("pd-ticker", t);
+    if (go) { if (location.hash !== `#forecast/${t}`) location.hash = `#forecast/${t}`; else loadTicker(); }
+    renderList();
   };
 
-  const renderFoot = () => {
-    const m = st.meta; if (!m) return;
-    const foot = $("foot"); foot.replaceChildren();
-    const line = (t) => { const d = document.createElement("div"); d.textContent = t; foot.appendChild(d); };
-    if (st.view === "scanner") {
-      line("Скан щогодини о HH:05 UTC");
-      const left = Math.max(0, m.next_scan - Date.now() / 1000);
-      line(`Наступний: через ${Math.floor(left / 60)}:${pad(Math.floor(left % 60))}`);
+  // ---------- модель ----------
+  const renderModelSeg = () => {
+    const seg = $("modelSeg"); seg.replaceChildren();
+    (st.meta?.models || []).forEach((m) => {
+      const b = el("button", "", m.name === "logreg" ? "Регресія" : m.title);
+      b.setAttribute("aria-pressed", String(m.name === st.model));
+      b.addEventListener("click", () => { st.model = m.name; LS.set("pd-model", m.name); renderModelSeg(); refreshAll(); });
+      seg.appendChild(b);
+    });
+  };
+
+  // ---------- стан системи ----------
+  const renderSystem = () => {
+    const m = st.meta, box = $("sysRows"); box.replaceChildren(); if (!m) return;
+    const row = (cls, k, v) => { const r = el("div", "sysrow"); const a = el("span"); a.append(el("span", "dot " + cls), k); r.append(a, el("span", "", v)); box.appendChild(r); };
+    const s = m.screener, t = m.last_scored_at;
+    const age = t ? Date.now() / 1000 - t : Infinity;
+    row(age > 2 * H ? "bad" : age > 75 * 60 ? "warn" : "", "Скринер", t ? `оцінка ${ago(t)}` : "не запускався");
+    if (s) {
+      if (s.ok === false) row("bad", "Остання помилка", s.error || "—");
+      else row(s.api_429 ? "warn" : "", "Coinalyze", s.fetched ? `${s.api_calls} викл. · 429: ${s.api_429}` : "без збору даних");
+      const short = [...(s.missing || []), ...(s.stale || [])];
+      row(short.length ? "warn" : "", "Мало історії / відстають", short.length ? short.join(", ") : "немає");
+    }
+    const mi = modelInfo();
+    if (mi) row("", "Модель", `${mi.trained_at.slice(5, 16)} · ${mi.pump_intervals} пампів`);
+  };
+  const renderStatus = () => {
+    const t = st.meta?.last_scored_at, dot = $("freshDot");
+    const age = t ? Date.now() / 1000 - t : Infinity;
+    dot.className = "dot" + (age > 2 * H ? " bad" : age > 75 * 60 ? " warn" : "");
+    $("freshTxt").textContent = t ? `Оновлено ${ago(t)}` : "Скринер ще не запускався";
+    const left = st.meta ? Math.max(0, st.meta.next_scan - Date.now() / 1000) : 0;
+    $("countdown").textContent = st.meta ? `скан через ${Math.floor(left / 60)}:${pad(Math.floor(left % 60))}` : "—";
+  };
+
+  // ---------- Прогноз: ліва панель ----------
+  const renderLeft = () => {
+    const d = st.data; if (!d) return;
+    const c = d.cards, p = d.position, thr = d.threshold, prob = c.probability;
+    const cls = c.status === "alert" ? "hot" : c.status === "candidate" ? "amber" : "";
+    $("probVal").textContent = fmtP(prob); $("probVal").className = "big " + cls;
+    const pill = $("probPill"); pill.className = "pill " + c.status;
+    pill.textContent = STATUS[c.status] + (c.status === "alert" && d.streak > 0 ? ` · ${d.streak} год` : "");
+    $("probCard").classList.toggle("alert", c.status === "alert");
+    const bar = $("probBar"); bar.style.width = `${Math.round((prob || 0) * 100)}%`;
+    bar.style.background = c.status === "alert" ? cssVar("--hot") : c.status === "candidate" ? cssVar("--amber") : cssVar("--muted");
+    $("probThr").style.left = `calc(${(thr * 100).toFixed(1)}% - 1px)`; $("probThrTxt").textContent = `поріг ${fmtP(thr)}`;
+    $("mOi").textContent = fmtPct(c.oi_chg_4h); $("mOi").className = pctCls(c.oi_chg_4h);
+    $("mVol").textContent = c.volume_z_7d == null ? "—" : c.volume_z_7d.toFixed(1) + "σ";
+    $("mLs").textContent = d.ls_long_pct == null ? "—" : Math.round(d.ls_long_pct) + "%";
+    const kTxt = d.k == null ? "—" : d.k.toFixed(1);
+    $("posRule").textContent = `вихід: P нижче ${fmtP(thr)} ${d.exit_bars} години поспіль; стоп ${kTxt} ATR`;
+    if (p.open) {
+      $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
+      $("posLine").textContent = `Вхід ${fmtTs(p.entry_ts)} · ${fmtPx(p.entry)} · ${p.hours} год`;
+      $("tStop").textContent = fmtPx(p.stop); $("tTrail").textContent = fmtPx(p.trailing);
+      $("tExit").textContent = p.below_bars > 0 ? `${p.below_bars} бар ↓` : "тримати"; $("tExit").className = "v " + (p.below_bars > 0 ? "amber" : "ok");
+    } else if (p.exit_ts) {
+      $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
+      $("posLine").textContent = `Остання: ${fmtTs(p.entry_ts)} → ${fmtTs(p.exit_ts)} (${p.reason === "stop" ? "стоп" : "модель"})`;
+      $("tStop").textContent = "—"; $("tTrail").textContent = "—"; $("tExit").textContent = "закрита"; $("tExit").className = "v dim";
     } else {
-      const mi = modelInfo();
-      line(`Модель: ${mi ? mi.title : st.model}`);
-      if (mi) line(`Навчена ${mi.trained_at.slice(5, 16)} · ${mi.pump_intervals} пампів`);
-      line(`Дані: Coinalyze · ${m.exchanges} біржі`);
+      $("posRes").textContent = "немає"; $("posRes").className = "dim";
+      $("posLine").textContent = `вхід, коли P ≥ ${fmtP(thr)}`;
+      $("tStop").textContent = `−${kTxt} ATR`; $("tTrail").textContent = `${d.trail_natr} ATR`; $("tExit").textContent = "—"; $("tExit").className = "v dim";
     }
   };
 
-  const renderFresh = (el) => {
-    const t = st.meta?.last_scored_at;
-    const dot = el.querySelector(".dot"), text = el.querySelector("span:last-child");
-    if (!t) { dot.className = "dot bad"; text.textContent = "Скринер ще не запускався"; return; }
-    const age = Date.now() / 1000 - t;
-    dot.className = "dot" + (age > 2 * H ? " bad" : age > 75 * 60 ? " warn" : "");
-    text.textContent = el.id === "sLive"
-      ? (age > 75 * 60 ? `Останній скан ${ago(t)}` : "Скринер активний")
-      : `Оновлено ${ago(t)}`;
+  const renderHead = () => {
+    const d = st.data; if (!d) return;
+    $("tkName").textContent = d.ticker; $("tkPrice").textContent = fmtPx(d.price);
+    $("tkChg").textContent = fmtPct(d.chg_24h); $("tkChg").className = pctCls(d.chg_24h);
+    $("tkInSample").hidden = !d.in_sample; $("tkInSampleHelp").hidden = !d.in_sample;
   };
 
-  // ---------- Прогноз ----------
   const loadTicker = async () => {
     if (!st.ticker) return;
-    $("tickerSel").value = st.ticker;
     try {
       st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&days=30`);
       show($("fError"), "");
     } catch (e) { st.data = null; show($("fError"), e.message); }
-    renderForecast(); renderChart();
+    renderHead(); renderLeft(); renderChart();
   };
 
-  const renderForecast = () => {
-    const d = st.data;
-    renderFresh($("fresh"));
-    if (!d) return;
-    const c = d.cards, p = d.position, k = d.k, thr = d.threshold;
-    const prob = $("cProb");
-    prob.textContent = fmtP(c.probability);
-    prob.className = "v num " + (c.status === "alert" ? "hot" : c.status === "candidate" ? "amber" : "");
-    $("cProbNote").textContent = `поріг сигналу ${fmtP(thr)} · ${STATUS[c.status]}`;
-    $("cOi").textContent = fmtPct(c.oi_chg_4h);
-    $("cVol").textContent = c.volume_z_7d == null ? "—" : c.volume_z_7d.toFixed(1) + "σ";
-    show($("fBanner"), d.in_sample ? "In-sample: остання година цього тікера була в навчанні моделі, тож оцінка показує, що модель запам'ятала, а не передбачила." : "");
-
-    const kTxt = k == null ? "—" : `−${k.toFixed(1)} NATR`;
-    if (p.open) {
-      $("rStop").textContent = fmtPx(p.stop);
-      $("rStopSub").textContent = kTxt;
-      $("rStopNote").textContent = `від входу ${fmtPx(p.entry)} · ATR на вході ${fmtPx(p.atr_entry)}`;
-      $("rTrail").textContent = fmtPx(p.trailing);
-      $("rTrailSub").textContent = `${d.trail_natr} NATR від максимуму`;
-      $("rTrailNote").textContent = `максимум з моменту входу ${fmtPx(p.high)}`;
-      const exit = $("rExit");
-      if (p.below_bars > 0) { exit.textContent = `Увага: ${p.below_bars} бар нижче порогу`; exit.className = "vs amber"; }
-      else { exit.textContent = "Памп триває"; exit.className = "vs ok"; }
-      $("rExitNote").textContent = `${fmtP(c.probability)} → вихід нижче ${fmtP(thr)}, ${d.exit_bars} бари поспіль`;
-      $("posLine").textContent = `Вхід ${fmtTs(p.entry_ts)} UTC за ${fmtPx(p.entry)} · ${p.hours} год у позиції · ${fmtPct(p.result_pct)}`;
-    } else {
-      $("rStop").textContent = kTxt;
-      $("rStopSub").textContent = "від ціни входу";
-      $("rStopNote").textContent = k == null ? "" : `розраховано на розмічених пампах`;
-      $("rTrail").textContent = `${d.trail_natr} NATR`;
-      $("rTrailSub").textContent = "від максимуму";
-      $("rTrailNote").textContent = "активується з першим сигналом";
-      const exit = $("rExit");
-      if (p.exit_ts) {
-        exit.textContent = `Вихід ${fmtTs(p.exit_ts)}`; exit.className = "vs dim";
-        $("rExitNote").textContent = `${p.reason === "stop" ? "по стопу" : "ймовірність нижче порогу"} · результат ${fmtPct(p.result_pct)}`;
-        $("posLine").textContent = `Остання угода: вхід ${fmtTs(p.entry_ts)} за ${fmtPx(p.entry)}, вихід ${fmtTs(p.exit_ts)} за ${fmtPx(p.exit)} · ${fmtPct(p.result_pct)}`;
-      } else {
-        exit.textContent = "Немає сигналу"; exit.className = "vs dim";
-        $("rExitNote").textContent = `вхід, коли ймовірність ≥ ${fmtP(thr)}`;
-        $("posLine").textContent = "";
-      }
-    }
-    $("rExitK").textContent = `· модель, поріг ${fmtP(thr)}`;
-    $("chartTitle").textContent = `${d.ticker} · 1h`;
-  };
-
-  // ---------- графік: TradingView Lightweight Charts (app/vendor, віддає наш сервер) ----------
-  // Панелі: свічки + зони сигналу + вхід/вихід + стоп/trailing | OI | обсяг | ймовірність з порогом.
+  // ---------- графік: TradingView Lightweight Charts (app/vendor) ----------
   const LWC = window.LightweightCharts;
   const chartEl = $("chart"), ohlcEl = $("ohlc");
   let chart = null, S = {}, priceLines = [], markersApi = null, idx = new Map(), rangeKey = null;
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
-
   const makeChart = () => {
     const C = { card: cssVar("--card"), line: cssVar("--line"), line2: cssVar("--line2"), fg2: cssVar("--fg2"), fg3: cssVar("--fg3"),
-      up: cssVar("--ok"), down: cssVar("--hot"), oi: "#1baf7a", muted: cssVar("--muted") };
+      up: cssVar("--ok"), down: cssVar("--hot"), oi: cssVar("--oi"), muted: cssVar("--muted") };
     chart = LWC.createChart(chartEl, {
       autoSize: true,
-      layout: { background: { type: "solid", color: C.card }, textColor: C.fg2, fontSize: 11,
-        fontFamily: "-apple-system, 'Segoe UI', system-ui, sans-serif",
+      layout: { background: { type: "solid", color: C.card }, textColor: C.fg2, fontSize: 11, fontFamily: "-apple-system, 'Segoe UI', system-ui, sans-serif",
         panes: { separatorColor: C.line2, separatorHoverColor: C.fg3, enableResize: true } },
       grid: { vertLines: { color: C.line }, horzLines: { color: C.line } },
       rightPriceScale: { borderColor: C.line2 },
@@ -380,58 +549,41 @@ button.tr:hover { background: #22221f; }
       localization: { timeFormatter: (t) => fmtTs(t) + " UTC" },
     });
     const noLast = { priceLineVisible: false, lastValueVisible: false };
-    // зони сигналу — під свічками, на власній прихованій шкалі 0..1
     S.zones = chart.addSeries(LWC.HistogramSeries, { ...noLast, priceScaleId: "zones", color: rgba(C.down, .13) }, 0);
     S.zones.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
-    S.candles = chart.addSeries(LWC.CandlestickSeries, {
-      upColor: C.up, downColor: C.down, wickUpColor: C.up, wickDownColor: C.down, borderVisible: false,
-      priceFormat: { type: "custom", formatter: fmtPx, minMove: 1e-8 },
-    }, 0);
+    S.candles = chart.addSeries(LWC.CandlestickSeries, { upColor: C.up, downColor: C.down, wickUpColor: C.up, wickDownColor: C.down, borderVisible: false,
+      priceFormat: { type: "custom", formatter: fmtPx, minMove: 1e-8 } }, 0);
     markersApi = LWC.createSeriesMarkers(S.candles, []);
-    // OI свічками в монетах: зелена — позиції відкривали, червона — закривали; без стрибків від руху ціни
-    S.oi = chart.addSeries(LWC.CandlestickSeries, { title: "OI, монети", upColor: C.oi, downColor: C.down, wickUpColor: C.oi, wickDownColor: C.down,
-      borderVisible: false, priceFormat: { type: "custom", formatter: fmtNum, minMove: 1e-6 } }, 1);
-    S.vol = chart.addSeries(LWC.HistogramSeries, { ...noLast, title: "Обсяг", color: C.muted,
-      priceFormat: { type: "custom", formatter: fmtUsd, minMove: 1 } }, 2);
-    S.prob = chart.addSeries(LWC.HistogramSeries, { title: "Ймовірн.", priceLineVisible: false,
-      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+    S.oi = chart.addSeries(LWC.CandlestickSeries, { title: "OI", upColor: C.oi, downColor: C.down, wickUpColor: C.oi, wickDownColor: C.down, borderVisible: false,
+      priceFormat: { type: "custom", formatter: fmtNum, minMove: 1e-6 } }, 1);
+    S.vol = chart.addSeries(LWC.HistogramSeries, { ...noLast, title: "Обсяг", color: C.muted, priceFormat: { type: "custom", formatter: fmtUsd, minMove: 1 } }, 2);
+    S.prob = chart.addSeries(LWC.HistogramSeries, { title: "P", priceLineVisible: false, priceFormat: { type: "price", precision: 2, minMove: 0.01 },
       autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) }, 3);
     const panes = chart.panes();
-    [5, 1.8, 1.2, 1.6].forEach((f, i) => panes[i] && panes[i].setStretchFactor(f));
+    [5, 1.8, 1.1, 1.5].forEach((f, i) => panes[i] && panes[i].setStretchFactor(f));
     chart.subscribeCrosshairMove((p) => renderOhlc(p && p.time != null ? idx.get(p.time) : null));
   };
-
-  // рядок над графіком: значення під курсором (або останній бар)
   const renderOhlc = (i) => {
-    const d = st.data; if (!d) return;
+    const d = st.data; if (!d || !d.series.t.length) return;
     const s = d.series; if (i == null) i = s.t.length - 1;
-    const pr = (s.prob[st.model] || [])[i];
-    const chg = s.open[i] ? s.price[i] / s.open[i] - 1 : null;
+    const pr = (s.prob[st.model] || [])[i], chg = s.open[i] ? s.price[i] / s.open[i] - 1 : null;
+    const oc = s.coinO[i] ? s.coin[i] / s.coinO[i] - 1 : null;
     ohlcEl.replaceChildren();
-    const add = (k, v, cls) => {
-      const w = document.createElement("span"), a = document.createElement("i"), b = document.createElement("b");
-      a.textContent = k; b.textContent = v; if (cls) b.className = cls; w.append(a, b); ohlcEl.appendChild(w);
-    };
+    const add = (k, v, cls) => { const w = el("span", "", k ? k + " " : ""); const b = el("b", cls, v); w.appendChild(b); ohlcEl.appendChild(w); };
     add("", fmtTs(s.t[i]) + " UTC");
-    add("O", fmtPx(s.open[i])); add("H", fmtPx(s.high[i])); add("L", fmtPx(s.low[i]));
-    add("C", fmtPx(s.price[i]), chg == null ? "" : chg >= 0 ? "ok" : "hot");
-    add("OI", fmtUsd(s.oi[i])); add("монет", fmtNum(s.coin[i]));
-    const oc = s.coinO[i] ? s.coin[i] / s.coinO[i] - 1 : null; add("OI 1 год", fmtPct(oc), oc == null ? "" : oc >= 0 ? "ok" : "hot");
-    add("Обсяг", fmtUsd(s.volume[i]));
-    add("P", fmtP(pr), pr != null && pr >= d.threshold ? "hot" : "");
+    add("O", fmtPx(s.open[i])); add("H", fmtPx(s.high[i])); add("L", fmtPx(s.low[i])); add("C", fmtPx(s.price[i]), pctCls(chg));
+    add("OI", `${fmtUsd(s.oi[i])} · ${fmtNum(s.coin[i])}`); add("OI 1 год", fmtPct(oc), pctCls(oc));
+    add("Обсяг", fmtUsd(s.volume[i])); add("P", fmtP(pr), pr != null && pr >= d.threshold ? "hot" : "");
   };
-
   const setRange = () => {
     const t = st.data?.series.t; if (!chart || !t?.length) return;
     const last = t[t.length - 1];
     chart.timeScale().setVisibleRange({ from: Math.max(t[0], last - st.days * 86400), to: last });
   };
-
   const renderChart = () => {
-    const d = st.data;
-    if (!LWC) { chartEl.textContent = "Бібліотеку графіків не завантажено (app/vendor)."; return; }
+    if (!LWC) { chartEl.textContent = "Бібліотеку графіків не знайдено (app/vendor)."; return; }
     if (!chart) makeChart();
-    if (!d || !d.series.t.length) return;
+    const d = st.data; if (!d || !d.series.t.length) return;
     const s = d.series, thr = d.threshold, pr = s.prob[st.model] || [], pos = d.position;
     const hot = cssVar("--hot"), muted = cssVar("--muted");
     idx = new Map(s.t.map((t, i) => [t, i]));
@@ -440,134 +592,278 @@ button.tr:hover { background: #22221f; }
       const ok = s.open[i] != null && s.high[i] != null && s.low[i] != null && s.price[i] != null;
       candles.push(ok ? { time, open: s.open[i], high: s.high[i], low: s.low[i], close: s.price[i] } : { time });
       zones.push(pr[i] != null && pr[i] >= thr ? { time, value: 1 } : { time });
-      const co = s.coinO[i], cc = s.coin[i];
-      oi.push(co != null && cc != null ? { time, open: co, high: Math.max(s.coinH[i], co, cc), low: Math.min(s.coinL[i], co, cc), close: cc } : { time });
+      const [o, hh, l, c] = st.oiUsd ? [s.usdO[i], s.usdH[i], s.usdL[i], s.oi[i]] : [s.coinO[i], s.coinH[i], s.coinL[i], s.coin[i]];
+      oi.push(o != null && c != null ? { time, open: o, high: Math.max(hh ?? c, o, c), low: Math.min(l ?? c, o, c), close: c } : { time });
       vol.push(s.volume[i] != null ? { time, value: s.volume[i] } : { time });
       prob.push(pr[i] != null ? { time, value: pr[i], color: pr[i] >= thr ? hot : muted } : { time });
     });
     S.candles.setData(candles); S.zones.setData(zones); S.oi.setData(oi); S.vol.setData(vol); S.prob.setData(prob);
-
-    // угоди моделі: вхід ▲ під свічкою, вихід ▼ над свічкою з результатом
-    const warm = cssVar("--warm"), fg2 = cssVar("--fg2"), t0 = s.t[0];
-    const trades = [...(pos.trades || []), ...(pos.open ? [pos] : [])];
-    const marks = [];
-    trades.forEach((tr) => {
+    S.oi.applyOptions({ title: st.oiUsd ? "OI, USD" : "OI, монети", priceFormat: { type: "custom", formatter: st.oiUsd ? fmtUsd : fmtNum, minMove: 1e-6 } });
+    const warm = cssVar("--warm"), fg2 = cssVar("--fg2"), t0 = s.t[0], marks = [];
+    [...(pos.trades || []), ...(pos.open ? [pos] : [])].forEach((tr) => {
       if (tr.entry_ts >= t0) marks.push({ time: tr.entry_ts, position: "belowBar", shape: "arrowUp", color: warm, text: "Вхід" });
-      if (tr.exit_ts && tr.exit_ts >= t0) marks.push({ time: tr.exit_ts, position: "aboveBar", shape: "arrowDown", color: fg2,
-        text: `${tr.reason === "stop" ? "Стоп" : "Вихід"} ${fmtPct(tr.result_pct)}` });
+      if (tr.exit_ts && tr.exit_ts >= t0) marks.push({ time: tr.exit_ts, position: "aboveBar", shape: "arrowDown", color: fg2, text: `${tr.reason === "stop" ? "Стоп" : "Вихід"} ${fmtPct(tr.result_pct)}` });
     });
-    marks.sort((a, b) => a.time - b.time);
-    markersApi.setMarkers(marks);
-
-    // горизонтальні лінії: стоп і trailing відкритої угоди, поріг на панелі ймовірності
+    markersApi.setMarkers(marks.filter((m) => idx.has(m.time)).sort((a, b) => a.time - b.time));
     priceLines.forEach(([ser, l]) => ser.removePriceLine(l)); priceLines = [];
-    const line = (ser, price, color, title) => {
-      if (price == null) return;
-      priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]);
-    };
+    const line = (ser, price, color, title) => { if (price != null) priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]); };
     if (pos.open) { line(S.candles, pos.stop, warm, "Стоп"); line(S.candles, pos.trailing, fg2, "Trailing"); }
     line(S.prob, thr, fg2, "поріг");
-
-    // масштаб скидаємо лише при зміні тікера/моделі, щоб щохвилинне оновлення не збивало зум
     const key = `${d.ticker}|${st.model}`;
     if (key !== rangeKey) { rangeKey = key; setRange(); }
     renderOhlc(null);
   };
 
-  // ---------- Скринер ----------
-  const spark = (vals, color) => {
-    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 120 24"); svg.setAttribute("width", "120"); svg.setAttribute("height", "24"); svg.setAttribute("aria-hidden", "true");
-    const v = vals.filter((x) => x != null); if (v.length < 2) return svg;
-    const lo = Math.min(...v), hi = Math.max(...v), rng = hi - lo || 1;
-    const pts = v.map((x, i) => `${(i / (v.length - 1) * 120).toFixed(1)},${(22 - (x - lo) / rng * 20).toFixed(1)}`).join(" ");
-    const pl = document.createElementNS(ns, "polyline");
-    pl.setAttribute("points", pts); pl.setAttribute("fill", "none"); pl.setAttribute("stroke", color); pl.setAttribute("stroke-width", "2"); pl.setAttribute("stroke-linejoin", "round");
-    svg.appendChild(pl); return svg;
+  // ---------- права панель: список тікерів ----------
+  const visibleRows = () => {
+    const rows = (st.list?.rows || []).filter((r) => {
+      if (st.search && !r.ticker.includes(st.search)) return false;
+      if (st.tab === "alert") return r.status === "alert";
+      if (st.tab === "cand") return r.status === "alert" || r.status === "candidate";
+      if (st.tab === "fav") return st.fav.has(r.ticker);
+      return true;
+    });
+    const key = { p: (r) => r.probability ?? -1, oi: (r) => r.oi_24h ?? -1e9, chg: (r) => r.chg_24h ?? -1e9 }[st.sort];
+    return rows.sort((a, b) => key(b) - key(a));
   };
-  const loadScanner = async () => {
-    renderFresh($("sLive"));
-    let d;
-    try { d = await api(`/api/scanner?model=${st.model}`); show($("sError"), ""); }
-    catch (e) { show($("sError"), e.message); return; }
-    const mi = modelInfo();
-    $("sSub").textContent = `${d.rows.length} тікерів · ${mi ? mi.title : st.model}, поріг ${mi ? fmtP(mi.threshold) : "—"}`;
-    const rows = $("sRows"); rows.replaceChildren();
-    if (!d.rows.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Скринер ще не запускався. Додай тікери в watchlist.txt і запусти python screener.py."; rows.appendChild(e); }
-    d.rows.forEach((r) => {
-      const b = document.createElement("button"); b.className = "tr"; b.setAttribute("role", "row");
-      b.setAttribute("aria-label", `${r.ticker}: ймовірність ${fmtP(r.probability)}, ${STATUS[r.status]}. Відкрити прогноз`);
-      const tk = document.createElement("span"); tk.className = "tk"; tk.textContent = r.ticker;
-      if (r.in_sample) { const t = document.createElement("span"); t.className = "tag"; t.textContent = "навч."; t.title = "Тікер з навчальної вибірки"; tk.appendChild(t); }
-      const color = r.status === "alert" ? cssVar("--hot") : r.status === "candidate" ? cssVar("--warm") : cssVar("--muted");
-      const sp = document.createElement("span"); sp.appendChild(spark(r.spark, color));
-      const pv = document.createElement("span"); pv.className = "num"; pv.textContent = fmtP(r.probability);
-      pv.style.cssText = `font-size:13px;font-weight:500;color:${r.status === "alert" || r.status === "candidate" ? cssVar("--warm") : cssVar("--fg2")}`;
-      const pill = document.createElement("span"); pill.className = "pill " + r.status;
-      pill.textContent = STATUS[r.status] + (r.status === "alert" && r.streak > 1 ? ` · ${r.streak} год` : "");
-      b.append(tk, sp, pv, pill);
-      b.addEventListener("click", () => { location.hash = `#forecast/${r.ticker}`; });
-      rows.appendChild(b);
+  const sparkSvg = (vals, thr, color) => {
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 56 20"); svg.setAttribute("width", "56"); svg.setAttribute("height", "20"); svg.setAttribute("aria-hidden", "true");
+    const ln = document.createElementNS(ns, "line"); const ty = (18 - thr * 16).toFixed(1);
+    [["x1", 0], ["x2", 56], ["y1", ty], ["y2", ty], ["stroke", cssVar("--line2")], ["stroke-dasharray", "2 2"]].forEach(([k, v]) => ln.setAttribute(k, v));
+    svg.appendChild(ln);
+    const n = vals.length, pts = [];
+    vals.forEach((v, i) => { if (v != null) pts.push(`${(i / Math.max(1, n - 1) * 56).toFixed(1)},${(18 - v * 16).toFixed(1)}`); });
+    if (pts.length > 1) {
+      const pl = document.createElementNS(ns, "polyline");
+      [["points", pts.join(" ")], ["fill", "none"], ["stroke", color], ["stroke-width", "1.6"], ["stroke-linejoin", "round"]].forEach(([k, v]) => pl.setAttribute(k, v));
+      svg.appendChild(pl);
+    }
+    return svg;
+  };
+  const renderList = () => {
+    const box = $("tlist"); box.replaceChildren();
+    const rows = visibleRows();
+    if (!rows.length) { box.appendChild(el("div", "empty", st.list ? "Нічого не знайдено." : "Завантаження…")); }
+    const colors = { alert: cssVar("--hot"), candidate: cssVar("--amber"), calm: cssVar("--muted"), none: cssVar("--muted") };
+    rows.forEach((r) => {
+      const row = el("div", "trow" + (r.ticker === st.ticker ? " sel" : ""));
+      row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(r.ticker === st.ticker));
+      const star = el("button", "star" + (st.fav.has(r.ticker) ? " on" : ""), "★");
+      star.setAttribute("aria-label", st.fav.has(r.ticker) ? `Прибрати ${r.ticker} з обраних` : `Додати ${r.ticker} в обрані`);
+      star.addEventListener("click", (e) => { e.stopPropagation(); toggleFav(r.ticker); });
+      const name = el("span", "name"); const dot = el("span", "dot"); dot.style.background = r.status === "calm" ? cssVar("--line2") : colors[r.status];
+      name.append(dot, r.ticker);
+      const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
+      const oi = el("span", "num " + (r.oi_24h >= 0.15 ? "warm" : r.oi_24h < 0 ? "dim" : ""), fmtPct(r.oi_24h));
+      const chg = el("span", "num " + pctCls(r.chg_24h), fmtPct(r.chg_24h));
+      row.append(star, name, sparkSvg(r.spark, r.threshold, colors[r.status]), p, oi, chg);
+      row.title = `${STATUS[r.status]}${r.in_sample ? " · in-sample" : ""}`;
+      row.addEventListener("click", () => selectTicker(r.ticker));
+      box.appendChild(row);
     });
-    const log = $("sLog"); log.replaceChildren();
-    if (!d.log.length) { const e = document.createElement("div"); e.className = "empty"; e.style.padding = "8px 0"; e.textContent = "Сигналів за останні 7 днів немає."; log.appendChild(e); }
-    const KIND = { live: "live", history: "історія", "in-sample": "in-sample" };
-    d.log.forEach((e) => {
-      const ev = document.createElement("div"); ev.className = "ev";
-      const top = document.createElement("div"); top.className = "top";
-      const b = document.createElement("b"); b.textContent = e.ticker;
-      const t = document.createElement("span"); t.textContent = fmtTs(e.ts) + " UTC";
-      top.append(b, t);
-      const dd = document.createElement("div"); dd.className = "d"; dd.textContent = `Ймовірність ${fmtP(e.probability)} · ${KIND[e.kind]}`;
-      ev.append(top, dd); log.appendChild(ev);
+    const rec = $("recent"); rec.replaceChildren();
+    (st.list?.recent || []).slice(0, 4).forEach((e) => {
+      const r = el("div", "e"); const a = el("span"); a.append(el("b", "", e.ticker), " ", el("span", "dim", `${fmtP(e.probability)} · ${e.kind}`));
+      r.append(a, el("span", "small", fmtTs(e.ts))); r.addEventListener("click", () => selectTicker(e.ticker)); rec.appendChild(r);
     });
+    if (!(st.list?.recent || []).length) rec.appendChild(el("span", "small", "Сигналів ще не було."));
+  };
+  const toggleFav = (t) => { st.fav.has(t) ? st.fav.delete(t) : st.fav.add(t); LS.set("pd-fav", [...st.fav]); renderList(); };
+  const loadList = async () => {
+    try { st.list = await api(`/api/list?model=${st.model}`); } catch (e) { st.list = { rows: [], recent: [], alerts: [] }; }
+    renderList(); checkAlerts();
   };
 
-  // ---------- керування ----------
-  const selectTicker = (t) => { st.ticker = t; try { localStorage.setItem("pd-ticker", t); } catch (e) {} };
-  $("tickerSel").addEventListener("change", (e) => { location.hash = `#forecast/${e.target.value}`; });
-  $("modelSel").addEventListener("change", (e) => {
-    st.model = e.target.value; try { localStorage.setItem("pd-model", st.model); } catch (err) {}
-    renderFoot(); if (st.view === "scanner") loadScanner(); else loadTicker();
+  // ---------- сповіщення про новий live Alert ----------
+  let audioCtx = null;
+  const beep = () => {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.18].forEach((dt) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+        const t = audioCtx.currentTime + dt; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.2, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+        o.start(t); o.stop(t + 0.16);
+      });
+    } catch (e) {}
+  };
+  const renderNotify = () => {
+    $("notifyBtn").setAttribute("aria-pressed", String(st.notify));
+    $("notifyTxt").textContent = `Звук і сповіщення про новий Alert: ${st.notify ? "увімкнено" : "вимкнено"}`;
+  };
+  $("notifyBtn").addEventListener("click", async () => {
+    st.notify = !st.notify; LS.set("pd-notify", st.notify); renderNotify();
+    if (st.notify) {
+      beep();   // звук дозволено лише після дії користувача — «розігріваємо» його цим кліком
+      if ("Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
+    }
   });
-  document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
-    st.days = +b.dataset.days;
-    document.querySelectorAll("[data-days]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    setRange();   // дані вже є за 30 днів — лише змінюємо видимий діапазон
+  let firstAlertsCheck = true;
+  const checkAlerts = () => {
+    const alerts = st.list?.alerts || [];
+    const fresh = alerts.filter((a) => !st.seen.has(`${a.ticker}|${a.ts}`));
+    fresh.forEach((a) => st.seen.add(`${a.ticker}|${a.ts}`));
+    LS.set("pd-seen", [...st.seen].slice(-300));
+    // при першому завантаженні старі сигнали не озвучуємо — лише ті, що з'являться, поки сторінка відкрита
+    if (firstAlertsCheck) { firstAlertsCheck = false; return; }
+    if (!fresh.length || !st.notify) return;
+    const a = fresh[0];
+    $("toastT").textContent = `Новий Alert: ${a.ticker} · ${fmtP(a.probability)}`;
+    $("toastS").textContent = `${fmtTs(a.ts)} UTC${fresh.length > 1 ? ` · ще ${fresh.length - 1}` : ""}`;
+    $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; selectTicker(a.ticker); };
+    $("toast").hidden = false;
+    beep();
+    if ("Notification" in window && Notification.permission === "granted") {
+      try { const n = new Notification(`Pump Detector: Alert ${a.ticker}`, { body: `P = ${fmtP(a.probability)} · ${fmtTs(a.ts)} UTC`, tag: `pd-${a.ticker}-${a.ts}` });
+        n.onclick = () => { window.focus(); selectTicker(a.ticker); }; } catch (e) {}
+    }
+  };
+  $("toastX").addEventListener("click", () => { $("toast").hidden = true; });
+
+  // ---------- керування «Прогнозу» ----------
+  const pressIn = (segId, attr, val) => document.querySelectorAll(`#${segId} [data-${attr}]`).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === String(val))));
+  document.querySelectorAll("#daySeg [data-days]").forEach((b) => b.addEventListener("click", () => { st.days = +b.dataset.days; pressIn("daySeg", "days", st.days); setRange(); }));
+  document.querySelectorAll("#oiSeg [data-oi]").forEach((b) => b.addEventListener("click", () => { st.oiUsd = b.dataset.oi === "usd"; LS.set("pd-oiusd", st.oiUsd); pressIn("oiSeg", "oi", b.dataset.oi); renderChart(); }));
+  document.querySelectorAll("#tabSeg [data-tab]").forEach((b) => b.addEventListener("click", () => { st.tab = b.dataset.tab; pressIn("tabSeg", "tab", st.tab); renderList(); }));
+  document.querySelectorAll(".cols [data-sort]").forEach((b) => b.addEventListener("click", () => {
+    st.sort = b.dataset.sort;
+    document.querySelectorAll(".cols [data-sort]").forEach((x) => { x.setAttribute("aria-pressed", String(x === b)); x.textContent = x.textContent.replace(" ↓", "") + (x === b ? " ↓" : ""); });
+    renderList();
   }));
-  $("refreshBtn").addEventListener("click", async () => {
-    const btn = $("refreshBtn"); btn.disabled = true; btn.textContent = "Оновлюю…";
-    // якщо даних за останню годину ще немає, сервер іде в Coinalyze; при зайнятому ліміті це до хвилини-двох
+  $("search").addEventListener("input", (e) => { st.search = e.target.value.trim().toUpperCase(); renderList(); });
+  $("search").addEventListener("keydown", (e) => { if (e.key === "Enter") { const r = visibleRows()[0]; if (r) selectTicker(r.ticker); } });
+  const doRefresh = async () => {
+    const btn = $("refreshBtn"); if (btn.disabled || !st.ticker) return;
+    btn.disabled = true; btn.textContent = "Оновлюю…";
     const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 150000);
     try {
       const r = await api("/api/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: st.ticker }), signal: ctl.signal });
       st.meta = await api("/api/meta"); show($("fError"), "");
-      await loadTicker();
-      btn.textContent = r.fetched ? `Дані оновлено за ${r.seconds} с` : "Переоцінено, дані актуальні";
+      await Promise.all([loadTicker(), loadList()]); renderStatus(); renderSystem();
+      btn.textContent = r.fetched ? `Оновлено за ${r.seconds} с` : "Дані актуальні";
     } catch (e) {
-      show($("fError"), e.name === "AbortError"
-        ? "Coinalyze не відповів за 2.5 хв (скринер зараз вибирає ліміт API). Спробуй за кілька хвилин."
-        : e.message);
+      show($("fError"), e.name === "AbortError" ? "Coinalyze не відповів за 2.5 хв (скринер зараз вибирає ліміт API). Спробуй за кілька хвилин." : e.message);
       btn.textContent = "Прогнозувати";
     } finally { clearTimeout(timer); }
     setTimeout(() => { btn.disabled = false; btn.textContent = "Прогнозувати"; }, 2500);
+  };
+  $("refreshBtn").addEventListener("click", doRefresh);
+  // клавіші: ↑/↓ — сусідній тікер у поточному порядку, Enter — прогнозувати, F — в обрані
+  addEventListener("keydown", (e) => {
+    if (st.view !== "forecast" || e.ctrlKey || e.metaKey || e.altKey) return;
+    const tag = (e.target.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "select" || tag === "textarea") return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      const order = visibleRows().map((r) => r.ticker); if (!order.length) return;
+      e.preventDefault();
+      const i = order.indexOf(st.ticker);
+      const j = Math.max(0, Math.min(order.length - 1, (i < 0 ? 0 : i) + (e.key === "ArrowDown" ? 1 : -1)));
+      selectTicker(order[j]);
+      const selEl = $("tlist").children[j]; if (selEl) selEl.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter" && tag !== "button" && tag !== "a") { e.preventDefault(); doRefresh(); }
+    else if ((e.key === "f" || e.key === "F" || e.key === "а" || e.key === "А") && st.ticker) { e.preventDefault(); toggleFav(st.ticker); }
   });
-  window.addEventListener("hashchange", route);
 
+  // ---------- Журнал ----------
+  const renderJournal = () => {
+    const j = st.journal; if (!j) return;
+    // порівняння моделей
+    const mr = $("mRows"); mr.replaceChildren();
+    (st.meta?.models || []).forEach((mi) => {
+      const m = j.models[mi.name]; if (!m) return;
+      const row = el("div", "mgrid");
+      row.appendChild(el("span", "", mi.title)); row.firstChild.style.cssText = "font-size:13px;font-weight:500";
+      row.appendChild(el("span", "", String(m.alerts)));
+      const pr = el("span"); pr.append(el("b", "", m.precision == null ? "—" : m.precision.toFixed(2)), " ", el("span", "small", m.decided ? `${m.pumps}/${m.decided}` : ""));
+      pr.firstChild.style.fontWeight = "500"; row.appendChild(pr);
+      row.appendChild(el("span", "", m.pump_total ? `${m.caught} з ${m.pump_total}` : "—"));
+      row.appendChild(el("span", "", m.delay_h == null ? "—" : `${m.delay_h.toFixed(1)} год`));
+      row.appendChild(el("span", pctCls(m.avg_trade), fmtPct(m.avg_trade)));
+      row.appendChild(el("span", "", m.false_per_30d == null ? "—" : m.false_per_30d.toFixed(1)));
+      mr.appendChild(row);
+    });
+    const v = j.validation?.[st.model];
+    $("mValid").textContent = v ? `Для порівняння — leave-ticker-out на навчанні (${modelInfo()?.title || st.model}): precision ${v.precision.toFixed(2)}, recall ${v.recall.toFixed(2)}, спіймано пампів ${v.pumps_caught}. Якщо live сильно гірше — модель не узагальнюється.` : "";
+    // журнал
+    const f = st.jOut;
+    const rows = j.rows.filter((r) => f === "all" || (f === "pump" && r.outcome === "pump") || (f === "fp" && r.outcome === "fp") || (f === "auto" && r.source === "auto") || (f === "wait" && r.outcome === "wait"));
+    const box = $("jRows"); box.replaceChildren();
+    if (!rows.length) box.appendChild(el("div", "empty", j.rows.length ? "Під фільтр нічого не підпадає." : "Угод у вибраному обсязі ще немає. Live-оцінки накопичуються щогодини, поки працює скринер."));
+    const OUT = { pump: "Памп", fp: "Хибний", wait: "Очікує" }, SRC = { label: "розмітка", auto: "авто", wait: `до ${j.rule.horizon} год` };
+    rows.forEach((r) => {
+      const row = el("div", "jcols");
+      row.append(el("span", "dim", fmtTs(r.entry_ts)));
+      const tk = el("a", "", r.ticker); tk.href = `#forecast/${r.ticker}`; tk.style.fontWeight = "500"; row.append(tk);
+      row.append(el("span", "kind " + r.kind, r.kind));
+      row.append(el("span", "r", fmtP(r.p_max)));
+      row.append(el("span", "src " + r.source, SRC[r.source]));
+      row.append(el("span", "oc " + r.outcome, OUT[r.outcome])); row.lastChild.style.width = "fit-content";
+      const tr = el("span", "r " + pctCls(r.result_pct), fmtPct(r.result_pct)); tr.style.fontWeight = "500"; row.append(tr);
+      row.append(el("span", "small", r.open ? "позиція відкрита" : `${r.reason === "stop" ? "стоп" : "модель"}, ${r.exit_ts ? fmtTs(r.exit_ts) : "—"}`));
+      box.appendChild(row);
+    });
+    // угоди: стовпчики
+    const t = j.trades, svg = $("tBars"); svg.replaceChildren();
+    const ns = "http://www.w3.org/2000/svg", res = t.results;
+    const mx = Math.max(0.05, ...res.map(Math.abs)), zero = 75, sc = 68 / mx, w = 300 / Math.max(res.length, 1);
+    const base = document.createElementNS(ns, "line"); [["x1", 0], ["x2", 300], ["y1", zero], ["y2", zero], ["stroke", cssVar("--line2")]].forEach(([k, v2]) => base.setAttribute(k, v2)); svg.appendChild(base);
+    res.forEach((v2, i) => {
+      const r = document.createElementNS(ns, "rect"), hh = Math.max(1, Math.abs(v2) * sc);
+      [["x", i * w + 1.5], ["width", Math.max(1, w - 3)], ["y", v2 >= 0 ? zero - hh : zero], ["height", hh], ["rx", 1.5], ["fill", v2 >= 0 ? cssVar("--ok") : cssVar("--hot")]].forEach(([k, v3]) => r.setAttribute(k, v3));
+      const tt = document.createElementNS(ns, "title"); tt.textContent = fmtPct(v2); r.appendChild(tt); svg.appendChild(r);
+    });
+    if (!res.length) { const tx = document.createElementNS(ns, "text"); tx.setAttribute("x", 150); tx.setAttribute("y", 80); tx.setAttribute("text-anchor", "middle"); tx.setAttribute("fill", cssVar("--fg3")); tx.setAttribute("font-size", "11"); tx.textContent = "закритих угод ще немає"; svg.appendChild(tx); }
+    $("tWin").textContent = t.n ? `${t.win} з ${t.n} · ${Math.round(t.win / t.n * 100)}%` : "—";
+    const avg = $("tAvg"); avg.replaceChildren(); avg.append(el("span", "ok", fmtPct(t.avg_win)), " / ", el("span", "red", fmtPct(t.avg_loss)));
+    $("tStops").textContent = String(t.stops);
+    $("tRule").textContent = `стоп ${modelInfo()?.risk?.k?.toFixed(1) ?? "—"} ATR · вихід 2 бари`;
+    // за тікерами
+    const bt = $("byTk"); bt.replaceChildren();
+    if (!j.by_ticker.length) bt.appendChild(el("span", "small", "Вирішених угод ще немає."));
+    j.by_ticker.forEach((r) => {
+      const row = el("div"); row.style.cssText = "display:grid;grid-template-columns:76px minmax(0,1fr) 44px;gap:10px;align-items:center;font-size:12px";
+      const bar = el("div", "bar"); const fill = el("i"); const share = r.pumps / r.total;
+      fill.style.cssText = `width:${share * 100}%;background:${share >= 0.5 ? cssVar("--ok") : cssVar("--hot")}`; bar.appendChild(fill);
+      row.append(el("b", "", r.ticker), bar, el("span", "dim", `${r.pumps}/${r.total}`)); row.lastChild.style.textAlign = "right"; row.firstChild.style.fontWeight = "500";
+      bt.appendChild(row);
+    });
+    // розмітка
+    const L = j.labels;
+    $("lblN").textContent = String(L.label); $("lblOf").textContent = `з ${L.total} угод`;
+    $("lblBar").style.width = L.total ? `${L.label / L.total * 100}%` : "0";
+    $("lblRest").textContent = `${L.auto} авто · ${L.wait} очікує`;
+    $("jSince").textContent = st.jDays === "all" ? "за весь час" : `за ${st.jDays} днів · ${{ live: "лише live", hist: "live + історія", all: "усі оцінки" }[st.jKind]}`;
+  };
+  const loadJournal = async () => {
+    const r = st.rule;
+    const q = `model=${st.model}&days=${st.jDays}&kind=${st.jKind}&horizon=${r.horizon}&price=${r.price / 100}&oi=${r.oi / 100}`;
+    try { st.journal = await api(`/api/journal?${q}`); show($("jError"), ""); } catch (e) { show($("jError"), e.message); return; }
+    renderJournal();
+  };
+  document.querySelectorAll("#periodSeg [data-days]").forEach((b) => b.addEventListener("click", () => { st.jDays = b.dataset.days; pressIn("periodSeg", "days", st.jDays); loadJournal(); }));
+  document.querySelectorAll("#kindSeg [data-kind]").forEach((b) => b.addEventListener("click", () => { st.jKind = b.dataset.kind; pressIn("kindSeg", "kind", st.jKind); loadJournal(); }));
+  document.querySelectorAll("#outSeg [data-out]").forEach((b) => b.addEventListener("click", () => { st.jOut = b.dataset.out; pressIn("outSeg", "out", st.jOut); renderJournal(); }));
+  [["rHorizon", "horizon"], ["rPrice", "price"], ["rOi", "oi"]].forEach(([id, k]) => {
+    const inp = $(id); inp.value = st.rule[k];
+    inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (!isFinite(v) || v < 0) { inp.value = st.rule[k]; return; } st.rule[k] = v; LS.set("pd-rule", st.rule); loadJournal(); });
+  });
+
+  // ---------- старт і автооновлення ----------
+  const refreshAll = () => { loadList(); if (st.view === "journal") loadJournal(); else loadTicker(); renderSystem(); };
   const init = async () => {
+    renderNotify();
     try { st.meta = await api("/api/meta"); }
-    catch (e) { show($("fError"), `Сервер не відповідає: ${e.message}`); $("viewForecast").hidden = false; return; }
-    const ms = $("modelSel");
-    st.meta.models.forEach((m) => { const o = document.createElement("option"); o.value = m.name; o.textContent = m.title; ms.appendChild(o); });
+    catch (e) { show($("fError"), `Сервер не відповідає: ${e.message}`); return; }
     if (!st.meta.models.some((m) => m.name === st.model)) st.model = st.meta.models[0]?.name || "lightgbm";
-    ms.value = st.model;
-    const ts = $("tickerSel");
-    st.meta.tickers.forEach((t) => { const o = document.createElement("option"); o.value = t; o.textContent = t; ts.appendChild(o); });
     if (!st.meta.tickers.includes(st.ticker)) st.ticker = st.meta.tickers[0] || null;
+    pressIn("oiSeg", "oi", st.oiUsd ? "usd" : "coins");
+    renderModelSeg(); renderSystem(); renderStatus();
+    await loadList();
     route();
-    // автооновлення: дані раз на хвилину, відлік до скану щосекунди
-    setInterval(async () => { try { st.meta = await api("/api/meta"); } catch (e) { return; } if (st.view === "scanner") loadScanner(); else loadTicker(); }, 60000);
-    setInterval(renderFoot, 1000);
+    addEventListener("hashchange", route);
+    setInterval(async () => { try { st.meta = await api("/api/meta"); } catch (e) { return; } renderSystem(); refreshAll(); }, 60000);
+    setInterval(renderStatus, 1000);
   };
   init();
 })();

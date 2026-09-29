@@ -15,6 +15,7 @@ screener.py — щогодинний скринер пампів.
 """
 
 import argparse
+import json
 import os
 import sys
 import time
@@ -29,6 +30,7 @@ from fetch import Coinalyze, collect, read_tickers_file
 from train import PROBA_MODELS, load_model, model_path
 
 WATCHLIST_FILE = "watchlist.txt"
+STATUS_FILE = os.path.join("reports", "screener_status.json")   # читає дашборд, блок «Стан системи»
 FETCH_DAYS = 10          # 7 днів базового вікна + доба + запас
 BACKFILL_HOURS = 7 * 24  # скільки годин історії оцінювати, якщо їх ще немає в signals
 RUN_MINUTE = 5           # хвилина кожної години, коли запускати цикл
@@ -87,8 +89,15 @@ def score_bases(conn, bases: list[str], models: list[dict]) -> tuple[pd.DataFram
     return scored, last_closed
 
 
+def write_status(**fields) -> None:
+    os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
+    with open(STATUS_FILE, "w", encoding="utf-8") as f:
+        json.dump({"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), **fields}, f, ensure_ascii=False)
+
+
 def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: Coinalyze | None) -> None:
     started = datetime.now(timezone.utc)
+    calls0, limited0 = (client.calls_made, client.rate_limited) if client else (0, 0)
     print(f"\n[{started:%Y-%m-%d %H:%M} UTC] цикл: {len(bases)} тікерів")
 
     if fetch:
@@ -118,6 +127,11 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
         print(f"  ! дані відстають (немає останньої години): {', '.join(stale.index)}")
     if missing:
         print(f"  ! без оцінки (мало історії або не знайдено): {', '.join(missing)}")
+    write_status(ok=True, cycle_started=started.isoformat(timespec="seconds"),
+                 seconds=int((datetime.now(timezone.utc) - started).total_seconds()),
+                 tickers=len(bases), scored=len(table), stale=list(stale.index), missing=missing,
+                 api_calls=(client.calls_made - calls0) if client else 0,
+                 api_429=(client.rate_limited - limited0) if client else 0, fetched=fetch)
 
 
 def main() -> None:
@@ -145,6 +159,7 @@ def main() -> None:
             with psycopg.connect(db_url) as conn:
                 run_cycle(conn, bases, models, not args.no_fetch, client)
         except Exception as e:  # у режимі --loop одна невдала година не має зупиняти скринер
+            write_status(ok=False, error=f"{type(e).__name__}: {e}")
             if not args.loop:
                 raise
             print(f"  ! помилка циклу: {e}")

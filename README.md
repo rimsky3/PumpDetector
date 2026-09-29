@@ -22,7 +22,7 @@ with price, volume, funding, liquidations and long/short ratio to answer one que
 | Models | Simple OI + volume rule → Logistic Regression → LightGBM | first version |
 | Validation | Leave-ticker-out cross-validation with nested threshold selection; hour- and event-level metrics | first version |
 | Screener | Hourly screener over a watchlist with both models side by side, honest live/in-sample tracking | skeleton |
-| Dashboard | Forecast and Screener screens with stop, trailing stop and exit signal per ticker | skeleton |
+| Dashboard | Forecast (chart, metrics, watchlist, alerts) and Journal (forward test of live signals, labels + auto rule) | first version |
 | Deployment | 24/7 screener and public demo on a VPS | planned |
 
 **Task framing.** Binary classification per hourly bar: `1` = a pump is in progress, `0` = normal market.
@@ -93,6 +93,7 @@ screener.py         hourly scoring of watchlist.txt with the saved models
 watchlist.txt       coins to scan live (never used for training)
 dashboard.py        dashboard server; page in app/dashboard.html
 risk.py             stop (75th percentile MAE in NATR), trailing stop, exit signal
+journal.py          forward-test journal: trades from first real-time scores, outcomes from labels or an auto rule
 schema.sql          database schema
 docker-compose.yml  local PostgreSQL
 docs/               documentation

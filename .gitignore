@@ -18,3 +18,5 @@ reports/*.csv
 
 # навчені моделі (відтворюються python train.py)
 models/
+# стан скринера для дашборду
+reports/*.json

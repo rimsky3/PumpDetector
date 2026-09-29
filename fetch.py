@@ -58,6 +58,8 @@ class Coinalyze:
         self.session = requests.Session()
         self.session.headers["api_key"] = api_key
         self._calls = collections.deque()  # моменти спожитих викликів
+        self.calls_made = 0                # лічильники для «Стану системи» в дашборді
+        self.rate_limited = 0
 
     def _reserve(self, cost: int) -> None:
         while True:
@@ -75,7 +77,9 @@ class Coinalyze:
         for _ in range(5):
             self._reserve(cost)
             resp = self.session.get(f"{BASE_URL}/{path}", params=params, timeout=30)
+            self.calls_made += cost
             if resp.status_code == 429:
+                self.rate_limited += 1
                 wait = float(resp.headers.get("Retry-After", 10))
                 print(f"    429 від Coinalyze: чекаю {wait:.0f} с…")
                 time.sleep(wait + 0.5)

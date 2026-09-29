@@ -73,20 +73,25 @@ cut-off is in-sample: a high probability there means the model remembers the pum
 ## Dashboard
 
 `python dashboard.py` serves `app/dashboard.html` on 127.0.0.1 (this computer only). Plain Python server,
-no extra dependencies. `#forecast/NMR` in the address opens a ticker directly.
+no extra dependencies. `#forecast/NMR` opens a ticker, `#journal` the journal. Every block has a **?** button
+with a short explanation.
 
-**Forecast** (one ticker):
+**Forecast** — three columns:
 
-- current pump probability with the model's threshold and status, OI change over 4 hours, volume z-score;
-- risk cards: stop, exit signal and trailing stop (see Risk below) for the current or the last trade;
-- chart ([TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts), Apache 2.0, a local copy
-  in `app/vendor/` served by `dashboard.py`, no internet needed): candles with signal zones shaded, entry and exit
-  markers of every simulated trade with its result, stop and trailing lines, then OI, volume and the probability
-  per hour with the threshold. Wheel zooms, drag pans, pane borders can be dragged; 1 / 3 / 7 / 30-day buttons;
-- **Прогнозувати** fetches the latest data for this ticker from Coinalyze and scores it again with both models
-  (about 18 API calls, a few seconds).
+- *left*: model switch; pump probability with a threshold bar and the signal's age in hours; OI change over
+  4 h, volume z-score, share of long accounts; the model's simulated position with stop, trailing stop and exit
+  state;
+- *centre*: chart ([TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts),
+  Apache 2.0, local copy in `app/vendor/`): candles with signal zones, entry and exit markers of every
+  simulated trade, stop and trailing lines, OI candles (in coins by default, USD on a toggle), volume and the
+  hourly probability with the threshold;
+- *right*: the watchlist like a trading terminal — search, **Прогнозувати**, filters (all / Alert /
+  candidates / ★ favourites), sorting by probability, OI change over 24 h or price change over 24 h, a 24-hour
+  probability sparkline per ticker, and the latest signal episodes.
 
-**Screener** (all scored tickers): price sparkline for 48 hours, probability, status and the signal log.
+Keyboard: **↑/↓** next ticker, **Enter** refresh the ticker, **F** favourite. **Alert notifications**: when a new
+live signal episode starts while the page is open, a sound, a browser notification and an in-page toast
+(opt-in; favourites, sort order and settings are stored in the browser).
 
 | Status | Rule |
 |---|---|
@@ -94,7 +99,19 @@ no extra dependencies. `#forecast/NMR` in the address opens a ticker directly.
 | Кандидат | probability ≥ half the threshold |
 | Спокійно | below that |
 
-The model selector in the sidebar switches every screen between LightGBM and logistic regression.
+**Journal** — forward-test of what the models said in real time (`journal.py`):
+
+- every hour's **first** score is used (across model versions), so retraining never rewrites history;
+- trades are simulated with the rules below; each trade's outcome comes from the labels when they exist
+  (`pumps.csv`: overlaps a pump → pump, a false start → false; for training tickers, hours up to the end of the
+  training data are fully labeled), otherwise from an **auto rule**: within the horizon after entry, price
+  and OI rose at least by the thresholds (default 24 h, +15 %, +20 %; editable on the page). Until the horizon
+  passes the outcome is *waiting*;
+- scope: live only (honest), + history backfill, + in-sample; period 7 / 30 days / all;
+- per model: signals, share that turned out pumps (precision), labeled pumps caught, median delay, average
+  trade, false signals per 30 ticker-days — next to the leave-ticker-out validation for comparison;
+- trade results chart, by-ticker hit rate, how many trades are confirmed by labels, and system status
+  (last scan, Coinalyze calls and 429s from `reports/screener_status.json`, tickers short of history).
 
 ## Risk
 
