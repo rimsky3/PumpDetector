@@ -63,7 +63,11 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   графіки з БД, кожна зміна одразу пишеться в pumps.csv і синхронізується з таблицею pumps.
   Спільна логіка читання/запису/перевірки CSV — у `load_pumps.py`.
 - `features.py` готовий (24 ознаки, таблиця `features`, перевірено на відсутність lookahead); опис — docs/features.md.
-- далі: `train.py` (правило-baseline → LogReg → LightGBM, leave-ticker-out), `train.py`, `app/streamlit_app.py`, `screener.py`
+- `train.py` готовий: rule / logreg / lightgbm, leave-ticker-out + вкладений вибір порогу, метрики по годинах і подіях;
+  звіт reports/train_report.md, OOF-передбачення reports/oof_predictions.csv; опис — docs/modeling.md.
+  Перші результати (8 тікерів, 17 пампів): F1 rule 0.55, logreg 0.70, lightgbm 0.72 — моделі > правила, logreg ≈ lightgbm.
+- далі: більше розмічених тікерів; метрики ранньої фази пампу (ret_24h домінує — модель частково «бачить, що вже виросло»);
+  збереження моделі; скринер., `train.py`, `app/streamlit_app.py`, `screener.py`
 
 ## Документація
 - `README.md` + `docs/` (setup, data, labeling) — англійською, для GitHub-портфоліо. Коментарі в коді — українською.

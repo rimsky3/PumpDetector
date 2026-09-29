@@ -8,8 +8,8 @@ so it shows up in **open interest** before or together with the price. The model
 with price, volume, funding, liquidations and long/short ratio to answer one question every hour:
 *is a pump in progress right now?*
 
-> **Status:** work in progress. Data collection, labeling and feature engineering are done; modelling is next.
-> No model results are reported yet.
+> **Status:** work in progress. The full pipeline runs end to end; first results below are preliminary
+> (8 tickers, 17 pumps).
 
 ## Approach
 
@@ -19,8 +19,8 @@ with price, volume, funding, liquidations and long/short ratio to answer one que
 | Storage | PostgreSQL in Docker; idempotent upserts keyed by `(symbol, interval, ts)` | done |
 | Labels | Manual labeling of pump intervals in a purpose-built local tool | done (first batch) |
 | Features | 24 features relative to each ticker's own history (z-scores, ratios, log changes), one module shared by training, inference and screener; verified free of look-ahead | done |
-| Models | Simple OI + volume rule → Logistic Regression → LightGBM | next |
-| Validation | Leave-ticker-out cross-validation; precision / recall / F1, not accuracy | planned |
+| Models | Simple OI + volume rule → Logistic Regression → LightGBM | first version |
+| Validation | Leave-ticker-out cross-validation with nested threshold selection; hour- and event-level metrics | first version |
 | Screener | 24/7 screener and public demo on a VPS | planned |
 
 **Task framing.** Binary classification per hourly bar: `1` = a pump is in progress, `0` = normal market.
@@ -31,6 +31,20 @@ tickers the model has already seen would leak each coin's specific behaviour and
 
 **The baseline matters.** A simple rule on OI and volume is the first benchmark. If the model cannot
 beat it, that is reported as an honest negative result.
+
+## First results
+
+Leave-ticker-out, every ticker scored by a model that never saw it:
+
+| Model | Precision | Recall | F1 | PR-AUC | Pumps caught | False alarms / 30 days |
+|---|---|---|---|---|---|---|
+| OI + volume rule | 0.45 | 0.71 | 0.55 | — | 16/17 | 4.0 |
+| Logistic regression | 0.66 | 0.74 | 0.70 | 0.67 | 16/17 | 1.6 |
+| LightGBM | 0.65 | 0.80 | 0.72 | 0.73 | 16/17 | 1.4 |
+
+Both models beat the rule on precision and false alarms. The difference between logistic regression and
+LightGBM is within noise at this sample size. The most informative features point to a short squeeze:
+pumps happen when most accounts are short. Details, caveats and next steps: [docs/modeling.md](docs/modeling.md).
 
 ## Current dataset
 
@@ -54,6 +68,7 @@ python fetch.py --new                # ...or only tickers not yet in the databas
 python label.py                      # open the labeling tool in the browser
 python load_pumps.py                 # (optional) reload pumps.csv into the database
 python features.py                   # compute features and labels into the features table
+python train.py                      # leave-ticker-out comparison → reports/train_report.md
 ```
 
 Full instructions, including Windows specifics: [docs/setup.md](docs/setup.md).
@@ -68,6 +83,8 @@ tools/label.html    labeling UI: synced price / OI / volume charts, click to mar
 pumps.csv           manual labels, the source of truth for the target variable
 load_pumps.py       validates pumps.csv and syncs it to the database
 features.py         raw series → hourly features + labels (shared by training and screener)
+train.py            rule vs logistic regression vs LightGBM, leave-ticker-out
+reports/            generated training report
 schema.sql          database schema
 docker-compose.yml  local PostgreSQL
 docs/               documentation
@@ -79,6 +96,7 @@ docs/               documentation
 - [Data](docs/data.md): sources, series, units, coverage and known gaps
 - [Labeling](docs/labeling.md): what counts as a pump, labeling rules, file format, tool usage
 - [Features](docs/features.md): aggregation, feature definitions, look-ahead and listing safeguards
+- [Modeling](docs/modeling.md): models, validation scheme, metrics, first results
 
 ## Limitations
 
