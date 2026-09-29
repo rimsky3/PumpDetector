@@ -9,7 +9,7 @@ with price, volume, funding, liquidations and long/short ratio to answer one que
 *is a pump in progress right now?*
 
 > **Status:** work in progress. The full pipeline runs end to end; first results below are preliminary
-> (8 tickers, 17 pumps).
+> (8 tickers, 18 pumps).
 
 ## Approach
 
@@ -38,9 +38,9 @@ Leave-ticker-out, every ticker scored by a model that never saw it:
 
 | Model | Precision | Recall | F1 | PR-AUC | Pumps caught | False alarms / 30 days |
 |---|---|---|---|---|---|---|
-| OI + volume rule | 0.45 | 0.71 | 0.55 | — | 16/17 | 4.0 |
-| Logistic regression | 0.66 | 0.74 | 0.70 | 0.67 | 16/17 | 1.6 |
-| LightGBM | 0.65 | 0.80 | 0.72 | 0.73 | 16/17 | 1.4 |
+| OI + volume rule | 0.47 | 0.71 | 0.56 | — | 17/18 | 4.0 |
+| Logistic regression | 0.68 | 0.75 | 0.72 | 0.70 | 17/18 | 1.9 |
+| LightGBM | 0.67 | 0.81 | 0.73 | 0.74 | 17/18 | 1.2 |
 
 Both models beat the rule on precision and false alarms. The difference between logistic regression and
 LightGBM is within noise at this sample size. The most informative features point to a short squeeze:
@@ -49,8 +49,8 @@ pumps happen when most accounts are short. Details, caveats and next steps: [doc
 ## Current dataset
 
 - 8 tickers, about 10 500 hourly bars with a full feature history
-- 17 pump intervals and 11 false starts (moves that looked like a pump but did not develop)
-- 380 pump hours, 3.6% of all bars, so class imbalance is handled explicitly
+- 18 pump intervals and 10 false starts (moves that looked like a pump but did not develop)
+- 392 pump hours, 3.7% of all bars, so class imbalance is handled explicitly
 
 The dataset is intentionally small at this stage and will grow: Coinalyze keeps only ~2 months of
 hourly open-interest history, so new tickers are collected and labeled continuously.

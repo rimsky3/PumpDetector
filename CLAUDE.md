@@ -66,6 +66,8 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 - `train.py` готовий: rule / logreg / lightgbm, leave-ticker-out + вкладений вибір порогу, метрики по годинах і подіях;
   звіт reports/train_report.md, OOF-передбачення reports/oof_predictions.csv; опис — docs/modeling.md.
   Перші результати (8 тікерів, 17 пампів): F1 rule 0.55, logreg 0.70, lightgbm 0.72 — моделі > правила, logreg ≈ lightgbm.
+- Перегляд помилок: label.py читає reports/oof_predictions.csv — 4-та панель «Модель» (ймовірність, поріг, смужка tp/fp/fs/fn),
+  вибір моделі, список помилок по тікеру з переходом; помилки рахуються за поточним pumps.csv. `#TICKER` в адресі відкриває тікер.
 - далі: більше розмічених тікерів; метрики ранньої фази пампу (ret_24h домінує — модель частково «бачить, що вже виросло»);
   збереження моделі; скринер., `train.py`, `app/streamlit_app.py`, `screener.py`
 

@@ -13,6 +13,7 @@
   --fg: #111418; --fg2: #515966; --fg3: #808895;
   --price: #2a78d6; --oi: #1baf7a; --vol: #aab2bf; --sel: rgba(235,104,52,.13); --sel-edge: #eb6834; --mark: #7a6bd1;
   --saved: rgba(122,107,209,.14); --saved-alt: rgba(128,136,149,.16);
+  --model: #4a3aa7; --tp: #2e9e5b; --fp: #e34948; --fs: #d99100; --fn: #d55181;
   --accent: #2a78d6; --accent-fg: #ffffff;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
@@ -21,11 +22,13 @@
   --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
   --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
   --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --saved-alt: rgba(126,135,148,.2);
+  --model: #9085e9; --tp: #3fb56f; --fp: #e66767; --fs: #e0a526; --fn: #e87ba4;
   --accent: #3987e5; --accent-fg: #ffffff; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
   --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
   --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --saved-alt: rgba(126,135,148,.2);
+  --model: #9085e9; --tp: #3fb56f; --fp: #e66767; --fs: #e0a526; --fn: #e87ba4;
   --accent: #3987e5; --accent-fg: #ffffff; color-scheme: dark; }
 
 * { box-sizing: border-box; }
@@ -44,6 +47,16 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; position: relative; overflow: hidden; }
 canvas { display: block; width: 100%; height: 560px; touch-action: pan-y; cursor: crosshair; }
 @media (max-width: 600px) { canvas { height: 460px; } }
+canvas.with-model { height: 700px; }
+@media (max-width: 600px) { canvas.with-model { height: 560px; } }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12px; color: var(--fg2); margin: 0; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; flex: none; }
+.sw.tp { background: var(--tp); } .sw.fp { background: var(--fp); } .sw.fs { background: var(--fs); } .sw.fn { background: var(--fn); }
+.sw.line { height: 2px; background: var(--model); }
+tr.err-row td:first-child { display: flex; align-items: center; gap: 8px; }
+.err-sum { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; margin: 0; font-variant-numeric: tabular-nums; }
+.err-sum b { font-weight: 600; }
 .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; font: 12px/1.45 var(--mono); box-shadow: 0 4px 16px rgba(0,0,0,.12); min-width: 190px; font-variant-numeric: tabular-nums; }
 .tip .ts { color: var(--fg2); margin-bottom: 4px; }
 .tip .row { display: flex; justify-content: space-between; gap: 14px; }
@@ -75,8 +88,8 @@ td button { padding: 2px 8px; font-size: 12px; }
 .status { margin: 4px 0 0; font-size: 13px; color: var(--oi); min-height: 1.5em; }
 .status.err { color: #e34948; }
 .note { font-size: 12px; color: var(--fg2); margin: 0; }
-.selbar { position: sticky; bottom: env(safe-area-inset-bottom, 0px); z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
-.selbar.active { border-color: var(--sel-edge); box-shadow: 0 -6px 20px rgba(0,0,0,.18); }
+.selbar { position: static; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+.selbar.active { position: sticky; bottom: env(safe-area-inset-bottom, 0px); border-color: var(--sel-edge); box-shadow: 0 -6px 20px rgba(0,0,0,.18); }
 .selbody { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 24px; align-items: start; }
 @media (max-width: 860px) { .selbody { grid-template-columns: minmax(0, 1fr); } }
 .sel-dl { font-size: 13px; }
@@ -99,6 +112,8 @@ td button { padding: 2px 8px; font-size: 12px; }
       <button data-days="7">7 д</button><button data-days="14">14 д</button><button data-days="30">30 д</button><button data-days="60" aria-pressed="true">60 д</button>
       <span class="label" style="margin-left:10px">Ціна</span>
       <button id="logBtn" aria-pressed="false">Лог. шкала</button>
+      <span class="label" style="margin-left:10px" id="modelLbl" hidden>Модель</span>
+      <select id="modelSel" hidden aria-label="Модель для перегляду помилок" style="width:auto"></select>
     </div>
   </div>
 
@@ -106,6 +121,13 @@ td button { padding: 2px 8px; font-size: 12px; }
     <canvas id="cv" aria-label="Графіки ціни, open interest і обсягу" role="img"></canvas>
     <div class="tip" id="tip" hidden></div>
   </div>
+  <p class="legend" id="legend" hidden>
+    <span><i class="sw line"></i>ймовірність пампу</span>
+    <span><i class="sw tp"></i>сигнал у пампі</span>
+    <span><i class="sw fp"></i>хибний сигнал</span>
+    <span><i class="sw fs"></i>сигнал на фальстарті</span>
+    <span><i class="sw fn"></i>пропущена година пампу</span>
+  </p>
 
   <section class="selbar" id="selbar" aria-label="Виділений памп">
     <p class="hint" id="selHint">Клік на графіку ставить початок пампу, другий клік — кінець. Колесо миші — масштаб, перетягування — зсув. На одному тікері можна розмітити кілька пампів.</p>
@@ -134,6 +156,17 @@ td button { padding: 2px 8px; font-size: 12px; }
         </div>
       </div>
     </div>
+  </section>
+
+  <section class="card" aria-labelledby="errH" id="errCard" hidden>
+    <h2 id="errH">Помилки моделі</h2>
+    <p class="err-sum" id="errSum"></p>
+    <div class="tbl"><table>
+      <thead><tr><th>Що сталося</th><th>Початок (UTC)</th><th>Кінець (UTC)</th><th>Годин</th><th>Макс. ймовірність</th><th></th></tr></thead>
+      <tbody id="errRows"></tbody>
+    </table></div>
+    <p class="empty" id="errEmpty" hidden>На цьому тікері модель не помилилась.</p>
+    <p class="note" id="errNote"></p>
   </section>
 
   <section class="card" aria-labelledby="listH">
@@ -174,7 +207,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   const status = (msg, isErr) => { const el = $("status"); el.textContent = msg; el.classList.toggle("err", !!isErr); };
 
   let rows = [];
-  const st = { tk: null, x0: 0, x1: 0, log: false, a: null, b: null, hover: null };
+  const st = { tk: null, x0: 0, x1: 0, log: false, a: null, b: null, hover: null, model: "lightgbm" };
 
   // ---------- форматування ----------
   const pad = (n) => String(n).padStart(2, "0");
@@ -200,7 +233,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   let C = {}, FONT = {};
   const readColors = () => {
     const s = getComputedStyle(document.documentElement);
-    ["panel", "line", "grid", "fg", "fg2", "fg3", "price", "oi", "vol", "sel", "sel-edge", "mark", "saved", "saved-alt"].forEach((k) => C[k] = s.getPropertyValue("--" + k).trim());
+    ["panel", "line", "grid", "fg", "fg2", "fg3", "price", "oi", "vol", "sel", "sel-edge", "mark", "saved", "saved-alt", "model", "tp", "fp", "fs", "fn"].forEach((k) => C[k] = s.getPropertyValue("--" + k).trim());
     FONT.mono = s.getPropertyValue("--mono").trim();
     FONT.sans = s.getPropertyValue("--sans").trim();
   };
@@ -220,9 +253,38 @@ td button { padding: 2px 8px; font-size: 12px; }
   };
   const fullDomain = () => { const t = D().t; return [t[0], t[t.length - 1] + H]; };
 
+  // ---------- передбачення моделей (reports/oof_predictions.csv від train.py) ----------
+  const PRED = { available: false, updated: null, models: [] };
+  const MODEL_NAMES = { lightgbm: "LightGBM", logreg: "Логістична регресія", rule: "Правило OI + обсяг" };
+  const P = () => (D().pred || {})[st.model];               // { score[], signal[], threshold } вирівняні з D().t
+  const alignPred = (d, res) => {                           // передбачення → індекси рядів графіка
+    const pos = new Map(d.t.map((t, i) => [t, i]));
+    const out = {};
+    Object.entries(res.models).forEach(([m, v]) => {
+      const score = new Array(d.t.length).fill(null), signal = new Array(d.t.length).fill(0);
+      res.t.forEach((t, k) => { const i = pos.get(t); if (i != null) { score[i] = v.score[k]; signal[i] = v.signal[k]; } });
+      out[m] = { score, signal, threshold: v.threshold, n: res.t.length };
+    });
+    return out;
+  };
+  // розмітка на момент t за поточним pumps.csv: "pump", "fs" (фальстарт або other) або null
+  const labelAt = (t) => {
+    for (const r of rows) if (r.tk === st.tk && t >= r.a && t <= r.b) return r.type === "pump" ? "pump" : "fs";
+    return null;
+  };
+  // клас години: tp — сигнал у пампі, fp — хибний сигнал, fs — сигнал на фальстарті, fn — пропущена година пампу
+  const hourClass = (i) => {
+    const p = P(); if (!p || p.score[i] == null) return null;
+    const lab = labelAt(D().t[i]);
+    if (p.signal[i]) return lab === "pump" ? "tp" : lab ? "fs" : "fp";
+    return lab === "pump" ? "fn" : null;
+  };
+  const CLASS_TEXT = { tp: "сигнал у пампі", fp: "хибний сигнал", fs: "сигнал на фальстарті", fn: "пропущена година пампу" };
+
   // ---------- геометрія ----------
   const M = { l: 70, r: 14, t: 10, b: 26 };
-  const PANES = [{ key: "price", h: .46, name: "Ціна" }, { key: "oi", h: .34, name: "Open interest" }, { key: "vol", h: .20, name: "Обсяг" }];
+  let PANES = [{ key: "price", h: .46, name: "Ціна" }, { key: "oi", h: .34, name: "Open interest" }, { key: "vol", h: .20, name: "Обсяг" }];
+  const PANES_WITH_MODEL = [{ key: "price", h: .38, name: "Ціна" }, { key: "oi", h: .27, name: "Open interest" }, { key: "vol", h: .14, name: "Обсяг" }, { key: "model", h: .21, name: "Модель" }];
   const GAP = 22;
   let W = 0, Hh = 0, dpr = 1, paneBox = [];
 
@@ -297,7 +359,60 @@ td button { padding: 2px 8px; font-size: 12px; }
       return stepH < 24 && dd.getUTCHours() !== 0 ? `${pad(dd.getUTCHours())}:00` : day;
     };
 
+    // панель моделі: ймовірність, поріг і смужка класів (влучання / помилки) під нею
+    const drawModelPane = (b) => {
+      const p = P();
+      const STRIP = 7;
+      const top = b.y, plotH = b.h - STRIP - 4;
+      const Y = (v) => top + plotH - v * plotH;
+      ctx.font = "11px " + FONT.mono; ctx.textAlign = "right"; ctx.textBaseline = "middle";
+      [0, 0.5, 1].forEach((v) => {
+        const y = Math.round(Y(v)) + .5;
+        ctx.strokeStyle = C.grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(M.l, y); ctx.lineTo(W - M.r, y); ctx.stroke();
+        ctx.fillStyle = C.fg3; ctx.fillText(v.toFixed(1), M.l - 8, y);
+      });
+      xt.forEach((t) => { const x = Math.round(X(t)) + .5; ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(x, b.y); ctx.lineTo(x, b.y + b.h); ctx.stroke(); });
+      drawSaved(b, false);
+      drawSel(b);
+      ctx.save(); ctx.beginPath(); ctx.rect(M.l, b.y, pw, b.h); ctx.clip();
+      if (!p || !p.n) {
+        ctx.fillStyle = C.fg3; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.font = "12px " + FONT.sans;
+        ctx.fillText("Немає передбачень для цього тікера: запусти python features.py і python train.py", M.l + 8, b.y + b.h / 2);
+      } else {
+        for (let i = i0; i <= i1; i++) {                  // смужка класів
+          const c = hourClass(i); if (!c) continue;
+          ctx.fillStyle = C[c]; ctx.fillRect(X(d.t[i]), b.y + b.h - STRIP, Math.max(1, barW), STRIP);
+        }
+        if (p.threshold != null) {                        // поріг сигналу
+          const y = Math.round(Y(p.threshold)) + .5;
+          ctx.strokeStyle = C.fg3; ctx.setLineDash([5, 4]); ctx.beginPath(); ctx.moveTo(M.l, y); ctx.lineTo(W - M.r, y); ctx.stroke(); ctx.setLineDash([]);
+          ctx.fillStyle = C.fg2; ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.font = "11px " + FONT.mono;
+          ctx.fillText(`поріг ${p.threshold.toFixed(2)}`, W - M.r - 4, y - 2);
+        }
+        const path = new Path2D(); let open = false;
+        for (let i = i0; i <= i1; i++) {
+          const v = p.score[i];
+          if (v == null) { open = false; continue; }
+          const x = X(d.t[i] + H / 2), y = Y(v);
+          if (!open) { path.moveTo(x, y); open = true; } else path.lineTo(x, y);
+        }
+        ctx.strokeStyle = C.model; ctx.lineWidth = 1.5; ctx.lineJoin = "round"; ctx.stroke(path);
+        if (st.hover != null && p.score[st.hover] != null) {
+          const x = X(d.t[st.hover] + H / 2), y = Y(p.score[st.hover]);
+          ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fillStyle = C.model; ctx.fill();
+          ctx.lineWidth = 2; ctx.strokeStyle = C.panel; ctx.stroke();
+        }
+      }
+      ctx.restore();
+      ctx.textAlign = "left"; ctx.textBaseline = "top"; ctx.fillStyle = C.fg2; ctx.font = "500 12px " + FONT.sans;
+      ctx.fillText(`Модель · ${MODEL_NAMES[st.model] || st.model}`, M.l + 8, b.y + 4);
+      ctx.strokeStyle = C.line; ctx.lineWidth = 1;
+      const yb = Math.round(b.y + b.h) + .5;
+      ctx.beginPath(); ctx.moveTo(M.l, yb); ctx.lineTo(W - M.r, yb); ctx.stroke();
+    };
+
     paneBox.forEach((b) => {
+      if (b.key === "model") return drawModelPane(b);
       const vals = d[b.key];
       let lo = Infinity, hi = -Infinity;
       for (let i = i0; i <= i1; i++) { const v = vals[i]; if (v != null) { if (v < lo) lo = v; if (v > hi) hi = v; } }
@@ -421,6 +536,12 @@ td button { padding: 2px 8px; font-size: 12px; }
     const exs = Object.keys(d.oiBy);
     if (exs.length > 1) exs.forEach((ex) => tip.appendChild(row(ex, fmtUsd(d.oiBy[ex][i]), null, true)));
     tip.appendChild(row("Обсяг", fmtUsd(d.vol[i]), C.vol));
+    const p = P();
+    if (p && p.score[i] != null) {
+      tip.appendChild(row(st.model === "rule" ? "Правило" : "Ймовірність", st.model === "rule" ? (p.signal[i] ? "сигнал" : "—") : p.score[i].toFixed(3), C.model));
+      const c = hourClass(i);
+      if (c) tip.appendChild(row("", CLASS_TEXT[c], C[c], true));
+    }
     tip.hidden = false;
     const bw = cv.clientWidth, bh = cv.clientHeight, tw = tip.offsetWidth, th = tip.offsetHeight;
     let left = px + 16;
@@ -485,6 +606,79 @@ td button { padding: 2px 8px; font-size: 12px; }
       const k = rows.filter((r) => r.tk === b.dataset.tk).length;
       b.textContent = k ? `${b.dataset.tk} · ${k}` : b.dataset.tk;
     });
+    renderErrors();   // помилки рахуються за поточною розміткою
+  };
+
+  // ---------- помилки моделі ----------
+  // Епізод — сусідні години з сигналом. Він влучний, якщо перетинає памп; інакше це фальстарт або хибний сигнал.
+  // Пропущений памп — розмічений pump без жодного сигналу всередині.
+  const modelEvents = () => {
+    const d = D(), p = P(), ev = [];
+    ev.delays = [];                                        // затримка першого сигналу, год — по одній на спійманий памп
+    if (!p || !p.n) return ev;
+    const own = rows.filter((r) => r.tk === st.tk);
+    let i = 0;
+    while (i < d.t.length) {
+      if (!p.signal[i]) { i++; continue; }
+      let j = i;
+      while (j + 1 < d.t.length && p.signal[j + 1] && d.t[j + 1] - d.t[j] === H) j++;
+      const a = d.t[i], b = d.t[j];
+      let maxP = 0; for (let k = i; k <= j; k++) maxP = Math.max(maxP, p.score[k] ?? 0);
+      const hit = own.filter((r) => r.a <= b && r.b >= a);
+      const kind = hit.some((r) => r.type === "pump") ? "tp" : hit.length ? "fs" : "fp";
+      ev.push({ kind, a, b, hours: j - i + 1, maxP });
+      i = j + 1;
+    }
+    own.filter((r) => r.type === "pump").forEach((r) => {
+      const ia = idxAt(r.a), ib = nearestIdx(r.b);
+      if (ia >= d.t.length || p.score[ia] == null) return;   // памп поза періодом передбачень
+      let caught = false, maxP = 0, firstSig = null;
+      for (let k = ia; k <= ib; k++) {
+        maxP = Math.max(maxP, p.score[k] ?? 0);
+        if (p.signal[k] && firstSig == null) { caught = true; firstSig = d.t[k]; }
+      }
+      if (!caught) ev.push({ kind: "fn", a: r.a, b: r.b, hours: (r.b - r.a) / H + 1, maxP });
+      else ev.delays.push((firstSig - r.a) / H);
+    });
+    ev.sort((x, y) => x.a - y.a);
+    return ev;
+  };
+  const EVENT_TEXT = { fp: "Хибний сигнал", fs: "Сигнал на фальстарті", fn: "Пропущений памп", tp: "Спіймано" };
+  const renderErrors = () => {
+    if (!PRED.available) { $("errCard").hidden = true; return; }
+    $("errCard").hidden = false;
+    const ev = modelEvents(), p = P();
+    const n = (k) => ev.filter((e) => e.kind === k).length;
+    const sum = $("errSum"); sum.replaceChildren();
+    if (!p || !p.n) {
+      sum.textContent = "Для цього тікера немає передбачень. Запусти python features.py і python train.py.";
+    } else {
+      const pumps = rows.filter((r) => r.tk === st.tk && r.type === "pump").length;
+      [["Пампів спіймано", `${pumps - n("fn")}/${pumps}`], ["Хибних сигналів", n("fp")], ["Сигналів на фальстартах", n("fs")]].forEach(([k, v]) => {
+        const s = document.createElement("span"); s.append(k + ": "); const bb = document.createElement("b"); bb.textContent = v; s.appendChild(bb); sum.appendChild(s);
+      });
+    }
+    const tb = $("errRows"); tb.replaceChildren();
+    const errors = ev.filter((e) => e.kind !== "tp");
+    errors.forEach((e) => {
+      const tr = document.createElement("tr"); tr.className = "err-row";
+      const td0 = document.createElement("td"); const sw = document.createElement("i"); sw.className = "sw " + e.kind;
+      td0.append(sw, EVENT_TEXT[e.kind]); tr.appendChild(td0);
+      [[fmtTs(e.a), "m"], [fmtTs(e.b), "m"], [String(e.hours), "m"], [st.model === "rule" ? "—" : e.maxP.toFixed(3), "m"]].forEach(([v, c]) => {
+        const td = document.createElement("td"); td.textContent = v; td.className = c; tr.appendChild(td);
+      });
+      const td = document.createElement("td"); const btn = document.createElement("button"); btn.textContent = "Показати";
+      btn.addEventListener("click", () => {
+        st.x0 = e.a - 36 * H; st.x1 = e.b + 37 * H; clampDomain(); setRangeBtn(-1); draw();
+        $("chart").scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      td.appendChild(btn); tr.appendChild(td); tb.appendChild(tr);
+    });
+    $("errEmpty").hidden = !(p && p.n) || errors.length > 0;
+    const caught = ev.delays;
+    $("errNote").textContent = (p && p.n ? (caught.length ? `Затримка першого сигналу від початку кожного спійманого пампу, год: ${caught.join(", ")}. ` : "") : "")
+      + `Передбачення з train.py від ${PRED.updated} UTC: кожен тікер оцінювала модель, яка його не бачила. `
+      + "Помилки рахуються за поточною розміткою, тож після її зміни перезапусти features.py і train.py.";
   };
 
   // ---------- керування ----------
@@ -499,13 +693,27 @@ td button { padding: 2px 8px; font-size: 12px; }
   const setTicker = async (tk) => {
     if (!DATA[tk]) {
       status(`Завантажую ${tk}…`);
-      try { DATA[tk] = await api("GET", `/api/data?ticker=${encodeURIComponent(tk)}`); status(""); }
-      catch (e) { status(`Не вдалося завантажити ${tk}: ${e.message}`, true); return; }
+      try {
+        const q = encodeURIComponent(tk);
+        const [d, pr] = await Promise.all([api("GET", `/api/data?ticker=${q}`), api("GET", `/api/predictions?ticker=${q}`).catch(() => ({ available: false }))]);
+        if (pr.available) { d.pred = alignPred(d, pr); enablePredictions(pr); }
+        DATA[tk] = d; status("");
+      } catch (e) { status(`Не вдалося завантажити ${tk}: ${e.message}`, true); return; }
     }
     st.tk = tk; st.a = st.b = null; st.hover = null;
     [st.x0, st.x1] = fullDomain();
     document.querySelectorAll("#tickers button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tk === tk)));
-    setRangeBtn(60); renderSel(); draw();
+    setRangeBtn(60); renderSel(); renderErrors(); draw();
+  };
+  // перший тікер з передбаченнями вмикає панель моделі, легенду і вибір моделі
+  const enablePredictions = (pr) => {
+    if (PRED.available) return;
+    PRED.available = true; PRED.updated = pr.updated; PRED.models = Object.keys(pr.models);
+    if (!PRED.models.includes(st.model)) st.model = PRED.models[PRED.models.length - 1];
+    const sel = $("modelSel");
+    PRED.models.forEach((m) => { const o = document.createElement("option"); o.value = m; o.textContent = MODEL_NAMES[m] || m; sel.appendChild(o); });
+    sel.value = st.model; sel.hidden = false; $("modelLbl").hidden = false; $("legend").hidden = false;
+    PANES = PANES_WITH_MODEL; cv.classList.add("with-model"); layout();
   };
 
   document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
@@ -518,6 +726,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     clampDomain(); setRangeBtn(days); draw();
   }));
   $("logBtn").addEventListener("click", () => { st.log = !st.log; $("logBtn").setAttribute("aria-pressed", String(st.log)); draw(); });
+  $("modelSel").addEventListener("change", (e) => { st.model = e.target.value; renderErrors(); draw(); });
 
   let drag = null;
   const localX = (e) => e.clientX - cv.getBoundingClientRect().left;
@@ -590,7 +799,9 @@ td button { padding: 2px 8px; font-size: 12px; }
       $("tickers").appendChild(b);
     });
     renderRows();
-    await setTicker(TICKERS[0]);
+    // адреса виду http://127.0.0.1:8765/#AKE відкриває одразу потрібний тікер
+    const fromHash = decodeURIComponent(location.hash.slice(1)).toUpperCase();
+    await setTicker(TICKERS.includes(fromHash) ? fromHash : TICKERS[0]);
   })();
 })();
 </script>

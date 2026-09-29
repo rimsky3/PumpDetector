@@ -237,6 +237,7 @@ def main() -> None:
         print(f"  {name}")
         res = leave_ticker_out(name, X, y, groups)
         preds[f"{name}_score"], preds[f"{name}_signal"] = res["score"], res["signal"].astype(int)
+        preds[f"{name}_threshold"] = res["threshold"]
         summary[name] = {**hour_metrics(y, res, name != "rule"), **event_metrics(df, res["signal"], pumps)}
         per_ticker[name] = pd.DataFrame({
             t: {"f1": f1_score(y[groups == t], res["signal"][groups == t], zero_division=0),

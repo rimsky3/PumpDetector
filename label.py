@@ -4,17 +4,20 @@ label.py — локальний інструмент розмітки пампі
 Піднімає вебсервер на 127.0.0.1 (доступний лише з цього комп'ютера) і відкриває
 сторінку з графіками ціни, open interest і обсягу по кожному тікеру з бази.
 Виділені інтервали одразу записуються в pumps.csv і синхронізуються з таблицею pumps.
+Якщо є reports/oof_predictions.csv (python train.py), показує сигнали моделей і їхні помилки.
 
     python label.py
     python label.py --days 30 --port 8765
 """
 
 import argparse
+import csv
 import json
 import os
 import sys
 import threading
 import webbrowser
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -24,8 +27,35 @@ from dotenv import load_dotenv
 from load_pumps import (check_overlaps, parse_row, parse_ts, read_pumps,
                         sync_db, write_pumps, TS_FORMAT)
 
-PAGE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "label.html")
+ROOT = os.path.dirname(os.path.abspath(__file__))
+PAGE = os.path.join(ROOT, "tools", "label.html")
+PREDICTIONS = os.path.join(ROOT, "reports", "oof_predictions.csv")   # пише train.py
 lock = threading.Lock()  # запис у pumps.csv — по одному
+
+
+def predictions(base: str) -> dict:
+    """Out-of-fold передбачення моделей для тікера (з останнього запуску train.py)."""
+    if not os.path.exists(PREDICTIONS):
+        return {"available": False}
+    with open(PREDICTIONS, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        models = [c[:-len("_score")] for c in reader.fieldnames if c.endswith("_score")]
+        rows = [r for r in reader if r["base_asset"] == base]
+    num = lambda s: float(s) if s not in ("", None) else None
+    out = {
+        "available": True,
+        "updated": datetime.fromtimestamp(os.path.getmtime(PREDICTIONS), timezone.utc).strftime(TS_FORMAT),
+        "t": [int(datetime.fromisoformat(r["ts"]).timestamp()) for r in rows],
+        "models": {},
+    }
+    for m in models:
+        thr = next((num(r[f"{m}_threshold"]) for r in rows if r.get(f"{m}_threshold")), None)
+        out["models"][m] = {
+            "score": [num(r[f"{m}_score"]) for r in rows],
+            "signal": [int(r[f"{m}_signal"]) for r in rows],
+            "threshold": thr,
+        }
+    return out
 
 
 def ticker_data(conn, base: str, days: int) -> dict:
@@ -111,6 +141,9 @@ class Handler(BaseHTTPRequestHandler):
                 base = (parse_qs(url.query).get("ticker") or [""])[0].upper()
                 with psycopg.connect(self.db_url) as conn:
                     return self._send(200, ticker_data(conn, base, self.days))
+            if url.path == "/api/predictions":
+                base = (parse_qs(url.query).get("ticker") or [""])[0].upper()
+                return self._send(200, predictions(base))
             if url.path == "/api/pumps":
                 with lock:
                     return self._send(200, {"rows": rows_to_json(read_pumps())})

@@ -72,3 +72,35 @@ This opens http://127.0.0.1:8765, a local page served only to this computer.
 - Labeled intervals stay on the chart, numbered; each ticker button shows how many intervals it has.
 
 To label a new ticker: add it to `tickers.txt`, run `python fetch.py --new`, restart `label.py`.
+`http://127.0.0.1:8765/#AKE` opens a specific ticker directly.
+
+## Reviewing model errors
+
+When `reports/oof_predictions.csv` exists (written by `python train.py`), the tool adds:
+
+- **A fourth panel, "Модель"**, with the pump probability, the signal threshold (dashed) and a strip
+  classifying each hour: signal inside a pump, false signal, signal on a false start, missed pump hour.
+- **A model selector** (LightGBM, logistic regression, rule).
+- **An error list for the ticker**: false-signal episodes, signals on false starts and missed pumps, each
+  with a **Показати** button that zooms the chart to it. Below it, the delay of the first signal for every
+  caught pump.
+
+Predictions are out-of-fold: each ticker is scored by a model that never saw it, so this is how the model
+would have behaved on that coin live. Errors are computed against the **current** `pumps.csv`, so a label
+fixed in the tool immediately changes the error list. Retrain to see the model's reaction.
+
+**Change a label only when the labeling rules justify it, never because the model disagrees.** The model
+points at places worth a second look. The decision must come from the rules above (for example, "OI
+started rising steadily three hours earlier"). Relabeling towards the model's output makes the next
+model learn its own predictions: metrics improve while real quality does not.
+
+To move an interval, delete it in the list and mark it again; overlapping intervals are rejected.
+
+Things to look for:
+
+- **Confident signals on a false start** (probability near 1). Either the model is fooled by something
+  specific, or the interval is actually a pump.
+- **False signals right before or after a labeled pump.** Red hours at the edges of a caught pump usually
+  mean the boundary could move, not that the model is wrong.
+- **Missed pumps with low probability.** Look at which features were unusual. The pump may be a
+  different pattern that needs more examples.
