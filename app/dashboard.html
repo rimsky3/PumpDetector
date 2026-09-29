@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pump Detector</title>
+<style>
+/* Макет «Pump Detector App»: бічне меню + екран. Темна тема з макету. */
+:root {
+  --bg: #0f0f0e; --side: #141413; --card: #1c1c1a; --line: #262622; --line2: #33332e; --row: #201f1d;
+  --fg: #f0efec; --fg2: #a8a79f; --fg3: #6b6a64;
+  --accent: #d85a30; --accent-fg: #4a1b0c;
+  --price: #378add; --hot: #e24b4a; --hot-soft: #f09595; --warm: #f0997b; --amber: #ef9f27; --ok: #97c459; --muted: #5f5e5a;
+  --alert-bg: #4a1b0c; --cand-bg: #412402; --calm-bg: #262622; --calm-fg: #888780; --ok-border: #173404;
+  --link: #85b7eb;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; }
+button, select { font: inherit; color: inherit; }
+button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.num { font-variant-numeric: tabular-nums; }
+
+.app { display: flex; min-height: 100%; }
+.side { width: 220px; flex-shrink: 0; padding: 24px 16px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid var(--line); background: var(--side); position: sticky; top: 0; height: 100vh; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 24px; }
+.logo { width: 28px; height: 28px; border-radius: 6px; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; color: var(--accent-fg); }
+.brand span { font-size: 15px; font-weight: 500; }
+.nav { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 8px; color: var(--fg2); text-decoration: none; }
+.nav:hover { color: var(--fg); background: #1c1c1a; }
+.nav[aria-current="page"] { background: var(--line); color: var(--fg); }
+.nav svg { width: 18px; height: 18px; flex: none; }
+.side-model { margin-top: 20px; padding: 0 4px; display: grid; gap: 6px; }
+.side-model label { font-size: 11px; color: var(--fg3); letter-spacing: .04em; text-transform: uppercase; padding-left: 4px; }
+.foot { margin-top: auto; padding: 12px; border-radius: 8px; background: var(--card); font-size: 12px; color: var(--fg2); line-height: 1.5; }
+
+.main { flex: 1; min-width: 0; padding: 28px 36px; display: flex; flex-direction: column; gap: 20px; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sel { height: 38px; background: var(--card); border: 1px solid var(--line2); border-radius: 8px; padding: 0 12px; font-size: 14px; min-width: 150px; }
+.btn { height: 38px; padding: 0 16px; border-radius: 8px; border: 1px solid var(--line2); background: var(--card); font-size: 14px; cursor: pointer; }
+.btn:hover { border-color: var(--fg3); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .55; cursor: progress; }
+.seg { display: flex; border: 1px solid var(--line2); border-radius: 8px; overflow: hidden; }
+.seg button { height: 36px; padding: 0 12px; border: 0; background: var(--card); color: var(--fg2); cursor: pointer; font-size: 13px; }
+.seg button + button { border-left: 1px solid var(--line2); }
+.seg button[aria-pressed="true"] { background: var(--line2); color: var(--fg); }
+.live { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg2); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+.dot.warn { background: var(--amber); } .dot.bad { background: var(--hot); }
+
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1000px) { .grid3 { grid-template-columns: minmax(0, 1fr); } }
+.card { background: var(--card); border-radius: 10px; padding: 16px; border: 1px solid transparent; min-width: 0; }
+.card .k { font-size: 12px; color: var(--fg2); margin-bottom: 6px; }
+.card .k span { color: var(--fg3); }
+.card .v { font-size: 26px; font-weight: 500; }
+.card .vs { font-size: 22px; font-weight: 500; }
+.card .row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.card .sub { font-size: 12px; color: var(--fg2); }
+.card .note { font-size: 11px; color: var(--fg3); margin-top: 4px; }
+.card.stop { border-color: var(--alert-bg); } .card.exit { border-color: var(--ok-border); } .card.trail { border-color: var(--muted); }
+.hot { color: var(--hot-soft); } .warm { color: var(--warm); } .amber { color: var(--amber); } .ok { color: var(--ok); } .dim { color: var(--fg2); }
+
+.chart-card { background: var(--card); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.chart-head .t { font-size: 13px; color: var(--fg2); }
+.legend { display: flex; gap: 14px; font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
+.legend span { display: flex; align-items: center; gap: 5px; }
+.sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.sw.line { height: 2px; width: 12px; border-radius: 1px; }
+.sw.dash { height: 0; width: 12px; border-top: 2px dashed; border-radius: 0; }
+.chart-wrap { position: relative; }
+canvas { display: block; width: 100%; height: 380px; }
+.tip { position: absolute; pointer-events: none; background: #141413; border: 1px solid var(--line2); border-radius: 6px; padding: 8px 10px; font-size: 12px; min-width: 180px; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
+.tip .ts { color: var(--fg2); margin-bottom: 4px; }
+.tip .r { display: flex; justify-content: space-between; gap: 14px; }
+.tip .r span { color: var(--fg2); }
+.pos-line { font-size: 12px; color: var(--fg2); }
+.banner { font-size: 12px; color: var(--amber); background: var(--cand-bg); border-radius: 8px; padding: 8px 12px; }
+.error { font-size: 13px; color: var(--hot-soft); background: var(--alert-bg); border-radius: 8px; padding: 10px 14px; }
+
+.h1 { font-size: 18px; font-weight: 500; }
+.h1sub { font-size: 13px; color: var(--fg2); margin-top: 2px; }
+.split { display: flex; gap: 20px; align-items: flex-start; }
+@media (max-width: 1000px) { .split { flex-direction: column; align-items: stretch; } }
+.table { flex: 2; background: var(--card); border-radius: 10px; padding: 4px 0; overflow: hidden; min-width: 0; }
+.tr { display: grid; grid-template-columns: minmax(110px, 1fr) 150px 90px 110px; gap: 8px; padding: 12px 20px; align-items: center; border-bottom: 1px solid var(--row); width: 100%; background: none; border-left: 0; border-right: 0; border-top: 0; text-align: left; }
+.tr.head { font-size: 11px; color: var(--fg3); border-bottom-color: var(--line); padding-block: 12px; }
+button.tr { cursor: pointer; }
+button.tr:hover { background: #22221f; }
+.tr:last-child { border-bottom: 0; }
+.tk { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+.tag { font-size: 10px; color: var(--fg3); border: 1px solid var(--line2); border-radius: 4px; padding: 0 4px; font-weight: 400; }
+.pill { font-size: 11px; padding: 3px 9px; border-radius: 20px; width: fit-content; }
+.pill.alert { background: var(--alert-bg); color: var(--warm); }
+.pill.candidate { background: var(--cand-bg); color: var(--amber); }
+.pill.calm, .pill.none { background: var(--calm-bg); color: var(--calm-fg); }
+.log { flex: 1; background: var(--card); border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; min-width: 0; }
+.log h2 { font-size: 13px; color: var(--fg2); font-weight: 400; margin: 0 0 8px; }
+.ev { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.ev:last-child { border-bottom: 0; }
+.ev .top { display: flex; justify-content: space-between; align-items: baseline; }
+.ev .top b { font-size: 13px; font-weight: 500; }
+.ev .top span { font-size: 11px; color: var(--fg3); }
+.ev .d { font-size: 12px; color: var(--fg2); margin-top: 2px; }
+.empty { color: var(--fg3); font-size: 13px; padding: 16px 20px; }
+.explain { font-size: 12px; color: var(--fg3); line-height: 1.5; }
+
+@media (max-width: 800px) {
+  .app { flex-direction: column; }
+  .side { width: auto; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px 16px; }
+  .brand { padding: 0 8px 0 0; }
+  .side-model, .foot { display: none; }
+  .main { padding: 20px 16px; }
+  .tr { grid-template-columns: minmax(90px, 1fr) 90px 70px 90px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="side" aria-label="Розділи">
+    <div class="brand"><div class="logo">P</div><span>Pump Detector</span></div>
+    <a class="nav" href="#forecast" id="navForecast">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 17l5-5 4 4 8-8"></path><path d="M15 8h6v6"></path></svg>
+      <span>Прогноз</span>
+    </a>
+    <a class="nav" href="#scanner" id="navScanner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+      <span>Скринер</span>
+    </a>
+    <div class="side-model">
+      <label for="modelSel">Модель</label>
+      <select class="sel" id="modelSel"></select>
+    </div>
+    <div class="foot" id="foot">…</div>
+  </nav>
+
+  <main class="main" id="viewForecast" hidden>
+    <div class="topbar">
+      <div class="controls">
+        <select class="sel" id="tickerSel" aria-label="Тікер"></select>
+        <button class="btn primary" id="refreshBtn">Прогнозувати</button>
+        <div class="seg" role="group" aria-label="Період графіка">
+          <button data-days="1">1 д</button><button data-days="3" aria-pressed="true">3 д</button><button data-days="7">7 д</button>
+        </div>
+      </div>
+      <div class="live" id="fresh"><span class="dot"></span><span>…</span></div>
+    </div>
+    <div id="fError" class="error" hidden></div>
+    <div id="fBanner" class="banner" hidden></div>
+
+    <div class="grid3">
+      <div class="card"><div class="k">Поточна ймовірність пампу</div><div class="v num" id="cProb">—</div><div class="note" id="cProbNote"></div></div>
+      <div class="card"><div class="k">Дельта OI, 4 год</div><div class="v num" id="cOi">—</div><div class="note">сума по біржах, без стрибків від лістингів</div></div>
+      <div class="card"><div class="k">Volume z-score</div><div class="v num" id="cVol">—</div><div class="note">відносно попередніх 7 днів</div></div>
+    </div>
+
+    <div class="grid3">
+      <div class="card stop">
+        <div class="k">Стоп <span>· 75-й перц. MAE</span></div>
+        <div class="row"><span class="vs warm num" id="rStop">—</span><span class="sub num" id="rStopSub"></span></div>
+        <div class="note" id="rStopNote"></div>
+      </div>
+      <div class="card exit">
+        <div class="k">Сигнал виходу <span id="rExitK"></span></div>
+        <div class="row"><span class="vs" id="rExit">—</span></div>
+        <div class="note" id="rExitNote"></div>
+      </div>
+      <div class="card trail">
+        <div class="k">Trailing stop <span>· страховка</span></div>
+        <div class="row"><span class="vs num" id="rTrail">—</span><span class="sub" id="rTrailSub"></span></div>
+        <div class="note" id="rTrailNote"></div>
+      </div>
+    </div>
+
+    <section class="chart-card" aria-label="Графік тікера">
+      <div class="chart-head">
+        <span class="t" id="chartTitle">—</span>
+        <div class="legend">
+          <span><i class="sw line" style="background:var(--price)"></i>Ціна</span>
+          <span><i class="sw" style="background:var(--hot)"></i>Висока ймовірність</span>
+          <span><i class="sw dash" style="border-color:var(--warm)"></i>Стоп</span>
+          <span><i class="sw dash" style="border-color:var(--fg2)"></i>Trailing</span>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="cv" role="img" aria-label="Ціна з підсвіченими годинами високої ймовірності і ймовірність пампу під нею"></canvas>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+      <div class="pos-line num" id="posLine"></div>
+    </section>
+    <p class="explain">Ймовірність — оцінка моделі, що на тікері зараз триває памп. Стоп, trailing і вихід рахуються від першої години з ймовірністю вище порогу. Не торгова рекомендація.</p>
+  </main>
+
+  <main class="main" id="viewScanner" hidden>
+    <div class="topbar">
+      <div>
+        <div class="h1">Скринер</div>
+        <div class="h1sub" id="sSub">—</div>
+      </div>
+      <div class="live" id="sLive"><span class="dot"></span><span>…</span></div>
+    </div>
+    <div id="sError" class="error" hidden></div>
+    <div class="split">
+      <div class="table" role="table" aria-label="Тікери скринера">
+        <div class="tr head" role="row"><span>Тікер</span><span>Ціна, 48 год</span><span>Ймовірн.</span><span>Статус</span></div>
+        <div id="sRows"></div>
+      </div>
+      <section class="log" aria-labelledby="logH">
+        <h2 id="logH">Лог сигналів</h2>
+        <div id="sLog"></div>
+      </section>
+    </div>
+    <p class="explain">Статус: <b class="warm">Alert</b> — ймовірність вище порогу сигналу моделі; <b class="amber">Кандидат</b> — вище половини порогу; інакше «Спокійно».
+      Позначка «навч.» — тікер з навчальної вибірки: його години до моменту навчання модель уже бачила. У лозі <b>live</b> — чесна оцінка в реальному часі, <b>історія</b> — дозаповнення при першому запуску.</p>
+  </main>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const H = 3600;
+  const st = { view: "forecast", model: "lightgbm", ticker: null, days: 3, meta: null, data: null, hover: null };
+  try { st.model = localStorage.getItem("pd-model") || st.model; st.ticker = localStorage.getItem("pd-ticker"); } catch (e) {}
+
+  // ---------- форматування ----------
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmtTs = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:00`; };
+  const fmtHM = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  const fmtPx = (v) => v == null ? "—" : v >= 1000 ? v.toFixed(1) : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toPrecision(4);
+  const fmtPct = (v, d = 1) => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
+  const fmtP = (v) => v == null ? "—" : v.toFixed(2);
+  const fmtUsd = (v) => v == null ? "—" : v >= 1e9 ? "$" + (v / 1e9).toFixed(2) + "B" : v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M" : "$" + (v / 1e3).toFixed(0) + "K";
+  const ago = (t) => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? "щойно" : m < 60 ? `${m} хв тому` : `${Math.round(m / 60)} год тому`; };
+  const STATUS = { alert: "Alert", candidate: "Кандидат", calm: "Спокійно", none: "—" };
+  const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+  const api = async (path, opts) => {
+    const res = await fetch(path, opts);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  };
+  const show = (el, msg) => { el.textContent = msg || ""; el.hidden = !msg; };
+  const modelInfo = () => (st.meta?.models || []).find((m) => m.name === st.model);
+
+  // ---------- навігація ----------
+  const route = () => {
+    // #scanner або #forecast[/ТІКЕР]
+    const [view, tk] = location.hash.slice(1).split("/");
+    st.view = view === "scanner" ? "scanner" : "forecast";
+    if (tk && st.meta?.tickers.includes(tk.toUpperCase())) selectTicker(tk.toUpperCase());
+    $("viewForecast").hidden = st.view !== "forecast";
+    $("viewScanner").hidden = st.view !== "scanner";
+    $("navForecast").removeAttribute("aria-current"); $("navScanner").removeAttribute("aria-current");
+    $(st.view === "forecast" ? "navForecast" : "navScanner").setAttribute("aria-current", "page");
+    renderFoot();
+    if (st.view === "scanner") loadScanner(); else loadTicker();
+  };
+
+  const renderFoot = () => {
+    const m = st.meta; if (!m) return;
+    const foot = $("foot"); foot.replaceChildren();
+    const line = (t) => { const d = document.createElement("div"); d.textContent = t; foot.appendChild(d); };
+    if (st.view === "scanner") {
+      line("Скан щогодини о HH:05 UTC");
+      const left = Math.max(0, m.next_scan - Date.now() / 1000);
+      line(`Наступний: через ${Math.floor(left / 60)}:${pad(Math.floor(left % 60))}`);
+    } else {
+      const mi = modelInfo();
+      line(`Модель: ${mi ? mi.title : st.model}`);
+      if (mi) line(`Навчена ${mi.trained_at.slice(5, 16)} · ${mi.pump_intervals} пампів`);
+      line(`Дані: Coinalyze · ${m.exchanges} біржі`);
+    }
+  };
+
+  const renderFresh = (el) => {
+    const t = st.meta?.last_scored_at;
+    const dot = el.querySelector(".dot"), text = el.querySelector("span:last-child");
+    if (!t) { dot.className = "dot bad"; text.textContent = "Скринер ще не запускався"; return; }
+    const age = Date.now() / 1000 - t;
+    dot.className = "dot" + (age > 2 * H ? " bad" : age > 75 * 60 ? " warn" : "");
+    text.textContent = el.id === "sLive"
+      ? (age > 75 * 60 ? `Останній скан ${ago(t)}` : "Скринер активний")
+      : `Оновлено ${ago(t)}`;
+  };
+
+  // ---------- Прогноз ----------
+  const loadTicker = async () => {
+    if (!st.ticker) return;
+    $("tickerSel").value = st.ticker;
+    try {
+      st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&days=${st.days}`);
+      show($("fError"), "");
+    } catch (e) { st.data = null; show($("fError"), e.message); }
+    renderForecast(); draw();
+  };
+
+  const renderForecast = () => {
+    const d = st.data;
+    renderFresh($("fresh"));
+    if (!d) return;
+    const c = d.cards, p = d.position, k = d.k, thr = d.threshold;
+    const prob = $("cProb");
+    prob.textContent = fmtP(c.probability);
+    prob.className = "v num " + (c.status === "alert" ? "hot" : c.status === "candidate" ? "amber" : "");
+    $("cProbNote").textContent = `поріг сигналу ${fmtP(thr)} · ${STATUS[c.status]}`;
+    $("cOi").textContent = fmtPct(c.oi_chg_4h);
+    $("cVol").textContent = c.volume_z_7d == null ? "—" : c.volume_z_7d.toFixed(1) + "σ";
+    show($("fBanner"), d.in_sample ? "In-sample: остання година цього тікера була в навчанні моделі, тож оцінка показує, що модель запам'ятала, а не передбачила." : "");
+
+    const kTxt = k == null ? "—" : `−${k.toFixed(1)} NATR`;
+    if (p.open) {
+      $("rStop").textContent = fmtPx(p.stop);
+      $("rStopSub").textContent = kTxt;
+      $("rStopNote").textContent = `від входу ${fmtPx(p.entry)} · ATR на вході ${fmtPx(p.atr_entry)}`;
+      $("rTrail").textContent = fmtPx(p.trailing);
+      $("rTrailSub").textContent = `${d.trail_natr} NATR від максимуму`;
+      $("rTrailNote").textContent = `максимум з моменту входу ${fmtPx(p.high)}`;
+      const exit = $("rExit");
+      if (p.below_bars > 0) { exit.textContent = `Увага: ${p.below_bars} бар нижче порогу`; exit.className = "vs amber"; }
+      else { exit.textContent = "Памп триває"; exit.className = "vs ok"; }
+      $("rExitNote").textContent = `${fmtP(c.probability)} → вихід нижче ${fmtP(thr)}, ${d.exit_bars} бари поспіль`;
+      $("posLine").textContent = `Вхід ${fmtTs(p.entry_ts)} UTC за ${fmtPx(p.entry)} · ${p.hours} год у позиції · ${fmtPct(p.result_pct)}`;
+    } else {
+      $("rStop").textContent = kTxt;
+      $("rStopSub").textContent = "від ціни входу";
+      $("rStopNote").textContent = k == null ? "" : `розраховано на розмічених пампах`;
+      $("rTrail").textContent = `${d.trail_natr} NATR`;
+      $("rTrailSub").textContent = "від максимуму";
+      $("rTrailNote").textContent = "активується з першим сигналом";
+      const exit = $("rExit");
+      if (p.exit_ts) {
+        exit.textContent = `Вихід ${fmtTs(p.exit_ts)}`; exit.className = "vs dim";
+        $("rExitNote").textContent = `${p.reason === "stop" ? "по стопу" : "ймовірність нижче порогу"} · результат ${fmtPct(p.result_pct)}`;
+        $("posLine").textContent = `Остання угода: вхід ${fmtTs(p.entry_ts)} за ${fmtPx(p.entry)}, вихід ${fmtTs(p.exit_ts)} за ${fmtPx(p.exit)} · ${fmtPct(p.result_pct)}`;
+      } else {
+        exit.textContent = "Немає сигналу"; exit.className = "vs dim";
+        $("rExitNote").textContent = `вхід, коли ймовірність ≥ ${fmtP(thr)}`;
+        $("posLine").textContent = "";
+      }
+    }
+    $("rExitK").textContent = `· модель, поріг ${fmtP(thr)}`;
+    $("chartTitle").textContent = `${d.ticker} · 1h · ${st.days} д`;
+  };
+
+  // ---------- графік ----------
+  const cv = $("cv"), ctx = cv.getContext("2d"), tip = $("tip");
+  const M = { l: 64, r: 12, t: 8, b: 24 };
+  let W = 0, Hh = 0, panes = [];
+  const layout = () => {
+    const dpr = window.devicePixelRatio || 1;
+    W = cv.clientWidth; Hh = cv.clientHeight;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(Hh * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const avail = Hh - M.t - M.b - 18;
+    panes = [{ key: "price", y: M.t, h: avail * .7 }, { key: "prob", y: M.t + avail * .7 + 18, h: avail * .3 }];
+  };
+  const draw = () => {
+    ctx.clearRect(0, 0, W, Hh);
+    const d = st.data; if (!d || !d.series.t.length) return;
+    const s = d.series, n = s.t.length, prob = s.prob[st.model] || [], thr = d.threshold, pos = d.position;
+    const t0 = s.t[0], t1 = s.t[n - 1] + H, pw = W - M.l - M.r;
+    const X = (t) => M.l + (t - t0) / (t1 - t0) * pw;
+    const bw = pw / n;
+    const C = { line: cssVar("--line"), fg2: cssVar("--fg2"), fg3: cssVar("--fg3"), price: cssVar("--price"), hot: cssVar("--hot"), muted: cssVar("--muted"), warm: cssVar("--warm") };
+    ctx.font = "11px -apple-system, 'Segoe UI', system-ui, sans-serif";
+
+    // ціна
+    const P = panes[0];
+    let lo = Infinity, hi = -Infinity;
+    s.low.forEach((v) => { if (v != null && v < lo) lo = v; });
+    s.high.forEach((v) => { if (v != null && v > hi) hi = v; });
+    if (pos.open) { if (pos.stop != null) lo = Math.min(lo, pos.stop); }
+    const padP = (hi - lo) * .08 || hi * .02; lo -= padP; hi += padP;
+    const Y = (v) => P.y + P.h - (v - lo) / (hi - lo) * P.h;
+    // підсвітка годин з високою ймовірністю
+    ctx.fillStyle = C.hot; ctx.globalAlpha = .1;
+    for (let i = 0; i < n; i++) if (prob[i] != null && prob[i] >= thr) ctx.fillRect(X(s.t[i]), P.y, bw + .5, P.h);
+    ctx.globalAlpha = 1;
+    // сітка
+    ctx.textAlign = "right"; ctx.textBaseline = "middle";
+    for (let k = 0; k <= 3; k++) {
+      const v = lo + (hi - lo) * k / 3, y = Math.round(Y(v)) + .5;
+      ctx.strokeStyle = C.line; ctx.beginPath(); ctx.moveTo(M.l, y); ctx.lineTo(W - M.r, y); ctx.stroke();
+      ctx.fillStyle = C.fg3; ctx.fillText(fmtPx(v), M.l - 8, y);
+    }
+    // стоп і trailing
+    const hline = (v, color, fromT) => {
+      if (v == null) return; const y = Math.round(Y(v)) + .5, x0 = fromT ? Math.max(M.l, X(fromT)) : M.l;
+      ctx.strokeStyle = color; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(W - M.r, y); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
+    };
+    if (pos.open) { hline(pos.stop, C.warm, pos.entry_ts); hline(pos.trailing, C.fg2, pos.entry_ts); }
+    // лінія ціни
+    ctx.strokeStyle = C.price; ctx.lineWidth = 2.2; ctx.lineJoin = "round"; ctx.beginPath();
+    let open = false;
+    for (let i = 0; i < n; i++) { const v = s.price[i]; if (v == null) { open = false; continue; } const x = X(s.t[i] + H / 2), y = Y(v); if (!open) { ctx.moveTo(x, y); open = true; } else ctx.lineTo(x, y); }
+    ctx.stroke(); ctx.lineWidth = 1;
+    // точка входу
+    if (pos.entry_ts && pos.entry_ts >= t0) {
+      const x = X(pos.entry_ts + H / 2), y = Y(pos.entry);
+      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = C.warm; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = cssVar("--card"); ctx.stroke(); ctx.lineWidth = 1;
+    }
+
+    // ймовірність
+    const Q = panes[1];
+    const YQ = (v) => Q.y + Q.h - v * Q.h;
+    for (let i = 0; i < n; i++) {
+      const v = prob[i]; if (v == null) continue;
+      ctx.fillStyle = v >= thr ? C.hot : C.muted;
+      const y = YQ(v); ctx.fillRect(X(s.t[i]) + (bw > 4 ? 1 : 0), y, Math.max(1, bw - (bw > 4 ? 2 : 0)), Q.y + Q.h - y);
+    }
+    const yt = Math.round(YQ(thr)) + .5;
+    ctx.strokeStyle = C.fg2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(M.l, yt); ctx.lineTo(W - M.r, yt); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.fg3; ctx.textAlign = "right";
+    ctx.fillText("1", M.l - 8, YQ(1)); ctx.fillText("0", M.l - 8, YQ(0)); ctx.fillText(fmtP(thr), M.l - 8, yt);
+    if (!prob.some((v) => v != null)) { ctx.textAlign = "left"; ctx.fillText("Немає оцінок: запусти скринер або натисни «Прогнозувати»", M.l + 8, Q.y + Q.h / 2); }
+
+    // вісь часу
+    ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = C.fg3;
+    const step = [3, 6, 12, 24, 48].find((h) => pw / ((t1 - t0) / H / h) >= 80) || 48;
+    for (let t = Math.ceil(t0 / (step * H)) * step * H; t < t1; t += step * H) {
+      const x = X(t); if (x < M.l + 20 || x > W - M.r - 20) continue;
+      const dd = new Date(t * 1000);
+      ctx.fillText(dd.getUTCHours() === 0 ? `${pad(dd.getUTCDate())}.${pad(dd.getUTCMonth() + 1)}` : `${pad(dd.getUTCHours())}:00`, x, Q.y + Q.h + 6);
+    }
+    // перехрестя
+    if (st.hover != null) {
+      const x = Math.round(X(s.t[st.hover] + H / 2)) + .5;
+      ctx.strokeStyle = C.fg3; ctx.beginPath(); ctx.moveTo(x, P.y); ctx.lineTo(x, Q.y + Q.h); ctx.stroke();
+    }
+  };
+  const showTip = (px) => {
+    const d = st.data, i = st.hover;
+    if (!d || i == null) { tip.hidden = true; return; }
+    const s = d.series, pr = s.prob[st.model] || [];
+    tip.replaceChildren();
+    const add = (k, v) => { const r = document.createElement("div"); r.className = "r"; const a = document.createElement("span"); a.textContent = k; const b = document.createElement("b"); b.textContent = v; r.append(a, b); tip.appendChild(r); };
+    const ts = document.createElement("div"); ts.className = "ts"; ts.textContent = fmtTs(s.t[i]) + " UTC"; tip.appendChild(ts);
+    add("Ціна", fmtPx(s.price[i])); add("OI", fmtUsd(s.oi[i])); add("Ймовірність", fmtP(pr[i]));
+    tip.hidden = false;
+    let left = px + 16; if (left + tip.offsetWidth > cv.clientWidth - 8) left = px - tip.offsetWidth - 16;
+    tip.style.left = Math.max(8, left) + "px"; tip.style.top = "12px";
+  };
+  cv.addEventListener("pointermove", (e) => {
+    const d = st.data; if (!d) return;
+    const x = e.clientX - cv.getBoundingClientRect().left, s = d.series, n = s.t.length;
+    if (x < M.l || x > W - M.r) { st.hover = null; tip.hidden = true; draw(); return; }
+    st.hover = Math.max(0, Math.min(n - 1, Math.floor((x - M.l) / (W - M.l - M.r) * n)));
+    draw(); showTip(x);
+  });
+  cv.addEventListener("pointerleave", () => { st.hover = null; tip.hidden = true; draw(); });
+  new ResizeObserver(() => { layout(); draw(); }).observe(cv);
+
+  // ---------- Скринер ----------
+  const spark = (vals, color) => {
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 120 24"); svg.setAttribute("width", "120"); svg.setAttribute("height", "24"); svg.setAttribute("aria-hidden", "true");
+    const v = vals.filter((x) => x != null); if (v.length < 2) return svg;
+    const lo = Math.min(...v), hi = Math.max(...v), rng = hi - lo || 1;
+    const pts = v.map((x, i) => `${(i / (v.length - 1) * 120).toFixed(1)},${(22 - (x - lo) / rng * 20).toFixed(1)}`).join(" ");
+    const pl = document.createElementNS(ns, "polyline");
+    pl.setAttribute("points", pts); pl.setAttribute("fill", "none"); pl.setAttribute("stroke", color); pl.setAttribute("stroke-width", "2"); pl.setAttribute("stroke-linejoin", "round");
+    svg.appendChild(pl); return svg;
+  };
+  const loadScanner = async () => {
+    renderFresh($("sLive"));
+    let d;
+    try { d = await api(`/api/scanner?model=${st.model}`); show($("sError"), ""); }
+    catch (e) { show($("sError"), e.message); return; }
+    const mi = modelInfo();
+    $("sSub").textContent = `${d.rows.length} тікерів · ${mi ? mi.title : st.model}, поріг ${mi ? fmtP(mi.threshold) : "—"}`;
+    const rows = $("sRows"); rows.replaceChildren();
+    if (!d.rows.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Скринер ще не запускався. Додай тікери в watchlist.txt і запусти python screener.py."; rows.appendChild(e); }
+    d.rows.forEach((r) => {
+      const b = document.createElement("button"); b.className = "tr"; b.setAttribute("role", "row");
+      b.setAttribute("aria-label", `${r.ticker}: ймовірність ${fmtP(r.probability)}, ${STATUS[r.status]}. Відкрити прогноз`);
+      const tk = document.createElement("span"); tk.className = "tk"; tk.textContent = r.ticker;
+      if (r.in_sample) { const t = document.createElement("span"); t.className = "tag"; t.textContent = "навч."; t.title = "Тікер з навчальної вибірки"; tk.appendChild(t); }
+      const color = r.status === "alert" ? cssVar("--hot") : r.status === "candidate" ? cssVar("--warm") : cssVar("--muted");
+      const sp = document.createElement("span"); sp.appendChild(spark(r.spark, color));
+      const pv = document.createElement("span"); pv.className = "num"; pv.textContent = fmtP(r.probability);
+      pv.style.cssText = `font-size:13px;font-weight:500;color:${r.status === "alert" || r.status === "candidate" ? cssVar("--warm") : cssVar("--fg2")}`;
+      const pill = document.createElement("span"); pill.className = "pill " + r.status;
+      pill.textContent = STATUS[r.status] + (r.status === "alert" && r.streak > 1 ? ` · ${r.streak} год` : "");
+      b.append(tk, sp, pv, pill);
+      b.addEventListener("click", () => { location.hash = `#forecast/${r.ticker}`; });
+      rows.appendChild(b);
+    });
+    const log = $("sLog"); log.replaceChildren();
+    if (!d.log.length) { const e = document.createElement("div"); e.className = "empty"; e.style.padding = "8px 0"; e.textContent = "Сигналів за останні 7 днів немає."; log.appendChild(e); }
+    const KIND = { live: "live", history: "історія", "in-sample": "in-sample" };
+    d.log.forEach((e) => {
+      const ev = document.createElement("div"); ev.className = "ev";
+      const top = document.createElement("div"); top.className = "top";
+      const b = document.createElement("b"); b.textContent = e.ticker;
+      const t = document.createElement("span"); t.textContent = fmtTs(e.ts) + " UTC";
+      top.append(b, t);
+      const dd = document.createElement("div"); dd.className = "d"; dd.textContent = `Ймовірність ${fmtP(e.probability)} · ${KIND[e.kind]}`;
+      ev.append(top, dd); log.appendChild(ev);
+    });
+  };
+
+  // ---------- керування ----------
+  const selectTicker = (t) => { st.ticker = t; try { localStorage.setItem("pd-ticker", t); } catch (e) {} };
+  $("tickerSel").addEventListener("change", (e) => { location.hash = `#forecast/${e.target.value}`; });
+  $("modelSel").addEventListener("change", (e) => {
+    st.model = e.target.value; try { localStorage.setItem("pd-model", st.model); } catch (err) {}
+    renderFoot(); if (st.view === "scanner") loadScanner(); else loadTicker();
+  });
+  document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
+    st.days = +b.dataset.days;
+    document.querySelectorAll("[data-days]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    loadTicker();
+  }));
+  $("refreshBtn").addEventListener("click", async () => {
+    const btn = $("refreshBtn"); btn.disabled = true; btn.textContent = "Оновлюю… до хвилини";
+    try {
+      const r = await api("/api/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: st.ticker }) });
+      st.meta = await api("/api/meta"); show($("fError"), "");
+      await loadTicker();
+      btn.textContent = `Готово за ${r.seconds} с`;
+    } catch (e) { show($("fError"), e.message); btn.textContent = "Прогнозувати"; }
+    setTimeout(() => { btn.disabled = false; btn.textContent = "Прогнозувати"; }, 2500);
+  });
+  window.addEventListener("hashchange", route);
+
+  const init = async () => {
+    try { st.meta = await api("/api/meta"); }
+    catch (e) { show($("fError"), `Сервер не відповідає: ${e.message}`); $("viewForecast").hidden = false; return; }
+    const ms = $("modelSel");
+    st.meta.models.forEach((m) => { const o = document.createElement("option"); o.value = m.name; o.textContent = m.title; ms.appendChild(o); });
+    if (!st.meta.models.some((m) => m.name === st.model)) st.model = st.meta.models[0]?.name || "lightgbm";
+    ms.value = st.model;
+    const ts = $("tickerSel");
+    st.meta.tickers.forEach((t) => { const o = document.createElement("option"); o.value = t; o.textContent = t; ts.appendChild(o); });
+    if (!st.meta.tickers.includes(st.ticker)) st.ticker = st.meta.tickers[0] || null;
+    layout(); route();
+    // автооновлення: дані раз на хвилину, відлік до скану щосекунди
+    setInterval(async () => { try { st.meta = await api("/api/meta"); } catch (e) { return; } if (st.view === "scanner") loadScanner(); else loadTicker(); }, 60000);
+    setInterval(renderFoot, 1000);
+  };
+  init();
+})();
+</script>
+</body>
+</html>

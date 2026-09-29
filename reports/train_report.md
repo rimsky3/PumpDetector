@@ -1,6 +1,6 @@
 # Training report
 
-Generated 2026-09-29 00:43 UTC. Leave-ticker-out validation: every ticker is scored by a model that never saw it; the probability threshold is chosen by nested leave-ticker-out on the training tickers only.
+Generated 2026-09-29 01:14 UTC. Leave-ticker-out validation: every ticker is scored by a model that never saw it; the probability threshold is chosen by nested leave-ticker-out on the training tickers only.
 
 Data: 10518 hourly bars, 8 tickers (AIN, AKE, G, LSK, MUBARAK, MYX, NMR, QNT), 392 pump hours (3.7%), 18 pump intervals.
 

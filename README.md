@@ -21,7 +21,9 @@ with price, volume, funding, liquidations and long/short ratio to answer one que
 | Features | 24 features relative to each ticker's own history (z-scores, ratios, log changes), one module shared by training, inference and screener; verified free of look-ahead | done |
 | Models | Simple OI + volume rule → Logistic Regression → LightGBM | first version |
 | Validation | Leave-ticker-out cross-validation with nested threshold selection; hour- and event-level metrics | first version |
-| Screener | 24/7 screener and public demo on a VPS | planned |
+| Screener | Hourly screener over a watchlist with both models side by side, honest live/in-sample tracking | skeleton |
+| Dashboard | Forecast and Screener screens with stop, trailing stop and exit signal per ticker | skeleton |
+| Deployment | 24/7 screener and public demo on a VPS | planned |
 
 **Task framing.** Binary classification per hourly bar: `1` = a pump is in progress, `0` = normal market.
 This is not price forecasting.
@@ -68,7 +70,9 @@ python fetch.py --new                # ...or only tickers not yet in the databas
 python label.py                      # open the labeling tool in the browser
 python load_pumps.py                 # (optional) reload pumps.csv into the database
 python features.py                   # compute features and labels into the features table
-python train.py                      # leave-ticker-out comparison → reports/train_report.md
+python train.py                      # leave-ticker-out comparison → reports/train_report.md, models/
+python screener.py --loop            # score watchlist.txt every hour → signals table
+python dashboard.py                  # dashboard: forecast and screener screens
 ```
 
 Full instructions, including Windows specifics: [docs/setup.md](docs/setup.md).
@@ -85,6 +89,10 @@ load_pumps.py       validates pumps.csv and syncs it to the database
 features.py         raw series → hourly features + labels (shared by training and screener)
 train.py            rule vs logistic regression vs LightGBM, leave-ticker-out
 reports/            generated training report
+screener.py         hourly scoring of watchlist.txt with the saved models
+watchlist.txt       coins to scan live (never used for training)
+dashboard.py        dashboard server; page in app/dashboard.html
+risk.py             stop (75th percentile MAE in NATR), trailing stop, exit signal
 schema.sql          database schema
 docker-compose.yml  local PostgreSQL
 docs/               documentation
@@ -97,6 +105,7 @@ docs/               documentation
 - [Labeling](docs/labeling.md): what counts as a pump, labeling rules, file format, tool usage
 - [Features](docs/features.md): aggregation, feature definitions, look-ahead and listing safeguards
 - [Modeling](docs/modeling.md): models, validation scheme, metrics, first results
+- [Screener](docs/screener.md): live scoring, the signals table, forward testing, dashboard, risk rules
 
 ## Limitations
 

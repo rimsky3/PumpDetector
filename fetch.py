@@ -192,33 +192,39 @@ def main() -> None:
             print(f"Вже в базі, пропускаю: {', '.join(skipped)}")
         if not bases:
             sys.exit("Нових тікерів немає — нічого збирати.")
+    with psycopg.connect(db_url) as conn:
+        if not collect(Coinalyze(api_key), conn, bases, args.days):
+            sys.exit("Жодного ринку не знайдено — нічого збирати.")
+    print("Готово.")
+
+
+def collect(client: Coinalyze, conn, bases: list[str], days: int, verbose: bool = True) -> list[dict]:
+    """Знайти ринки тікерів і записати `days` днів усіх рядів. Спільне для fetch.py і screener.py."""
     now = datetime.now(timezone.utc)
     ts_to = int(now.timestamp())
-    ts_from = int((now - timedelta(days=args.days)).timestamp())
+    ts_from = int((now - timedelta(days=days)).timestamp())
 
-    client = Coinalyze(api_key)
-    print("Шукаю ринки…")
+    if verbose:
+        print("Шукаю ринки…")
     markets = find_markets(client, bases)
-
     for base in bases:
         own = [m for m in markets if m["base_asset"].upper() == base]
-        exchanges = ", ".join(sorted({m["exchange_name"] for m in own})) or "—"
-        print(f"  {base}: ринків — {len(own)} ({exchanges})")
+        if verbose:
+            exchanges = ", ".join(sorted({m["exchange_name"] for m in own})) or "—"
+            print(f"  {base}: ринків — {len(own)} ({exchanges})")
         if not own:
             print(f"  ! {base} не знайдено. Перевір назву базового активу "
                   f"(на деяких біржах буває 1000{base} чи k{base}).")
-
     if not markets:
-        sys.exit("Жодного ринку не знайдено — нічого збирати.")
+        return []
 
-    with psycopg.connect(db_url) as conn:
-        upsert_markets(conn, markets)
-        for endpoint, table, columns, extra, flag in ENDPOINTS:
-            n = fetch_endpoint(client, conn, markets, endpoint, table, columns,
-                               extra, flag, ts_from, ts_to)
+    upsert_markets(conn, markets)
+    for endpoint, table, columns, extra, flag in ENDPOINTS:
+        n = fetch_endpoint(client, conn, markets, endpoint, table, columns,
+                           extra, flag, ts_from, ts_to)
+        if verbose:
             print(f"  {table:<24} рядків: {n}")
-
-    print("Готово.")
+    return markets
 
 
 if __name__ == "__main__":

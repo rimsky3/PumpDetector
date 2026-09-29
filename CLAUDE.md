@@ -68,8 +68,18 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   Перші результати (8 тікерів, 17 пампів): F1 rule 0.55, logreg 0.70, lightgbm 0.72 — моделі > правила, logreg ≈ lightgbm.
 - Перегляд помилок: label.py читає reports/oof_predictions.csv — 4-та панель «Модель» (ймовірність, поріг, смужка tp/fp/fs/fn),
   вибір моделі, список помилок по тікеру з переходом; помилки рахуються за поточним pumps.csv. `#TICKER` в адресі відкриває тікер.
+- Скринер (каркас): train.py зберігає models/{logreg,lightgbm}.joblib (модель+поріг з OOF+ознаки+data_end);
+  screener.py (--loop щогодини о HH:05, --no-fetch) → fetch.collect() для watchlist.txt за 10 днів → features.build()
+  → обидві моделі → таблиця signals (in_sample / live, ON CONFLICT DO NOTHING). Опис — docs/screener.md.
+  features.py за замовчуванням лише tickers.txt: watchlist-тікери в базі не розмічені й не мають потрапляти в навчання.
+- Дашборд за макетом «Pump Detector App» (https://claude.ai/artifact/MAivAWzKcz2NKqPQs4JENJ, екрани Прогноз і Скринер):
+  `python dashboard.py` (stdlib-сервер, 127.0.0.1:8766) + `app/dashboard.html`, темна тема з макету. Streamlit прибрано — власник його не хоче.
+  Кнопка «Прогнозувати» = collect() одного тікера + screener.score_bases(). Статус: Alert ≥ поріг, Кандидат ≥ ½ порогу.
+- Ризик: `risk.py` — ATR(14) Уайлдера; стоп = entry − k·ATR, k = 75-й перцентиль MAE пампів (до піку) у NATR,
+  рахує train.py і зберігає в bundle['risk'] (зараз k ≈ 2.9); trailing = max high − 1.5·ATR; вихід — 2 бари поспіль нижче порогу.
+- Telegram-сповіщення — окремим кроком пізніше.
 - далі: більше розмічених тікерів; метрики ранньої фази пампу (ret_24h домінує — модель частково «бачить, що вже виросло»);
-  збереження моделі; скринер., `train.py`, `app/streamlit_app.py`, `screener.py`
+  Telegram; деплой на VPS (Docker Compose: база + screener --loop + dashboard).
 
 ## Документація
 - `README.md` + `docs/` (setup, data, labeling) — англійською, для GitHub-портфоліо. Коментарі в коді — українською.

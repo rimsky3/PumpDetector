@@ -73,4 +73,22 @@ CREATE TABLE IF NOT EXISTS pumps (
 );
 
 -- Таблицю features створює features.py (вона повністю похідна і перебудовується при зміні ознак).
--- Таблицю signals додамо разом зі скринером.
+
+-- Оцінки скринера: ймовірність пампу від кожної моделі на кожну закриту годину.
+-- in_sample = true — ця година цього тікера була в навчальній вибірці моделі (оцінка не є передбаченням).
+-- live = true — година була останньою закритою на момент оцінки і не in_sample: чесний forward-test.
+-- live = false — дозаповнення історії при першому запуску, після пропуску або in-sample.
+-- Перша оцінка години не перезаписується: так історія сигналів лишається чесною.
+CREATE TABLE IF NOT EXISTS signals (
+    base_asset    TEXT NOT NULL,
+    ts            TIMESTAMPTZ NOT NULL,         -- час відкриття оціненого бару
+    model         TEXT NOT NULL,                -- logreg / lightgbm
+    model_version TEXT NOT NULL,                -- коли модель навчена (trained_at)
+    probability   DOUBLE PRECISION,
+    threshold     DOUBLE PRECISION,
+    signal        BOOLEAN NOT NULL,
+    live          BOOLEAN NOT NULL,
+    in_sample     BOOLEAN NOT NULL DEFAULT false,
+    scored_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (base_asset, ts, model, model_version)
+);

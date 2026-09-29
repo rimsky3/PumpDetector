@@ -10,8 +10,12 @@ train.py — навчання і чесне порівняння моделей 
 Поріг ймовірності для сигналу теж підбирається без тестового тікера (вкладена leave-ticker-out
 на тренувальних тікерах), інакше метрики були б завищені.
 
-    python train.py              # усі моделі, звіт у reports/train_report.md
+    python train.py              # усі моделі, звіт у reports/train_report.md, моделі для скринера в models/
     python train.py --models logreg lightgbm
+    python train.py --no-save    # лише оцінка, без збереження моделей
+
+Для скринера зберігається модель, навчена на всіх розмічених тікерах. Її поріг — найкращий F1
+на out-of-fold передбаченнях (кожен тікер оцінений моделлю, що його не бачила).
 """
 
 import argparse
@@ -20,6 +24,7 @@ import sys
 from datetime import datetime, timezone
 from itertools import product
 
+import joblib
 import numpy as np
 import pandas as pd
 import psycopg
@@ -32,9 +37,15 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from features import FEATURES, load_pumps, query_df
+from risk import stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
 PREDICTIONS_FILE = os.path.join("reports", "oof_predictions.csv")
+MODELS_DIR = "models"
+
+
+def model_path(name: str) -> str:
+    return os.path.join(MODELS_DIR, f"{name}.joblib")
 H = pd.Timedelta(hours=1)
 
 
@@ -215,6 +226,7 @@ def md_table(df: pd.DataFrame, digits=3) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Leave-ticker-out порівняння моделей")
     parser.add_argument("--models", nargs="+", choices=ALL_MODELS, default=ALL_MODELS)
+    parser.add_argument("--no-save", action="store_true", help="не зберігати моделі для скринера")
     args = parser.parse_args()
 
     load_dotenv()
@@ -224,6 +236,7 @@ def main() -> None:
     with psycopg.connect(db_url) as conn:
         df = query_df(conn, "SELECT * FROM features ORDER BY base_asset, ts")
         pumps = load_pumps(conn)
+        risk_info = stop_multiplier(conn)   # k для стопу: 75-й перцентиль MAE пампів у NATR
     if df.empty:
         sys.exit("Таблиця features порожня — спершу python features.py")
 
@@ -231,11 +244,12 @@ def main() -> None:
     tickers = sorted(groups.unique())
     print(f"Дані: {len(df)} годин, {len(tickers)} тікерів, пампів {y.sum()} год ({y.mean():.1%})\n")
 
-    summary, per_ticker = {}, {}
+    summary, per_ticker, oof = {}, {}, {}
     preds = df[["base_asset", "ts", "label", "pattern_type"]].copy()
     for name in args.models:
         print(f"  {name}")
         res = leave_ticker_out(name, X, y, groups)
+        oof[name] = res["score"].to_numpy()
         preds[f"{name}_score"], preds[f"{name}_signal"] = res["score"], res["signal"].astype(int)
         preds[f"{name}_threshold"] = res["threshold"]
         summary[name] = {**hour_metrics(y, res, name != "rule"), **event_metrics(df, res["signal"], pumps)}
@@ -285,6 +299,34 @@ def main() -> None:
     # out-of-fold передбачення: для аналізу помилок (кожен рядок передбачила модель, що не бачила тікер)
     preds.to_csv(PREDICTIONS_FILE, index=False)
     print(f"\nЗвіт: {REPORT_FILE}\nПередбачення: {PREDICTIONS_FILE}")
+
+    if not args.no_save:
+        os.makedirs(MODELS_DIR, exist_ok=True)
+        for name in [m for m in args.models if m in PROBA_MODELS]:
+            bundle = {
+                "name": name,
+                "model": PROBA_MODELS[name]().fit(X, y),
+                "features": FEATURES,
+                "threshold": best_f1_threshold(y.to_numpy(), oof[name]),
+                "trained_at": now,
+                "tickers": tickers,
+                "data_end": df["ts"].max(),   # остання година в навчанні: до неї тікери з tickers — in-sample
+                "pump_intervals": int((pumps["pattern_type"] == "pump").sum()),
+                "validation": {k: (v if isinstance(v, str) else float(v)) for k, v in summary.loc[name].items()},
+                "risk": risk_info,
+            }
+            joblib.dump(bundle, model_path(name))
+            print(f"Модель для скринера: {model_path(name)} (поріг {bundle['threshold']:.3f})")
+        if risk_info.get("k") is not None:
+            print(f"Стоп: {risk_info['k']:.2f} NATR (75-й перцентиль MAE, {risk_info['n']} пампів)")
+
+
+def load_model(name: str) -> dict:
+    """Збережена модель з метаданими: model, features, threshold, trained_at, validation."""
+    bundle = joblib.load(model_path(name))
+    if bundle["features"] != FEATURES:
+        raise ValueError(f"{name}: модель навчена на іншому наборі ознак — перезапусти python train.py")
+    return bundle
 
 
 if __name__ == "__main__":

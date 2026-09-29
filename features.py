@@ -12,8 +12,12 @@ features.py — ознаки для моделі з сирих рядів Coinal
 
 Правило: ознака на годину t рахується лише з даних до t включно (без заглядання в майбутнє).
 
-    python features.py              # перерахувати ознаки для всіх тікерів і записати в таблицю features
+    python features.py              # перерахувати ознаки для тікерів з tickers.txt і записати в таблицю features
     python features.py AKE QNT      # лише для вибраних тікерів (решта рядків таблиці лишається)
+
+Таблиця features — навчальна вибірка, тому за замовчуванням лише tickers.txt (розмічені тікери).
+Тікери зі скринера (watchlist.txt) теж лежать у базі, але не розмічені: якби вони потрапили в навчання,
+модель вважала б, що пампів на них не було.
 """
 
 import argparse
@@ -25,6 +29,8 @@ import numpy as np
 import pandas as pd
 import psycopg
 from dotenv import load_dotenv
+
+from fetch import TICKERS_FILE, read_tickers_file
 
 INTERVAL = "1hour"
 PRICE_EXCHANGE = "Binance"   # еталонна біржа для ціни; якщо тікера там немає — перша за алфавітом
@@ -263,20 +269,23 @@ def save(conn, df: pd.DataFrame, bases: list[str] | None) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Розрахунок ознак і запис у таблицю features")
-    parser.add_argument("tickers", nargs="*", help="базові активи (без аргументів — усі з бази)")
+    parser.add_argument("tickers", nargs="*", help=f"базові активи (без аргументів — з {TICKERS_FILE})")
     args = parser.parse_args()
 
     load_dotenv()
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         sys.exit("Заповни DATABASE_URL у файлі .env")
-    bases = [t.upper() for t in args.tickers] or None
+    full = not args.tickers
+    bases = [t.upper() for t in (args.tickers or read_tickers_file(TICKERS_FILE))]
+    if not bases:
+        sys.exit(f"Немає тікерів: передай їх аргументами або додай у {TICKERS_FILE}")
 
     with psycopg.connect(db_url) as conn:
         df = build(conn, bases)
         if df.empty:
             sys.exit("Немає даних для ознак.")
-        save(conn, df, bases)
+        save(conn, df, None if full else bases)
 
     print(f"Ознак: {len(FEATURES)}, рядків: {len(df)}\n")
     summary = df.groupby("base_asset").agg(
