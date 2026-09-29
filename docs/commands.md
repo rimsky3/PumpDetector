@@ -7,7 +7,7 @@ options straight from the code. Run everything from the project folder with the 
 
 | Task | Commands |
 |---|---|
-| Add a ticker for training | add it to `tickers.txt` → `python fetch.py --new` → label it in `python label.py` → `python features.py` → `python train.py` → restart `screener.py` and `dashboard.py` |
+| Add a ticker for training | in `python label.py`: find it under **Усі Binance** → **Завантажити** → label it (the first saved interval adds it to `tickers.txt`) → `python features.py` → `python features.py` → `python train.py` → restart `screener.py` and `dashboard.py` |
 | Scan a coin live only | add it to `watchlist.txt`; the screener picks it up on its next cycle (7 days of history needed) |
 | Fix a label | edit it in `python label.py` (or `pumps.csv` + `python load_pumps.py`) → `python features.py` → `python train.py` |
 | Weekly data refresh | `python fetch.py` (all tickers; extends history, which the provider keeps for ~2 months) |
@@ -27,6 +27,19 @@ Before retraining, label fresh signals on training tickers if they were pumps (s
 
 Re-running is safe: rows are upserted. The API limit counts symbols, not days, so `--days` does not make a run
 cheaper; `--new` does.
+
+### `fetch_exchange.py` — 15m and 5m from Binance and Bybit
+
+| Option | Default | Meaning |
+|---|---|---|
+| `tickers …` | all of `tickers.txt` | base assets to collect |
+| `--tf 15m 5m` | both | timeframes |
+| `--days N` | 60 | days of history |
+
+Writes the same raw tables as `fetch.py` with `interval` = `15min` / `5min`: candles (buy volume on Binance only),
+open interest, funding, long/short. No liquidations (exchanges keep no history). Binance OI and long/short go back
+30 days, Bybit the full 60. Public endpoints, no key; ~2,000 requests for 10 tickers, markets in parallel.
+Hourly data is untouched. Markets come from the `markets` table, so run `fetch.py` for a ticker first.
 
 ### `load_pumps.py` — labels into the database
 
@@ -64,6 +77,33 @@ Outputs: `reports/train_report.md`, `reports/oof_predictions.csv` (used by the l
 
 No options. Re-runs the OI-in-coins vs OI-in-USD comparison → `reports/experiment_oi_coins.md`.
 
+### `experiments/exchange_direct.py`
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--refresh` | off | download from Binance and Bybit again instead of using `experiments/cache/` |
+
+Compares Binance/Bybit public APIs with Coinalyze: raw series, features, and model quality →
+`reports/experiment_exchange_direct.md`. Does not touch the database.
+
+### `experiments/volume_delta.py`
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--refresh` | off | download Binance spot candles again instead of using `experiments/cache/` |
+
+Tests perp and spot volume delta features against the current set → `reports/experiment_volume_delta.md`.
+
+### `experiments/timeframe.py`
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--tf 15m\|5m` | `15m` | smaller timeframe to compare with 1h |
+| `--refresh` | off | download from Binance and Bybit again instead of using `experiments/cache/` |
+
+Same features and labels on 1h and on 15m/5m bars from the exchanges; compares detection delay, the share of
+the move already gone at the signal, and false alarms → `reports/experiment_timeframe_<tf>.md`.
+
 ## Live
 
 ### `screener.py` — hourly scoring of `watchlist.txt`
@@ -92,6 +132,8 @@ after `train.py`.
 |---|---|---|
 | `--days N` | 60 | days of history to show |
 | `--port N` | 8765 | port on 127.0.0.1 |
+
+The page has a 1h / 15m / 5m switch; 15m and 5m need `fetch_exchange.py` for that ticker.
 | `--no-browser` | off | do not open the browser |
 
 `http://127.0.0.1:8765/#AKE` opens a ticker. If the port is taken, the script says so and suggests another one.

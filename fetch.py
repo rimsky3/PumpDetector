@@ -2,8 +2,9 @@
 fetch.py — збір годинних (1h) даних з Coinalyze у PostgreSQL.
 
 Для кожного тікера знаходить його перпетуальні ф'ючерси на Binance, Bybit, OKX,
-Aster, Hyperliquid і MEXC та тягне шість рядів: open interest, OHLCV, funding,
-predicted funding, ліквідації, long/short ratio.
+Aster, Hyperliquid і MEXC та тягне п'ять рядів: open interest, OHLCV, funding,
+ліквідації, long/short ratio.
+Predicted funding не збираємо (з 2026-09-29): ознака не додавала якості, а коштувала 1/6 ліміту.
 
 Приклади:
     python fetch.py                  # усі тікери з tickers.txt
@@ -41,8 +42,6 @@ ENDPOINTS = [
      [("o", "o"), ("h", "h"), ("l", "l"), ("c", "c"),
       ("v", "v"), ("bv", "bv"), ("tx", "tx"), ("btx", "btx")], {}, "has_ohlcv_data"),
     ("funding-rate-history", "funding_rate",
-     [("o", "o"), ("h", "h"), ("l", "l"), ("c", "c")], {}, None),
-    ("predicted-funding-rate-history", "predicted_funding_rate",
      [("o", "o"), ("h", "h"), ("l", "l"), ("c", "c")], {}, None),
     ("liquidation-history", "liquidations",
      [("long_liq", "l"), ("short_liq", "s")], {"convert_to_usd": "true"}, None),
@@ -166,6 +165,25 @@ def read_tickers_file(path: str) -> list[str]:
         return []
     with open(path, encoding="utf-8") as f:
         return [t for line in f if (t := line.split("#")[0].strip())]
+
+
+def set_ticker_in_file(path: str, base: str, on: bool, comment: str = "") -> bool:
+    """Додати тікер у файл (on=True) або прибрати його рядок (on=False); решта рядків і коментарі лишаються.
+    Повертає True, якщо файл змінився."""
+    base = base.upper()
+    lines = open(path, encoding="utf-8").read().splitlines() if os.path.exists(path) else []
+    has = any(line.split("#")[0].strip().upper() == base for line in lines)
+    if on == has:
+        return False
+    if on:
+        lines.append(f"{base}    # {comment}" if comment else base)
+    else:
+        lines = [line for line in lines if line.split("#")[0].strip().upper() != base]
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
+    os.replace(tmp, path)
+    return True
 
 
 def main() -> None:

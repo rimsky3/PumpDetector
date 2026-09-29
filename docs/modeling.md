@@ -117,6 +117,108 @@ features; the coin features stay in the table for charts and later experiments. 
 (with TRUMP): LightGBM 0.67 in USD vs 0.59 in coins — same conclusion. Differences of ±0.02–0.03 are
 within noise, so "both" is not an improvement either.
 
+## Predicted funding removed
+
+`pred_funding_gap` (predicted − current funding) had the lowest weight in both models (0.14% of LightGBM gain,
+logreg coefficient −0.02). Leave-ticker-out with and without it, same data:
+
+| Model | F1 with | F1 without | Pumps caught with / without |
+|---|---|---|---|
+| logreg | 0.661 | 0.665 | 21/21 · 21/21 |
+| lightgbm | 0.678 | 0.672 | 20/21 · 18/21 |
+
+The difference is within noise. Both missed pumps are on TRUMP, where the probability peaked at 0.910 against a
+threshold of 0.922: a threshold shift, not lost information. Removed from the features (23 now) and from
+collection: it was one of six Coinalyze series, so every fetch and screener cycle is ~1/6 cheaper, and exchanges
+keep no history of it. The `predicted_funding_rate` table and its old rows stay in the database.
+
+## Experiment: aggregated volume delta
+
+Volume delta is taker buys minus taker sells. Its share of volume is already a feature (`buy_ratio_*`), so the
+test adds the forms that were missing: perp cumulative delta over 24 h, delta relative to open interest, delta
+against its weekly norm; and spot delta from Binance spot (spot buy share, spot CVD, spot-to-perp volume). Binance
+spot exists for 6 of 10 tickers (Coinalyze lists spot only on large exchanges, for AKE, MYX and SOON only Kraken).
+`python experiments/volume_delta.py` → `reports/experiment_volume_delta.md`:
+
+| Model | base (23) | + perp delta | + spot delta | + both |
+|---|---|---|---|---|
+| logreg F1 | 0.67 | 0.66 | 0.63 | 0.62 |
+| lightgbm F1 | 0.67 | 0.66 | 0.69 | 0.68 |
+| lightgbm PR-AUC | 0.70 | 0.72 | 0.71 | 0.71 |
+| lightgbm false alarms / 30 d | 1.7 | 1.7 | 1.3 | 1.7 |
+
+**Not adopted yet.** The changes are within run-to-run noise, the new features take ~6% of LightGBM gain in
+total, and logistic regression gets worse (spot features are empty for 4 tickers and imputed). The one hint is
+fewer false alarms for LightGBM with spot delta. To be re-tested with confidence intervals and more labeled tickers.
+
+## Experiment: exchange APIs instead of Coinalyze
+
+Question: can the features come straight from Binance and Bybit public APIs (much higher rate limits, no key)
+without changing the model? `python experiments/exchange_direct.py` → `reports/experiment_exchange_direct.md`.
+Comparison window: the last ~22 days (Binance keeps open interest and long/short history for 30 days only,
+features need 7 days of warm-up), 10 tickers, 10 labeled pumps.
+
+**Raw series are identical.** Contract by contract, price, volume, buy volume, open interest, funding and
+long/short from the exchange match Coinalyze exactly (median relative difference 0, correlation of hourly
+changes 1.000). Coinalyze relays exchange data; it adds convenience, not information. Time alignment matters:
+an exchange OI snapshot at T+1h is the close of Coinalyze's bar T, while long/short and funding paid at T
+belong to bar T. The script checks this by correlating with ±1 h shifts.
+
+**Features differ only through exchange coverage.** With Binance + Bybit alone (no OKX, Aster, Hyperliquid),
+OI and price features keep a rank correlation of 0.98–1.00 with production values; funding and buy ratio drop to
+0.89–0.96 because Bybit candles carry no buy volume (approximated from Binance's buy share).
+
+F1 of models trained on Coinalyze (23 features, after predicted funding was dropped), scored on the held-out
+ticker's features from each source:
+
+| Model | coinalyze | Coinalyze, Binance+Bybit only | exchanges + Coinalyze liquidations | exchanges only |
+|---|---|---|---|---|
+| rule | 0.57 | 0.56 | 0.56 | 0.56 |
+| logreg | 0.70 | 0.70 | 0.70 | 0.70 |
+| lightgbm | 0.71 | 0.71 | 0.70 | **0.60** |
+
+**Conclusion.** Switching the source is safe for price, volume, OI, funding and long/short. Exchanges keep no
+history of liquidations, so they must be collected by the project itself (websocket) or dropped. Without them the
+current LightGBM breaks (recall 0.75 → 0.46): liquidation features are among its strongest (~18% of gain), and
+all-zero liquidations look like a calm market. A feature that is absent or different at inference is
+training-serving skew. Retrained without liquidations, exchanges-only data is as good as Coinalyze in the same
+window (LightGBM 0.67 vs 0.63, logreg 0.74 vs 0.76; few pumps, so these are ties).
+
+A first run blamed predicted funding for the LightGBM drop. Re-running after predicted funding was removed
+(below) showed the drop remains, so liquidations were the cause.
+
+Side findings for the data layer:
+- Bybit serves open interest and long/short at 5-minute and hourly resolution for at least a year back
+  (Coinalyze: ~63 days hourly, ~1 week at 5 min). Binance: 30 days. Candles and funding: years on both.
+- One run over 10 tickers is 198 public requests in ~2 minutes, against ~8 minutes of Coinalyze quota.
+
+## Experiment: 15-minute and 5-minute bars
+
+Question: does re-scoring more often catch a pump earlier? `python experiments/timeframe.py [--tf 5m]` →
+`reports/experiment_timeframe_15m.md`, `reports/experiment_timeframe_5m.md`. Data: Binance + Bybit APIs
+(Bybit keeps 5-minute open interest for at least a year), 10 tickers, 2026-08-07 – 09-29, 21 labeled pumps.
+Both sides get the same 20 features (no liquidations) with the same wall-clock windows
+(`features.compute_features(bars_per_hour=…)`), and the same labels: a 15m bar inside a labeled pump is 1.
+
+| Model · bars | Pumps caught | Median delay, min | Move already gone at signal | Upside left | False alarms / 30 d |
+|---|---|---|---|---|---|
+| logreg · 1h | 20/21 | 60 | 22% | 50% | 3.1 |
+| logreg · 15m | 20/21 | 45 | 13% | 57% | 5.0 |
+| logreg · 5m | 21/21 | 35 | 9% | 57% | 6.2 |
+| lightgbm · 1h | 20/21 | 120 | 27–30% | 42% | 2.1–2.9 |
+| lightgbm · 15m | 19/21 | 45 | 12% | 69% | 2.3 |
+| lightgbm · 5m | 19/21 | 45 | 15% | 70% | 2.1 |
+
+Delay is measured from the labeled start to the close of the first signal bar, when a trader can act. A 1h model
+cannot be faster than 60 minutes by construction. Bar-level F1 is about the same on all timeframes (0.60–0.67).
+
+**Conclusion.** Smaller bars catch the same pumps 15–75 minutes earlier and roughly halve the part of the move
+already gone at the signal (LightGBM: 27–30% → 12–15%). The price is more false alarms for logistic regression.
+LightGBM keeps its false-alarm rate. 5m gives little over 15m: the pump start is labeled to the hour, so finer
+bars cannot earn more credit, and 5m is noisier. **15m is the sweet spot.** Caveats: 21 pumps, so medians
+move by a bar or two between runs (the two 1h reruns differ slightly), and there are no fees or slippage.
+Hour-level labels are a ceiling: labeling starts to the 15 minutes would let finer models show more.
+
 ## Next steps
 
 - More labeled tickers, which is the main lever.

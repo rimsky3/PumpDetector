@@ -14,7 +14,7 @@ MAE (max adverse excursion) пампу — наскільки ціна прос�
 import numpy as np
 import pandas as pd
 
-from features import aggregate, load_pumps, load_raw
+from features import aggregate, in_pump, load_pumps, load_raw
 
 ATR_PERIOD = 14         # годин; згладжування Уайлдера
 STOP_PERCENTILE = 75
@@ -44,10 +44,10 @@ def pump_mae(conn) -> pd.DataFrame:
             continue
         a = atr(h)
         for p in group.itertuples():
-            window = h[(h.index >= p.start_ts) & (h.index < p.end_ts)]
-            if len(window) < 2 or pd.isna(a.get(p.start_ts)) or pd.isna(window["price"].iloc[0]):
+            window = h[in_pump(h.index, p.start_ts, p.end_ts)]
+            if len(window) < 2 or pd.isna(a.get(window.index[0])) or pd.isna(window["price"].iloc[0]):
                 continue
-            entry, atr0 = window["price"].iloc[0], a[p.start_ts]
+            entry, atr0 = window["price"].iloc[0], a[window.index[0]]
             peak_ts = window["high"].idxmax()
             before_peak = window[(window.index > window.index[0]) & (window.index <= peak_ts)]
             low = before_peak["low"].min() if len(before_peak) else entry

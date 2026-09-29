@@ -2,6 +2,9 @@
 
 Пет-проєкт для портфоліо (перехід у ML/DS): модель, що розпізнає pump-and-dump на крипто-ф'ючерсах
 і узагальнюється на тікери, яких не бачила під час навчання.
+Власник сам торгує вручну (термінал, order book) і користуватиметься системою як фільтром, не автоторгівлею:
+модель на метриках, які він сам використовує й розуміє; кожен сигнал пояснює, які метрики його дали;
+мета — менше емоцій і невизначеності у виборі тікерів. Модель не замінюється, доки нова не обіграє поточну.
 
 - Повне ТЗ: https://claude.ai/code/artifact/ced9c93e-7099-4097-934a-4d64159cd413
 - Макет інтерфейсу: https://claude.ai/artifact/MAivAWzKcz2NKqPQs4JENJ
@@ -27,7 +30,7 @@
 - Сховище: PostgreSQL, схема в `schema.sql`. Сирі таблиці: upsert по (symbol, interval, ts).
 
 ## Ознаки
-OI (дельта, швидкість зміни), OHLCV (log-return, volume z-score, bv/v), funding і predicted funding,
+OI (дельта, швидкість зміни), OHLCV (log-return, volume z-score, bv/v), funding (predicted funding прибрано 2026-09-29),
 ліквідації (обсяг, асиметрія long/short), long/short ratio.
 Усі ознаки відносні до власної історії тікера (z-score, ratio, %), не абсолютні.
 `features.py` — один модуль для тренування, інференсу і скринера, без копій логіки.
@@ -63,7 +66,7 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   (графік — Lightweight Charts з app/vendor, як у дашборді: свічки, клік по свічці = межа інтервалу);
   графіки з БД, кожна зміна одразу пишеться в pumps.csv і синхронізується з таблицею pumps.
   Спільна логіка читання/запису/перевірки CSV — у `load_pumps.py`.
-- `features.py` готовий (24 ознаки, таблиця `features`, перевірено на відсутність lookahead); опис — docs/features.md.
+- `features.py` готовий (23 ознаки, таблиця `features`, перевірено на відсутність lookahead); опис — docs/features.md.
 - `train.py` готовий: rule / logreg / lightgbm, leave-ticker-out + вкладений вибір порогу, метрики по годинах і подіях;
   звіт reports/train_report.md, OOF-передбачення reports/oof_predictions.csv; опис — docs/modeling.md.
   Перші результати (8 тікерів, 17 пампів): F1 rule 0.55, logreg 0.70, lightgbm 0.72 — моделі > правила, logreg ≈ lightgbm.
@@ -97,6 +100,29 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   tickers.txt іде в навчання як «0» і модель його «розвчає» (так зник Alert QNT 09:00 після перенавчання 12:22).
   data_end = cutoff; свіжі розмічені інтервали — bundle['in_sample_extra'] (screener враховує). Дашборд показує версію
   моделі і одноразово «Модель перенавчено». 2026-09-29: + TRUMP, 10 тікерів / 21 памп: F1 rule 0.54, logreg 0.66, lgbm 0.67.
+- Експеримент experiments/exchange_direct.py (Binance+Bybit напряму): сирі ряди = Coinalyze один в один
+  (OI біржі на T+1h = close бару T; L/S і funding, виплачений о T, — бар T). Ознаки різняться лише покриттям бірж.
+  Модель переноситься, АЛЕ без ліквідацій (історії в бірж немає) LightGBM падає 0.71→0.60 — ліквідації
+  треба збирати самим (websocket) або перенавчати без них.
+- 2026-09-29: pred_funding_gap прибрано з ознак і з fetch.py (вага 0.14%, F1 без неї в межах шуму; −1/6 викликів Coinalyze).
+  Таблиця predicted_funding_rate лишилась зі старими даними. 23 ознаки: logreg 0.665, lightgbm 0.672. Bybit дає OI/L/S 5m і 1h щонайменше за рік,
+  Binance — 30 днів. features.build_from_raw() — ознаки з сирих рядів будь-якого джерела.
+- Експеримент experiments/timeframe.py (15m/5m проти 1h, біржові дані, 20 ознак без liq/pred, 21 памп):
+  15m ловить ті самі пампи на 15–75 хв раніше, пропущена частина руху ≈ вдвічі менша (LightGBM 27–30% → 12%),
+  хибні тривоги LightGBM не ростуть (logreg — ростуть). 5m майже не краще за 15m (розмітка з точністю до години).
+  compute_features(bars_per_hour) / aggregate(freq) — для 1h поведінка не змінилась (перевірено на таблиці features).
+- Експеримент experiments/volume_delta.py: перп-дельта (CVD 24h, дельта/OI, z-score) і спот-дельта (Binance spot,
+  є лише для 6/10 тікерів): зміни в межах шуму, logreg гірше, LightGBM трохи менше хибних тривог зі спотом → поки НЕ додано.
+- Order book — лише після переїзду на сервер (власник так вирішив).
+- 2026-09-29: розмітка з точністю до хвилини. pumps.csv: end_ts — МОМЕНТ кінця (виключно), старі рядки +1 год
+  (мітки годин не змінились, перевірено). Правило бару — features.in_pump: start < відкриття + бар ≤ end
+  (памп триває на закритті бару); ним користуються add_labels, train.event_metrics, risk, journal, label.html.
+  exchanges.py — клієнт Binance/Bybit + normalize() (вирівнювання часу); fetch_exchange.py пише 15m/5m у ті самі
+  сирі таблиці (interval '15min'/'5min'). УСІ запити до сирих таблиць мають фільтрувати interval.
+  label.py: перемикач 1h/15m/5m (/api/data?tf=), межі — моменти; модель і помилки — лише на 1h.
+- label.py права панель: усі USDT-перпи Binance (/api/universe, кеш 10 хв), «Завантажити» → черга (/api/load, /api/jobs):
+  fetch.collect (1h Coinalyze) + fetch_exchange.collect (15m/5m). У tickers.txt — при першому збереженому інтервалі
+  або кнопкою «У навчання» (/api/training, fetch.set_ticker_in_file); просто завантаження в навчання НЕ додає.
 - Telegram-сповіщення — окремим кроком пізніше.
 - далі: більше розмічених тікерів; метрики ранньої фази пампу (ret_24h домінує — модель частково «бачить, що вже виросло»);
   Telegram; деплой на VPS (Docker Compose: база + screener --loop + dashboard).

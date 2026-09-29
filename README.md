@@ -15,10 +15,10 @@ with price, volume, funding, liquidations and long/short ratio to answer one que
 
 | Step | What happens | State |
 |---|---|---|
-| Data | Hourly OI, OHLCV, funding, predicted funding, liquidations and long/short ratio from [Coinalyze](https://coinalyze.net), aggregated across Binance, Bybit, OKX, Aster, Hyperliquid and MEXC | done |
+| Data | Hourly OI, OHLCV, funding, liquidations and long/short ratio from [Coinalyze](https://coinalyze.net), aggregated across Binance, Bybit, OKX, Aster, Hyperliquid and MEXC | done |
 | Storage | PostgreSQL in Docker; idempotent upserts keyed by `(symbol, interval, ts)` | done |
 | Labels | Manual labeling of pump intervals in a purpose-built local tool | done (first batch) |
-| Features | 24 features relative to each ticker's own history (z-scores, ratios, log changes), one module shared by training, inference and screener; verified free of look-ahead | done |
+| Features | 23 features relative to each ticker's own history (z-scores, ratios, log changes), one module shared by training, inference and screener; verified free of look-ahead | done |
 | Models | Simple OI + volume rule → Logistic Regression → LightGBM | first version |
 | Validation | Leave-ticker-out cross-validation with nested threshold selection; hour- and event-level metrics | first version |
 | Screener | Hourly screener over a watchlist with both models side by side, honest live/in-sample tracking | skeleton |

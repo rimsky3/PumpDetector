@@ -36,7 +36,7 @@ from sklearn.metrics import average_precision_score, f1_score, precision_recall_
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from features import FEATURES, load_pumps, query_df
+from features import FEATURES, in_pump, load_pumps, query_df
 from risk import stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
@@ -159,11 +159,11 @@ def event_metrics(df: pd.DataFrame, signal: pd.Series, pumps: pd.DataFrame) -> d
     delays, caught_fs = [], 0
     n_pump = n_fs = 0
     for p in covered.itertuples():
-        inside = sig_ts[(sig_ts["base_asset"] == p.base_asset) & (sig_ts["ts"] >= p.start_ts) & (sig_ts["ts"] < p.end_ts)]
+        inside = sig_ts[(sig_ts["base_asset"] == p.base_asset) & in_pump(sig_ts["ts"], p.start_ts, p.end_ts)]
         if p.pattern_type == "pump":
             n_pump += 1
             if len(inside):
-                delays.append((inside["ts"].min() - p.start_ts) / H)
+                delays.append(max(0.0, (inside["ts"].min() - p.start_ts) / H))   # старт усередині бару — затримка 0
         elif p.pattern_type == "false_start":
             n_fs += 1
             caught_fs += bool(len(inside))

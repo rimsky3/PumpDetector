@@ -245,7 +245,7 @@ def refresh(conn, base: str) -> dict:
         # Скринер щогодини оновлює watchlist. Якщо остання закрита година вже в базі, в API не йдемо:
         # скринер і дашборд ділять один ліміт Coinalyze, і зайві запити упираються в 429 з очікуванням до хвилини.
         have = conn.execute("""SELECT max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
-                               WHERE m.base_asset = %s""", (base,)).fetchone()[0]
+                               WHERE m.base_asset = %s AND o.interval = '1hour'""", (base,)).fetchone()[0]
         fetched = have is None or pd.Timestamp(have) < last_closed
         if fetched:
             if State.client is None:

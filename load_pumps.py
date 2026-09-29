@@ -5,7 +5,10 @@ pumps.csv — джерело істини: таблиця щоразу повн�
 тож виправлення робляться у CSV (або через label.py), а не в базі.
 
 Формат: base_asset,start_ts,end_ts,pattern_type,notes
-Часи — UTC, "YYYY-MM-DD HH:MM", час відкриття бару; end_ts включно (останній бар пампу).
+Часи — UTC, "YYYY-MM-DD HH:MM", з точністю до хвилини: start_ts — момент початку пампу, end_ts — момент кінця
+(виключна межа). Межі не прив'язані до таймфрейму: можна ставити на 5m, 15m чи 1h. Який бар якого таймфрейму
+вважається пампом, вирішує features.in_pump (памп триває на момент закриття бару).
+До 2026-09-29 end_ts був «останнім баром включно» на 1h; тодішні рядки перераховано (+1 год).
 
     python load_pumps.py
 """
@@ -41,8 +44,8 @@ def parse_row(r: dict) -> tuple:
         raise ValueError("порожній base_asset")
     if ptype not in PATTERN_TYPES:
         raise ValueError(f"невідомий pattern_type '{ptype}'")
-    if end < start:
-        raise ValueError("end_ts раніше за start_ts")
+    if end <= start:
+        raise ValueError("end_ts має бути пізніше за start_ts")
     return base, start, end, ptype, (r.get("notes") or "").strip() or None
 
 
@@ -54,7 +57,7 @@ def check_overlaps(rows: list[tuple]) -> list[str]:
     for base, spans in by_base.items():
         spans.sort()
         for (s1, e1), (s2, e2) in zip(spans, spans[1:]):
-            if s2 <= e1:
+            if s2 < e1:                      # кінець виключний: інтервал може починатися там, де закінчився попередній
                 errors.append(f"{base}: інтервали перетинаються "
                               f"({s1:%m-%d %H:%M}–{e1:%m-%d %H:%M} і {s2:%m-%d %H:%M}–{e2:%m-%d %H:%M})")
     return errors
@@ -88,12 +91,11 @@ def write_pumps(rows: list[tuple], path: str = PUMPS_FILE) -> None:
 
 
 def sync_db(conn, rows: list[tuple]) -> None:
-    # end_ts у CSV — останній бар включно, у таблиці — межа інтервалу (бар + 1 год),
-    # щоб виконувалась умова end_ts > start_ts і для однобарних пампів
+    # і в CSV, і в таблиці end_ts — виключна межа (момент кінця пампу)
     conn.execute("TRUNCATE pumps RESTART IDENTITY")
     conn.cursor().executemany(
         "INSERT INTO pumps (base_asset, start_ts, end_ts, pattern_type, notes) "
-        "VALUES (%s, %s, %s + interval '1 hour', %s, %s)",
+        "VALUES (%s, %s, %s, %s, %s)",
         rows,
     )
     conn.commit()

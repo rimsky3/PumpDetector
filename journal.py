@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
-from features import aggregate, load_pumps, load_raw, query_df
+from features import aggregate, in_pump, load_pumps, load_raw, query_df
 from risk import position_state
 
 H = pd.Timedelta(hours=1)
@@ -115,14 +115,14 @@ def model_stats(conn, model: str, trades: pd.DataFrame, scores: pd.DataFrame, si
     pumps = pumps[(pumps["pattern_type"] == "pump") & (pumps["start_ts"] >= since)]
     caught, total, delays = 0, 0, []
     for p in pumps.itertuples():
-        hours = s[(s["base_asset"] == p.base_asset) & (s["ts"] >= p.start_ts) & (s["ts"] < p.end_ts)] if not s.empty else s
+        hours = s[(s["base_asset"] == p.base_asset) & in_pump(s["ts"], p.start_ts, p.end_ts)] if not s.empty else s
         if hours.empty:
             continue                      # памп поза оціненими годинами цього обсягу
         total += 1
         sig = hours[hours["signal"]]
         if len(sig):
             caught += 1
-            delays.append((sig["ts"].min() - p.start_ts) / H)
+            delays.append(max(0.0, (sig["ts"].min() - p.start_ts) / H))
     ticker_days = (len(s) / 24) if not s.empty else 0
     fp = int((decided["outcome"] == "fp").sum())
     res = t["result_pct"].dropna()

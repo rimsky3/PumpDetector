@@ -80,7 +80,7 @@ Re-running `fetch.py` is safe: rows are upserted, never duplicated.
 ### Adding a ticker vs refreshing everything
 
 The API limit is counted **per symbol per request**, not per row, so fetching fewer days does not make a
-run cheaper. The cost is driven by the number of markets: roughly 3 markets per ticker × 6 series.
+run cheaper. The cost is driven by the number of markets: roughly 3 markets per ticker × 5 series.
 A full run over 7 tickers is ~126 calls, about 3–4 minutes at 40 calls/min, and grows with the list.
 
 | Situation | Command |

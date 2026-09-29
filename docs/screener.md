@@ -37,7 +37,7 @@ training set, every hour on them would count as "no pump" and silently bias the 
 `features.py` builds the training table from `tickers.txt` only.
 
 **Capacity.** Coinalyze allows 40 symbol-requests per minute. A ticker has about 3 exchange contracts and
-6 series, so roughly 18 calls. Around 100 tickers fit into an hourly cycle. A coin needs 7 days of
+5 series, so roughly 15 calls. Around 100 tickers fit into an hourly cycle. A coin needs 7 days of
 history before it can be scored, because the baseline windows are 7 days.
 
 ## Models

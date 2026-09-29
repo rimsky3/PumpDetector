@@ -1,6 +1,6 @@
 # Features
 
-`features.py` turns raw Coinalyze series into one row per ticker per hour, with 24 features and a label.
+`features.py` turns raw Coinalyze series into one row per ticker per hour, with 23 features and a label.
 The same module is used for training, inference and the screener, so the feature logic exists in one place.
 
 ```bash
@@ -17,7 +17,7 @@ itself, run it without arguments so the table is recreated with the new columns.
 2. **Aggregate** all contracts of a ticker into one hourly series on a regular hourly grid:
    - open interest, volume, buy volume and liquidations: sum in USD across contracts;
    - price, high, low: one reference contract (Binance USDT if available);
-   - funding, predicted funding and long %: mean across contracts weighted by open interest
+   - funding and long %: mean across contracts weighted by open interest
      (plain mean when no OI is available, as on Aster).
 3. **Compute features** relative to the ticker's own history.
 4. **Label** each hour: `1` if it falls inside a `pump` interval, otherwise `0`. `pattern_type` keeps the
@@ -59,7 +59,6 @@ are accumulated. The raw OI sum is kept for reference but not used for change fe
 | `funding` | OI-weighted funding rate | who pays whom |
 | `funding_z_7d` | z-score of funding vs the previous 7 days | funding unusual for this coin |
 | `funding_chg_24h` | change of funding over 24 h | direction of crowding |
-| `pred_funding_gap` | predicted − current funding | where funding is heading |
 | `liq_long_4h_oi`, `liq_short_4h_oi` | long / short liquidations over 4 h, relative to OI | forced exits |
 | `liq_imbalance_4h` | (short − long) / (short + long) liquidations over 4 h, 0 if none | squeeze direction |
 | `ls_long_pct` | OI-weighted % of accounts long | crowd positioning |
@@ -71,7 +70,7 @@ when volume is zero). Tree models handle them natively; linear models need imput
 ## Output table
 
 `features` is fully derived from the raw tables and `pumps`, so it is created by `features.py` rather than
-`schema.sql`. Columns: `base_asset`, `ts`, `price` and `oi` (context, not features), the 24 features,
+`schema.sql`. Columns: `base_asset`, `ts`, `price` and `oi` (context, not features), the 23 features,
 `label`, `pattern_type`. Primary key `(base_asset, ts)`.
 
 ## First look at the data (September 2026)

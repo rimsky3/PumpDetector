@@ -20,3 +20,4 @@ reports/*.csv
 models/
 # стан скринера для дашборду
 reports/*.json
+experiments/cache/

@@ -25,7 +25,7 @@ check the naming on the exchange.
 | Open interest | `open-interest-history` | `open_interest` | o, h, l, c | USD (`convert_to_usd=true`) |
 | OHLCV | `ohlcv-history` | `ohlcv` | o, h, l, c, v, bv, tx, btx | price in quote; volume see below |
 | Funding rate | `funding-rate-history` | `funding_rate` | o, h, l, c | rate per funding period |
-| Predicted funding | `predicted-funding-rate-history` | `predicted_funding_rate` | o, h, l, c | rate |
+| Predicted funding | `predicted-funding-rate-history` | `predicted_funding_rate` | o, h, l, c | rate; **not collected since 2026-09-29** ([why](modeling.md#predicted-funding-removed)) |
 | Liquidations | `liquidation-history` | `liquidations` | long_liq, short_liq | USD (`convert_to_usd=true`) |
 | Long/short ratio | `long-short-ratio-history` | `long_short_ratio` | ratio, long_pct, short_pct | ratio, % of accounts |
 
@@ -53,6 +53,31 @@ Coinalyze keeps a rolling window of intraday history. Observed in September 2026
 
 The project uses **60 days** (the `fetch.py` default) so that every series covers the same period.
 Older data disappears from the provider, so regular collection is the only way to build a longer history.
+
+### Exchange APIs directly
+
+Binance and Bybit publish the same series without a key and with far higher limits (checked September 2026,
+see [modeling.md](modeling.md#experiment-exchange-apis-instead-of-coinalyze)):
+
+| Series | Binance | Bybit |
+|---|---|---|
+| Candles (incl. buy volume on Binance) | years, 1m and up | years, 1m and up; no buy volume |
+| Open interest, long/short | 30 days (5m, 1h) | at least a year (5m, 1h) |
+| Funding (paid rates) | years | years |
+| Liquidations, predicted funding | no history (websocket / current value only) | no history |
+
+`python fetch_exchange.py` stores 15m and 5m bars from these endpoints in the same raw tables (`interval` =
+`15min` / `5min`, same market symbols as Coinalyze), for labeling and a future 15m model. Everything that reads
+raw tables filters by `interval`; hourly data stays Coinalyze.
+
+The values match Coinalyze exactly once aligned in time: an exchange OI snapshot at T+1h is the close of
+bar T. Binance's `/futures/data/*` endpoints return the **latest** 500 points when the requested range is
+longer, so page through them in windows of 500 hours.
+
+Exchanges give open interest as snapshots, not candles. `fetch_exchange.py` builds a candle from them:
+open = snapshot at the bar's start, close = at its end, high/low = the larger and smaller of the two (intrabar
+extremes are unknown). As in Coinalyze, the whole candle is in USD at the bar's close, so dividing by the close
+gives exact coins.
 
 ## Coverage and known gaps
 

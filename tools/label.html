@@ -33,7 +33,38 @@
 
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
-.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 16px; }
+.page { max-width: 1640px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .page { grid-template-columns: minmax(0, 1fr); } }
+.wrap { display: grid; gap: 16px; min-width: 0; }
+/* права панель: усі перпи Binance, завантаження тікера в базу */
+.side { position: sticky; top: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; flex-direction: column; max-height: calc(100vh - 24px); min-width: 0; }
+@media (max-width: 1100px) { .side { position: static; max-height: 70vh; } }
+.side-head { padding: 12px 12px 8px; display: grid; gap: 8px; border-bottom: 1px solid var(--line); }
+.side-head h2 { font-size: 14px; font-weight: 600; margin: 0; display: flex; justify-content: space-between; align-items: baseline; }
+.side-head h2 small { font-weight: 400; color: var(--fg3); font-size: 12px; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button { padding: 3px 8px; font-size: 12px; }
+.side-row2 { display: flex; gap: 6px; }
+.side-row2 select { width: auto; flex: none; }
+.cur { display: flex; gap: 8px; align-items: center; justify-content: space-between; font-size: 12px; color: var(--fg2); }
+.cur b { font-family: var(--mono); color: var(--fg); font-weight: 500; }
+.cur button { padding: 3px 8px; font-size: 12px; }
+.cur button[aria-pressed="true"] { background: var(--tp); border-color: var(--tp); }
+.tlist { list-style: none; margin: 0; padding: 4px 0; overflow-y: auto; flex: 1; min-height: 120px; }
+.tlist li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 6px 12px; cursor: pointer; border-left: 3px solid transparent; }
+.tlist li:hover { background: var(--bg); }
+.tlist li.on { background: var(--bg); border-left-color: var(--accent); }
+.tlist li.off { cursor: default; }
+.tlist .nm { font: 500 13px var(--mono); display: flex; gap: 6px; align-items: center; min-width: 0; }
+.tlist .chip2 { font: 500 10px var(--sans); padding: 0 5px; border-radius: 3px; border: 1px solid var(--line); color: var(--fg2); letter-spacing: .02em; }
+.tlist .chip2.tr { border-color: var(--tp); color: var(--tp); }
+.tlist .chip2.lb { border-color: var(--mark); color: var(--mark); }
+.tlist .num { font: 12px var(--mono); font-variant-numeric: tabular-nums; text-align: right; }
+.tlist .num.up { color: var(--oi); } .tlist .num.down { color: var(--fp); }
+.tlist .meta { grid-column: 1 / -1; font-size: 11px; color: var(--fg3); display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.tlist .meta.err { color: var(--fp); }
+.tlist .meta button { padding: 1px 8px; font-size: 11px; }
+.side-foot { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--fg3); }
 h1 { font-size: 20px; font-weight: 600; margin: 0; text-wrap: balance; }
 .sub { color: var(--fg2); margin: 2px 0 0; font-size: 13px; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
@@ -55,6 +86,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .info i { font-style: normal; color: var(--fg3); }
 .info b { font-weight: 500; }
 .info b.dim { color: var(--fg2); font-weight: 400; }
+.info b.tk-name { font-weight: 600; color: var(--accent); }
 .info b.up { color: var(--oi); } .info b.down { color: var(--fp); }
 .info b.cls-tp { color: var(--tp); } .info b.cls-fp { color: var(--fp); } .info b.cls-fs { color: var(--fs); } .info b.cls-fn { color: var(--fn); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12px; color: var(--fg2); margin: 0; }
@@ -108,17 +140,19 @@ td button { padding: 2px 8px; font-size: 12px; }
 <script src="/js/ruler.js"></script>
 </head>
 <body>
+<div class="page">
 <div class="wrap">
   <header>
     <h1>Розмітка пампів</h1>
     <p class="status" id="status" role="status" aria-live="polite"></p>
-    <p class="sub">Годинні дані Coinalyze за <span id="days">60</span> днів. Ціна — Binance, OI і обсяг — сума по біржах у USD. Час — UTC, бар позначено часом відкриття.</p>
+    <p class="sub"><span id="srcNote">1h — Coinalyze, усі біржі.</span> За <span id="days">60</span> днів. Ціна — Binance, OI і обсяг — сума по біржах. Час — UTC, бар позначено часом відкриття.</p>
   </header>
 
   <div class="bar">
-    <div class="group" id="tickers"><span class="label">Тікер</span></div>
     <div class="group">
-      <span class="label">Період</span>
+      <span class="label">ТФ</span>
+      <button data-tf="1h" aria-pressed="true">1h</button><button data-tf="15m" aria-pressed="false">15m</button><button data-tf="5m" aria-pressed="false">5m</button>
+      <span class="label" style="margin-left:10px">Період</span>
       <button data-days="7">7 д</button><button data-days="14">14 д</button><button data-days="30">30 д</button><button data-days="60" aria-pressed="true">60 д</button>
       <span class="label" style="margin-left:10px">Ціна</span>
       <button id="logBtn" aria-pressed="false">Лог. шкала</button>
@@ -145,7 +179,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   </p>
 
   <section class="selbar" id="selbar" aria-label="Виділений памп">
-    <p class="hint" id="selHint">Клік по свічці ставить початок пампу, другий клік — кінець. Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. На одному тікері можна розмітити кілька пампів.</p>
+    <p class="hint" id="selHint">Клік по свічці ставить початок пампу (відкриття бару), другий клік — останній бар пампу (кінець = його закриття). Межі можна ставити на будь-якому ТФ: де старт видно чіткіше — 5m чи 15m — там і став. Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. На одному тікері можна розмітити кілька пампів.</p>
     <div class="selbody" id="selBody" hidden>
       <dl class="sel-dl">
         <dt>Тікер</dt><dd id="sTk">—</dd>
@@ -195,11 +229,37 @@ td button { padding: 2px 8px; font-size: 12px; }
     <p class="note">Кожна зміна одразу записується в pumps.csv і таблицю pumps у базі.</p>
   </section>
 </div>
+
+<aside class="side" aria-labelledby="sideH">
+  <div class="side-head">
+    <h2 id="sideH">Тікери <small id="sideCount"></small></h2>
+    <input type="text" id="q" placeholder="Пошук: QNT, AKE…" aria-label="Пошук тікера" autocomplete="off">
+    <div class="tabs" role="group" aria-label="Який список показати">
+      <button data-list="db" aria-pressed="true">У базі</button><button data-list="all" aria-pressed="false">Усі Binance</button><button data-list="train" aria-pressed="false">У навчанні</button>
+    </div>
+    <div class="side-row2">
+      <select id="sortSel" aria-label="Сортування">
+        <option value="vol">Обсяг 24г</option><option value="chg">Зміна 24г</option><option value="az">A–Z</option>
+      </select>
+    </div>
+    <div class="cur" id="cur" hidden>
+      <span><b id="curTk"></b> <span id="curInfo"></span></span>
+      <button id="trainBtn" aria-pressed="false" title="tickers.txt — навчальна вибірка: нерозмічені години тікера вважаються «пампу не було»">У навчання</button>
+    </div>
+  </div>
+  <ul class="tlist" id="tlist" aria-label="Список тікерів"></ul>
+  <p class="side-foot" id="sideFoot">↑/↓ — сусідній тікер. «Завантажити»: 1h з Coinalyze + 15m/5m з Binance і Bybit, ~1–3 хв.</p>
+</aside>
+</div>
 <script>
 (() => {
-  const DATA = {};          // кеш рядів по тікерах
-  let TICKERS = [];
+  const DATA = {};          // кеш рядів: ключ "ТІКЕР|ТФ"
+  let TICKERS = [];         // тікери з даними в базі
+  let UNI = [], TRAIN = [], JOBS = {};                 // усі перпи Binance, tickers.txt, завантаження
+  const LS = { list: "db", sort: "vol", q: "" };
   const H = 3600;
+  const TF_SEC = { "1h": 3600, "15m": 900, "5m": 300 };
+  const TF_NOTE = { "1h": "1h — Coinalyze, усі біржі.", "15m": "15m — Binance + Bybit напряму (OI Binance лише за 30 днів).", "5m": "5m — Binance + Bybit напряму (OI Binance лише за 30 днів)." };
 
   const $ = (id) => document.getElementById(id);
 
@@ -219,11 +279,17 @@ td button { padding: 2px 8px; font-size: 12px; }
   const status = (msg, isErr) => { const el = $("status"); el.textContent = msg; el.classList.toggle("err", !!isErr); };
 
   let rows = [];
-  const st = { tk: null, log: false, oiUsd: false, a: null, b: null, model: "lightgbm" };
+  // a — момент початку, b — момент кінця (виключно): моменти часу, не прив'язані до ТФ
+  const st = { tk: null, tf: "1h", log: false, oiUsd: false, a: null, b: null, model: "lightgbm" };
+  const BAR = () => TF_SEC[st.tf];
+  // бар (t — відкриття) у пампі, якщо на момент його закриття памп уже триває: a < t + бар ≤ b (як features.in_pump)
+  const inPump = (t, a, b) => t + BAR() > a && t + BAR() <= b;
 
   // ---------- форматування ----------
   const pad = (n) => String(n).padStart(2, "0");
-  const fmtTs = (t) => { const d = new Date(t * 1000); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:00`; };
+  const fmtTs = (t) => { const d = new Date(t * 1000); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  const fmtMin = (sec) => { const m = Math.round(sec / 60), d = Math.floor(m / 1440), h = Math.floor(m % 1440 / 60), mm = m % 60;
+    return [d ? `${d} д` : "", h ? `${h} год` : "", mm ? `${mm} хв` : ""].filter(Boolean).join(" ") || "0 хв"; };
   const fmtUsd = (v) => {
     if (v == null) return "—";
     const a = Math.abs(v);
@@ -260,7 +326,8 @@ td button { padding: 2px 8px; font-size: 12px; }
   };
 
   // ---------- дані тікера ----------
-  const D = () => DATA[st.tk] || { t: [], price: [], oi: [], vol: [], oiBy: {}, oiStart: {} };
+  const D = () => DATA[`${st.tk}|${st.tf}`] || { t: [], price: [], oi: [], vol: [], oiBy: {}, oiStart: {} };
+  const barAt = (t) => { const i = idxAt(t + 1) - 1; return i >= 0 ? D().t[i] : null; };   // відкриття бару, що містить момент t
   const idxAt = (t) => { // перший індекс з ts >= t
     const a = D().t; let lo = 0, hi = a.length;
     while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < t) lo = m + 1; else hi = m; }
@@ -277,7 +344,8 @@ td button { padding: 2px 8px; font-size: 12px; }
   // ---------- передбачення моделей (reports/oof_predictions.csv від train.py) ----------
   const PRED = { available: false, updated: null, models: [] };
   const MODEL_NAMES = { lightgbm: "LightGBM", logreg: "Логістична регресія", rule: "Правило OI + обсяг" };
-  const P = () => (D().pred || {})[st.model];               // { score[], signal[], threshold } вирівняні з D().t
+  // { score[], signal[], threshold } вирівняні з D().t; передбачення годинні — показуємо лише на 1h
+  const P = () => st.tf === "1h" ? (D().pred || {})[st.model] : undefined;
   const alignPred = (d, res) => {                           // передбачення → індекси рядів графіка
     const pos = new Map(d.t.map((t, i) => [t, i]));
     const out = {};
@@ -290,7 +358,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   };
   // розмітка на момент t за поточним pumps.csv: "pump", "fs" (фальстарт або other) або null
   const labelAt = (t) => {
-    for (const r of rows) if (r.tk === st.tk && t >= r.a && t <= r.b) return r.type === "pump" ? "pump" : "fs";
+    for (const r of rows) if (r.tk === st.tk && inPump(t, r.a, r.b)) return r.type === "pump" ? "pump" : "fs";
     return null;
   };
   // клас години: tp — сигнал у пампі, fp — хибний сигнал, fs — сигнал на фальстарті, fn — пропущена година пампу
@@ -307,7 +375,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   // Клік по свічці — початок / кінець інтервалу; колесо — масштаб; перетягування — зсув.
   const LWC = window.LightweightCharts;
   const chartEl = $("lw"), infoEl = $("info");
-  let chart = null, S = {}, mk = {}, idx = new Map(), probLine = null, loadedTk = null;
+  let chart = null, S = {}, mk = {}, idx = new Map(), probLine = null, loadedTk = null, wm = null;
 
   const fmtDur = (hrs) => { const d = Math.floor(Math.abs(hrs) / 24), h = Math.abs(hrs) % 24; return (hrs < 0 ? "−" : "") + (d ? `${d} д ${h} год` : `${h} год`); };
   const signed = (v) => (v >= 0 ? "+" : "−") + fmtPx(Math.abs(v));
@@ -365,6 +433,8 @@ td button { padding: 2px 8px; font-size: 12px; }
         autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) }, 3);
     }
     const panes = chart.panes();
+    // напис тікера на тлі панелі ціни, як у TradingView
+    wm = LWC.createTextWatermark(panes[0], { horzAlign: "center", vertAlign: "center", lines: [] });
     (withModel ? [4, 2.2, 1.1, 1.7] : [4.5, 2.4, 1.3]).forEach((f, i) => panes[i] && panes[i].setStretchFactor(f));
     chart.subscribeCrosshairMove((p) => renderInfo(p && p.time != null ? idx.get(p.time) : null));
     chart.subscribeClick(onChartClick);
@@ -386,11 +456,12 @@ td button { padding: 2px 8px; font-size: 12px; }
       const w = document.createElement("span"), a = document.createElement("i"), b = document.createElement("b");
       a.textContent = k; b.textContent = v; if (cls) b.className = cls; w.append(a, b); infoEl.appendChild(w);
     };
+    add("", `${st.tk} · ${st.tf}`, "tk-name");
     add("", fmtTs(d.t[i]) + " UTC");
     add("O", fmtPx(d.open[i])); add("H", fmtPx(d.high[i])); add("L", fmtPx(d.low[i])); add("C", fmtPx(d.price[i]));
     const pc = chg(d.price[i], d.price[j]); add("24 год", fmtPct(pc), pc == null ? "" : pc >= 0 ? "up" : "down");
     add("OI", fmtUsd(d.oi[i])); add("монет", fmtNum(d.coin[i]), "dim");
-    const o1 = st.oiUsd ? (d.oiO[i] ? d.oi[i] / d.oiO[i] - 1 : null) : (d.coinO[i] ? d.coin[i] / d.coinO[i] - 1 : null); add("OI 1 год", fmtPct(o1), o1 == null ? "" : o1 >= 0 ? "up" : "down");
+    const o1 = st.oiUsd ? (d.oiO[i] ? d.oi[i] / d.oiO[i] - 1 : null) : (d.coinO[i] ? d.coin[i] / d.coinO[i] - 1 : null); add(`OI ${st.tf}`, fmtPct(o1), o1 == null ? "" : o1 >= 0 ? "up" : "down");
     const oc = chg(d.oi[i], d.oi[j]); add("OI 24 год", fmtPct(oc), oc == null ? "" : oc >= 0 ? "up" : "down");
     const exs = Object.keys(d.oiBy);
     if (exs.length > 1) exs.forEach((ex) => add(ex, fmtUsd(d.oiBy[ex][i]), "dim"));
@@ -407,7 +478,8 @@ td button { padding: 2px 8px; font-size: 12px; }
     if (param.time == null || !idx.has(param.time)) return;
     const t = param.time;
     if (st.a == null || st.b != null) { st.a = t; st.b = null; }
-    else { st.b = t; if (st.b < st.a) [st.a, st.b] = [st.b, st.a]; }
+    else if (t >= st.a) st.b = t + BAR();                 // кінець — закриття клікнутого бару
+    else { st.b = barAt(st.a) + BAR(); st.a = t; }        // другий клік лівіше першого — міняємо місцями
     renderSel(); draw();
   };
 
@@ -422,14 +494,14 @@ td button { padding: 2px 8px; font-size: 12px; }
     if (!chart) makeChart();
     idx = new Map(d.t.map((t, i) => [t, i]));
     const own = rows.filter((r) => r.tk === st.tk).sort((x, y) => x.a - y.a);
-    const typeAt = (t) => { for (const r of own) if (t >= r.a && t <= r.b) return r.type; return null; };
+    const typeAt = (t) => { for (const r of own) if (inPump(t, r.a, r.b)) return r.type; return null; };
     const candles = [], saved = [], sel = [], oi = [], vol = [];
     d.t.forEach((time, i) => {
       const ok = d.open[i] != null && d.high[i] != null && d.low[i] != null && d.price[i] != null;
       candles.push(ok ? { time, open: d.open[i], high: d.high[i], low: d.low[i], close: d.price[i] } : { time });
       const ty = typeAt(time);
       saved.push(ty ? { time, value: 1, color: ty === "pump" ? C.saved : C["saved-alt"] } : { time });
-      const inSel = st.a != null && (st.b != null ? time >= st.a && time <= st.b : time === st.a);
+      const inSel = st.a != null && (st.b != null ? inPump(time, st.a, st.b) : time <= st.a && st.a < time + BAR());
       sel.push(inSel ? { time, value: 1 } : { time });
       const [o, hh, l, c] = st.oiUsd ? [d.oiO[i], d.oiH[i], d.oiL[i], d.oi[i]] : [d.coinO[i], d.coinH[i], d.coinL[i], d.coin[i]];
       oi.push(c != null && o != null ? { time, open: o, high: Math.max(hh, o, c), low: Math.min(l, o, c), close: c } : { time });
@@ -440,10 +512,10 @@ td button { padding: 2px 8px; font-size: 12px; }
     S.candles.priceScale().applyOptions({ mode: st.log ? LWC.PriceScaleMode.Logarithmic : LWC.PriceScaleMode.Normal });
 
     // мітки: номери розмічених інтервалів і межі виділення — на свічках; лістинг нової біржі — на OI
-    const marks = own.map((r, k) => ({ time: r.a, position: "aboveBar", shape: "square", size: 0.6,
+    const marks = own.map((r, k) => ({ time: barAt(r.a), position: "aboveBar", shape: "square", size: 0.6,
       color: r.type === "pump" ? C.mark : C.fg3, text: `#${k + 1}${r.type === "pump" ? "" : " " + r.type}` }));
-    if (st.a != null) marks.push({ time: st.a, position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "початок" });
-    if (st.b != null) marks.push({ time: st.b, position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "кінець" });
+    if (st.a != null) marks.push({ time: barAt(st.a), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "початок" });
+    if (st.b != null) marks.push({ time: barAt(st.b - 1), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "кінець" });
     mk.candles.setMarkers(marks.filter((m) => idx.has(m.time)).sort((a, b) => a.time - b.time));
     const listing = Object.entries(d.oiStart).filter(([, t0]) => t0 - d.t[0] >= 36 * H && idx.has(t0))
       .map(([ex, t0]) => ({ time: t0, position: "aboveBar", shape: "arrowDown", color: C.mark, text: `+${ex}: стрибок суми, не памп` }));
@@ -461,6 +533,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       if (p && p.threshold != null) probLine = S.prob.createPriceLine({ price: p.threshold, color: C.fg3, lineWidth: 1,
         lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: "поріг" });
     }
+    wm.applyOptions({ lines: [{ text: `${st.tk} · ${st.tf}`, color: C.line, fontSize: 56, fontStyle: "600", fontFamily: FONT.sans }] });
     if (loadedTk !== st.tk) { loadedTk = st.tk; chart.timeScale().fitContent(); if (ruler) ruler.clear(); }
     if (ruler) ruler.redraw();
     renderInfo(null);
@@ -473,9 +546,8 @@ td button { padding: 2px 8px; font-size: 12px; }
     $("sA").textContent = st.a != null ? fmtTs(st.a) : "—";
     $("sB").textContent = st.b != null ? fmtTs(st.b) : (st.a != null ? "клікни ще раз" : "—");
     if (st.a != null && st.b != null) {
-      const hrs = (st.b - st.a) / H + 1;
-      $("sDur").textContent = `${hrs} год (${(hrs / 24).toFixed(1)} д)`;
-      const ia = idxAt(st.a), ib = nearestIdx(st.b);
+      $("sDur").textContent = fmtMin(st.b - st.a);
+      const ia = idxAt(st.a + 1 - BAR()), ib = idxAt(st.b + 1 - BAR()) - 1;   // бари, що в пампі за inPump
       let pmax = -Infinity, omax = -Infinity;
       for (let i = ia; i <= ib; i++) {
         if (d.price[i] != null && d.price[i] > pmax) pmax = d.price[i];
@@ -517,10 +589,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     $("rowCount").textContent = rows.length
       ? `${rows.length} інтервалів: pump — ${n("pump")}, false_start — ${n("false_start")}` + (n("other") ? `, other — ${n("other")}` : "")
       : "";
-    document.querySelectorAll("#tickers button").forEach((b) => {
-      const k = rows.filter((r) => r.tk === b.dataset.tk).length;
-      b.textContent = k ? `${b.dataset.tk} · ${k}` : b.dataset.tk;
-    });
+    renderList();
     renderErrors();   // помилки рахуються за поточною розміткою
   };
 
@@ -539,21 +608,21 @@ td button { padding: 2px 8px; font-size: 12px; }
       while (j + 1 < d.t.length && p.signal[j + 1] && d.t[j + 1] - d.t[j] === H) j++;
       const a = d.t[i], b = d.t[j];
       let maxP = 0; for (let k = i; k <= j; k++) maxP = Math.max(maxP, p.score[k] ?? 0);
-      const hit = own.filter((r) => r.a <= b && r.b >= a);
+      const hit = own.filter((r) => r.a < b + H && r.b > a);
       const kind = hit.some((r) => r.type === "pump") ? "tp" : hit.length ? "fs" : "fp";
       ev.push({ kind, a, b, hours: j - i + 1, maxP });
       i = j + 1;
     }
     own.filter((r) => r.type === "pump").forEach((r) => {
-      const ia = idxAt(r.a), ib = nearestIdx(r.b);
+      const ia = idxAt(r.a + 1 - H), ib = idxAt(r.b + 1 - H) - 1;          // години пампу за inPump
       if (ia >= d.t.length || p.score[ia] == null) return;   // памп поза періодом передбачень
       let caught = false, maxP = 0, firstSig = null;
       for (let k = ia; k <= ib; k++) {
         maxP = Math.max(maxP, p.score[k] ?? 0);
         if (p.signal[k] && firstSig == null) { caught = true; firstSig = d.t[k]; }
       }
-      if (!caught) ev.push({ kind: "fn", a: r.a, b: r.b, hours: (r.b - r.a) / H + 1, maxP });
-      else ev.delays.push((firstSig - r.a) / H);
+      if (!caught) ev.push({ kind: "fn", a: r.a, b: r.b, hours: Math.round((r.b - r.a) / H * 10) / 10, maxP });
+      else ev.delays.push(Math.max(0, Math.round((firstSig - r.a) / H * 10) / 10));
     });
     ev.sort((x, y) => x.a - y.a);
     return ev;
@@ -565,7 +634,9 @@ td button { padding: 2px 8px; font-size: 12px; }
     const ev = modelEvents(), p = P();
     const n = (k) => ev.filter((e) => e.kind === k).length;
     const sum = $("errSum"); sum.replaceChildren();
-    if (!p || !p.n) {
+    if (st.tf !== "1h") {
+      sum.textContent = "Модель годинна: її сигнали й помилки показуються на ТФ 1h.";
+    } else if (!p || !p.n) {
       sum.textContent = "Для цього тікера немає передбачень. Запусти python features.py і python train.py.";
     } else {
       const pumps = rows.filter((r) => r.tk === st.tk && r.type === "pump").length;
@@ -598,18 +669,29 @@ td button { padding: 2px 8px; font-size: 12px; }
 
   // ---------- керування ----------
   const setRangeBtn = (days) => document.querySelectorAll("[data-days]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.days === days)));
+  // дані тікера на ТФ (з кешем); для 1h — ще й передбачення моделей. false — якщо даних немає
+  const load = async (tk, tf) => {
+    const key = `${tk}|${tf}`;
+    if (DATA[key]) return true;
+    status(`Завантажую ${tk} ${tf}…`);
+    try {
+      const q = encodeURIComponent(tk);
+      const [d, pr] = await Promise.all([api("GET", `/api/data?ticker=${q}&tf=${tf}`),
+        tf === "1h" ? api("GET", `/api/predictions?ticker=${q}`).catch(() => ({ available: false })) : { available: false }]);
+      if (!d.t.length) { status(`Немає ${tf}-даних для ${tk}. Завантаж: python fetch_exchange.py ${tk}`, true); return false; }
+      if (pr.available) { d.pred = alignPred(d, pr); enablePredictions(pr); }
+      DATA[key] = d; status("");
+      return true;
+    } catch (e) { status(`Не вдалося завантажити ${tk}: ${e.message}`, true); return false; }
+  };
   const setTicker = async (tk) => {
-    if (!DATA[tk]) {
-      status(`Завантажую ${tk}…`);
-      try {
-        const q = encodeURIComponent(tk);
-        const [d, pr] = await Promise.all([api("GET", `/api/data?ticker=${q}`), api("GET", `/api/predictions?ticker=${q}`).catch(() => ({ available: false }))]);
-        if (pr.available) { d.pred = alignPred(d, pr); enablePredictions(pr); }
-        DATA[tk] = d; status("");
-      } catch (e) { status(`Не вдалося завантажити ${tk}: ${e.message}`, true); return; }
+    if (!(await load(tk, st.tf))) {                      // на цьому ТФ даних немає — пробуємо 1h
+      if (st.tf === "1h" || !(await load(tk, "1h"))) return;
+      setTf("1h", false);
     }
     st.tk = tk; st.a = st.b = null;
-    document.querySelectorAll("#tickers button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tk === tk)));
+    if (location.hash.slice(1) !== tk) history.replaceState(null, "", "#" + tk);
+    renderList(true);
     setRangeBtn(60); renderSel(); renderErrors(); draw();
   };
   // перший тікер з передбаченнями вмикає панель моделі, легенду і вибір моделі
@@ -622,6 +704,128 @@ td button { padding: 2px 8px; font-size: 12px; }
     sel.value = st.model; sel.hidden = false; $("modelLbl").hidden = false; $("legend").hidden = false;
     if (chart) { chart.remove(); chart = null; }   // перебудувати з панеллю моделі
   };
+
+  // ---------- права панель: тікери ----------
+  const fmtVol = (v) => v ? fmtUsd(v).replace("$", "") : "—";
+  const listItems = () => {
+    const inDb = new Set(TICKERS), byBase = new Map(UNI.map((u) => [u.base, u]));
+    let bases = LS.list === "all" ? UNI.map((u) => u.base).concat(TICKERS.filter((t) => !byBase.has(t)))
+      : LS.list === "train" ? TRAIN.slice() : TICKERS.slice();
+    const q = LS.q.trim().toUpperCase();
+    if (q) bases = bases.filter((b) => b.includes(q));
+    const items = bases.map((b) => ({ base: b, u: byBase.get(b), db: inDb.has(b), train: TRAIN.includes(b),
+      n: rows.filter((r) => r.tk === b).length, job: JOBS[b] }));
+    const key = { vol: (x) => -(x.u ? x.u.vol : -1), chg: (x) => -(x.u ? x.u.chg : -9), az: () => 0 }[LS.sort];
+    items.sort((x, y) => key(x) - key(y) || x.base.localeCompare(y.base));
+    return items;
+  };
+  const renderList = (scroll) => {
+    const ul = $("tlist"); ul.replaceChildren();
+    const items = listItems();
+    $("sideCount").textContent = `${items.length}`;
+    items.forEach((x) => {
+      const li = document.createElement("li");
+      li.dataset.tk = x.base; li.classList.toggle("on", x.base === st.tk); li.classList.toggle("off", !x.db);
+      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = x.base;
+      if (x.n) { const c = document.createElement("span"); c.className = "chip2 lb"; c.textContent = `${x.n} розм.`; c.title = "інтервалів у pumps.csv"; nm.appendChild(c); }
+      if (x.train) { const c = document.createElement("span"); c.className = "chip2 tr"; c.textContent = "навч."; c.title = "у tickers.txt — іде в навчання"; nm.appendChild(c); }
+      const num = document.createElement("span"); num.className = "num";
+      if (x.u) { num.textContent = fmtPct(x.u.chg); num.classList.add(x.u.chg >= 0 ? "up" : "down"); } else num.textContent = "";
+      const meta = document.createElement("span"); meta.className = "meta";
+      const left = document.createElement("span");
+      left.textContent = x.u ? `обсяг ${fmtVol(x.u.vol)}` : (x.db ? "лише в базі" : "");
+      meta.appendChild(left);
+      if (x.job && (x.job.state === "queued" || x.job.state === "running")) {
+        const s = document.createElement("span"); s.textContent = x.job.msg; meta.appendChild(s);
+      } else if (x.job && x.job.state === "error") {
+        meta.classList.add("err"); left.textContent = x.job.msg;
+      }
+      if (!x.db && !(x.job && (x.job.state === "queued" || x.job.state === "running"))) {
+        const b = document.createElement("button"); b.textContent = x.job && x.job.state === "error" ? "Ще раз" : "Завантажити";
+        b.addEventListener("click", (e) => { e.stopPropagation(); loadTicker(x.base); });
+        meta.appendChild(b);
+      }
+      li.append(nm, num, meta);
+      if (x.db) li.addEventListener("click", () => setTicker(x.base));
+      ul.appendChild(li);
+    });
+    if (scroll) { const on = ul.querySelector("li.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
+    // поточний тікер: чи в навчальній вибірці
+    $("cur").hidden = !st.tk;
+    if (st.tk) {
+      const inTr = TRAIN.includes(st.tk), n = rows.filter((r) => r.tk === st.tk).length;
+      $("curTk").textContent = st.tk; $("curInfo").textContent = n ? `· ${n} розм.` : "· без розмітки";
+      $("trainBtn").setAttribute("aria-pressed", String(inTr));
+      $("trainBtn").textContent = inTr ? "У навчанні ✓" : "У навчання";
+    }
+  };
+
+  let pollTimer = null;
+  const pollJobs = async () => {
+    try { JOBS = await api("GET", "/api/jobs"); } catch (e) { return; }
+    const active = Object.values(JOBS).some((j) => j.state === "queued" || j.state === "running");
+    const fresh = Object.entries(JOBS).filter(([tk, j]) => j.state === "done" && !TICKERS.includes(tk)).map(([tk]) => tk);
+    if (fresh.length) {
+      const u = await api("GET", "/api/universe");
+      TICKERS = u.db;
+      fresh.forEach((tk) => status(`${tk} завантажено: ${JOBS[tk].msg}`));
+      if (fresh.includes(pendingOpen)) { const tk = pendingOpen; pendingOpen = null; await setTicker(tk); }
+    }
+    renderList();
+    clearTimeout(pollTimer);
+    if (active) pollTimer = setTimeout(pollJobs, 2000);
+  };
+  let pendingOpen = null;
+  const loadTicker = async (tk) => {
+    try { JOBS[tk] = await api("POST", "/api/load", { ticker: tk }); pendingOpen = tk; }
+    catch (e) { status(e.message, true); return; }
+    renderList(); pollJobs();
+  };
+  $("q").addEventListener("input", (e) => { LS.q = e.target.value; renderList(); });
+  $("q").addEventListener("keydown", (e) => {    // Enter — відкрити перший знайдений, або завантажити, якщо його ще немає
+    if (e.key !== "Enter") return;
+    const first = listItems()[0]; if (!first) return;
+    if (first.db) setTicker(first.base); else loadTicker(first.base);
+  });
+  $("sortSel").addEventListener("change", (e) => { LS.sort = e.target.value; renderList(); });
+  document.querySelectorAll("[data-list]").forEach((b) => b.addEventListener("click", () => {
+    LS.list = b.dataset.list;
+    document.querySelectorAll("[data-list]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    renderList(true);
+  }));
+  $("trainBtn").addEventListener("click", async () => {
+    const on = !TRAIN.includes(st.tk);
+    try { TRAIN = (await api("POST", "/api/training", { ticker: st.tk, on })).training; }
+    catch (e) { status(e.message, true); return; }
+    status(on ? `${st.tk} у tickers.txt: піде в навчання (нерозмічені години — «пампу не було»)` : `${st.tk} прибрано з tickers.txt`);
+    renderList();
+  });
+  // ↑/↓ — сусідній тікер зі списку (лише ті, що в базі), коли фокус не в полі вводу
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    if (e.target.closest("input, select, textarea")) return;
+    const list = listItems().filter((x) => x.db).map((x) => x.base);
+    if (!list.length) return;
+    const i = list.indexOf(st.tk), j = Math.max(0, Math.min(list.length - 1, i + (e.key === "ArrowDown" ? 1 : -1)));
+    if (list[j] !== st.tk) { e.preventDefault(); setTicker(list[j]); }
+  });
+
+  // ТФ: виділення і видимий проміжок часу зберігаються — межі це моменти, а не номери барів
+  const setTf = (tf, redraw = true) => {
+    st.tf = tf;
+    document.querySelectorAll("[data-tf]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.tf === tf)));
+    $("srcNote").textContent = TF_NOTE[tf];
+    if (redraw) {
+      const vr = chart && chart.timeScale().getVisibleRange();
+      renderSel(); renderErrors(); draw();
+      if (vr) showRange(vr.from, vr.to);
+    }
+  };
+  document.querySelectorAll("[data-tf]").forEach((b) => b.addEventListener("click", async () => {
+    const tf = b.dataset.tf;
+    if (tf === st.tf || !st.tk) return;
+    if (await load(st.tk, tf)) setTf(tf);
+  }));
 
   document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
     const days = +b.dataset.days, d = D();
@@ -654,7 +858,8 @@ td button { padding: 2px 8px; font-size: 12px; }
       });
       rows = fromServer(res.rows);
       st.a = st.b = null; $("pNote").value = "";
-      status(`Додано ${tk} ${fmtTs(a)}, збережено в pumps.csv і базі`);
+      if (res.added_to_training) TRAIN.push(tk);
+      status(`Додано ${tk} ${fmtTs(a)}, збережено в pumps.csv і базі` + (res.added_to_training ? `; ${tk} додано в tickers.txt (навчальна вибірка)` : ""));
     } catch (e) { status(e.message, true); }
     renderSel(); renderRows(); draw();
   });
@@ -668,17 +873,14 @@ td button { padding: 2px 8px; font-size: 12px; }
     readColors();
     if (!LWC) { status("Бібліотеку графіків не знайдено: має бути app/vendor/lightweight-charts.standalone.production.js", true); return; }
     try {
-      const [tk, pumps] = await Promise.all([api("GET", "/api/tickers"), api("GET", "/api/pumps")]);
-      TICKERS = tk.tickers; rows = fromServer(pumps.rows);
+      const [tk, pumps, uni] = await Promise.all([api("GET", "/api/tickers"), api("GET", "/api/pumps"), api("GET", "/api/universe")]);
+      TICKERS = uni.db; UNI = uni.binance; TRAIN = uni.training; rows = fromServer(pumps.rows);
       $("days").textContent = tk.days;
+      if (uni.error) $("sideFoot").textContent = `Список Binance недоступний (${uni.error}); показано тікери з бази.`;
     } catch (e) { status(`Сервер не відповідає: ${e.message}. Чи запущено python label.py?`, true); return; }
-    if (!TICKERS.length) { status("У базі немає тікерів. Спершу запусти python fetch.py", true); return; }
-    TICKERS.forEach((tk) => {
-      const b = document.createElement("button"); b.className = "tk"; b.dataset.tk = tk; b.textContent = tk;
-      b.addEventListener("click", () => setTicker(tk));
-      $("tickers").appendChild(b);
-    });
     renderRows();
+    pollJobs();
+    if (!TICKERS.length) { status("У базі ще немає тікерів: вибери монету праворуч у «Усі Binance» і натисни «Завантажити»."); return; }
     // адреса виду http://127.0.0.1:8765/#AKE відкриває одразу потрібний тікер
     const fromHash = decodeURIComponent(location.hash.slice(1)).toUpperCase();
     await setTicker(TICKERS.includes(fromHash) ? fromHash : TICKERS[0]);

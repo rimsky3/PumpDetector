@@ -3,6 +3,12 @@ label.py — локальний інструмент розмітки пампі
 
 Піднімає вебсервер на 127.0.0.1 (доступний лише з цього комп'ютера) і відкриває
 сторінку з графіками ціни, open interest і обсягу по кожному тікеру з бази.
+Таймфрейми: 1h (Coinalyze, усі біржі) і 15m / 5m (Binance + Bybit, python fetch_exchange.py) — межі пампу
+можна ставити на будь-якому, це моменти часу.
+
+Права панель — усі USDT-перпи Binance. «Завантажити» ставить тікер у чергу: 1h з Coinalyze (fetch.collect),
+потім 15m/5m з бірж (fetch_exchange.collect). У tickers.txt (навчальна вибірка) тікер потрапляє, коли на ньому
+збережено перший інтервал, або кнопкою «У навчання» (переглянув — пампів немає: теж корисний негативний приклад).
 Виділені інтервали одразу записуються в pumps.csv і синхронізуються з таблицею pumps.
 Якщо є reports/oof_predictions.csv (python train.py), показує сигнали моделей і їхні помилки.
 
@@ -14,16 +20,23 @@ import argparse
 import csv
 import json
 import os
+import queue
+import re
 import sys
 import threading
+import time
 import webbrowser
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import psycopg
+import requests
 from dotenv import load_dotenv
 
+import fetch_exchange
+from exchanges import INTERVAL
+from fetch import TICKERS_FILE, Coinalyze, collect, read_tickers_file, set_ticker_in_file
 from load_pumps import (check_overlaps, parse_row, parse_ts, read_pumps,
                         sync_db, write_pumps, TS_FORMAT)
 
@@ -32,7 +45,57 @@ PAGE = os.path.join(ROOT, "tools", "label.html")
 VENDOR = os.path.join(ROOT, "app", "vendor")                          # бібліотека графіків, спільна з дашбордом
 JS_DIR = os.path.join(ROOT, "app", "js")                              # спільні скрипти сторінок
 PREDICTIONS = os.path.join(ROOT, "reports", "oof_predictions.csv")   # пише train.py
+TICKERS_PATH = os.path.join(ROOT, TICKERS_FILE)
 lock = threading.Lock()  # запис у pumps.csv — по одному
+
+
+# ---------------------------------------------------------------- усі перпи Binance
+
+_universe = {"at": 0.0, "rows": []}
+
+
+def binance_universe() -> list[dict]:
+    """USDT-перпи Binance, що торгуються, зі зміною ціни і обсягом за 24 год (кеш 10 хв; два публічні запити)."""
+    if time.time() - _universe["at"] < 600 and _universe["rows"]:
+        return _universe["rows"]
+    info = requests.get("https://fapi.binance.com/fapi/v1/exchangeInfo", timeout=20).json()
+    day = {t["symbol"]: t for t in requests.get("https://fapi.binance.com/fapi/v1/ticker/24hr", timeout=20).json()}
+    rows = []
+    for s in info["symbols"]:
+        if s.get("contractType") != "PERPETUAL" or s.get("quoteAsset") != "USDT" or s.get("status") != "TRADING":
+            continue
+        t = day.get(s["symbol"], {})
+        rows.append({"base": s["baseAsset"], "chg": float(t.get("priceChangePercent") or 0) / 100,
+                     "vol": float(t.get("quoteVolume") or 0)})
+    _universe.update(at=time.time(), rows=rows)
+    return rows
+
+
+# ---------------------------------------------------------------- черга завантажень
+
+JOBS: dict[str, dict] = {}          # тікер → {state: queued/running/done/error, msg}
+_jobs = queue.Queue()
+
+
+def load_worker(db_url: str, api_key: str, days: int) -> None:
+    """По одному тікеру: 1h з Coinalyze, потім 15m/5m з Binance і Bybit. Ліміт Coinalyze спільний зі скринером,
+    тож черга, а не паралельно."""
+    client = Coinalyze(api_key) if api_key else None
+    while True:
+        base = _jobs.get()
+        job = JOBS[base]
+        try:
+            if client is None:
+                raise ValueError("немає COINALYZE_API_KEY у .env")
+            job.update(state="running", msg="1h з Coinalyze…")
+            with psycopg.connect(db_url) as conn:
+                if not collect(client, conn, [base], days, verbose=False):
+                    raise ValueError("не знайдено в Coinalyze (буває інша назва: 1000… чи k…)")
+                job.update(msg="15m/5m з Binance і Bybit…")
+                n = fetch_exchange.collect(conn, [base], ["15m", "5m"], days, log=lambda m: job.update(msg=m.strip()))
+            job.update(state="done", msg="готово" if n else "готово (лише 1h: на Binance/Bybit немає)")
+        except Exception as e:
+            job.update(state="error", msg=str(e))
 
 
 def predictions(base: str) -> dict:
@@ -60,31 +123,35 @@ def predictions(base: str) -> dict:
     return out
 
 
-def ticker_data(conn, base: str, days: int) -> dict:
-    """Погодинні ряди тікера: ціна Binance (або перша біржа з OHLCV), OI і обсяг — сума по біржах у USD."""
+def ticker_data(conn, base: str, days: int, tf: str = "1h") -> dict:
+    """Ряди тікера на таймфреймі tf: ціна Binance (або перша біржа з OHLCV), OI і обсяг — сума по біржах у USD.
+    1h — з Coinalyze (усі біржі); 15m/5m — з Binance і Bybit (fetch_exchange.py)."""
+    interval = INTERVAL[tf]
     since = f"now() - interval '{int(days)} days'"
-    q = lambda sql: conn.execute(sql, (base,)).fetchall()
+    q = lambda sql: conn.execute(sql, (base, interval)).fetchall()
 
     price_ex = q("""SELECT m.exchange_name FROM markets m WHERE m.base_asset = %s AND m.has_ohlcv
+                    AND EXISTS (SELECT 1 FROM ohlcv o WHERE o.symbol = m.symbol AND o.interval = %s)
                     ORDER BY m.exchange_name <> 'Binance', m.exchange_name LIMIT 1""")
     price_ex = price_ex[0][0] if price_ex else None
     # свічки: open, high, low, close з еталонної біржі
     candles = {r[0]: r[1:] for r in conn.execute(f"""
         SELECT extract(epoch FROM o.ts)::bigint, o.o, o.h, o.l, o.c FROM ohlcv o JOIN markets m USING (symbol)
-        WHERE m.base_asset = %s AND m.exchange_name = %s AND o.ts >= {since}""", (base, price_ex)).fetchall()}
+        WHERE m.base_asset = %s AND m.exchange_name = %s AND o.interval = %s AND o.ts >= {since}""",
+        (base, price_ex, interval)).fetchall()}
     price = {t: c[3] for t, c in candles.items()}
 
     oi_rows = q(f"""
         SELECT extract(epoch FROM o.ts)::bigint, m.exchange_name, o.o, o.h, o.l, o.c, p.c
         FROM open_interest o JOIN markets m USING (symbol)
         LEFT JOIN ohlcv p ON p.symbol = o.symbol AND p.interval = o.interval AND p.ts = o.ts
-        WHERE m.base_asset = %s AND o.ts >= {since}""")
+        WHERE m.base_asset = %s AND o.interval = %s AND o.ts >= {since}""")
     # обсяг OHLCV буває в монетах — переводимо в USD через ціну закриття
     vol = dict(q(f"""
         SELECT extract(epoch FROM o.ts)::bigint,
                sum(CASE WHEN m.volume_denominated = 'BASE_ASSET' THEN o.v * o.c ELSE o.v END)
         FROM ohlcv o JOIN markets m USING (symbol)
-        WHERE m.base_asset = %s AND o.ts >= {since} GROUP BY 1"""))
+        WHERE m.base_asset = %s AND o.interval = %s AND o.ts >= {since} GROUP BY 1"""))
 
     # свічки OI — сума по біржах: open і close точні, high/low — сума екстремумів бірж
     # (верхня/нижня межа: піки на різних біржах могли бути в різні хвилини години)
@@ -106,6 +173,8 @@ def ticker_data(conn, base: str, days: int) -> dict:
     ts = sorted(set(price) | set(oi))
     get = lambda t, ex: oi.get(t, {}).get(ex)
     return {
+        "tf": tf,
+        "exchanges": exs,
         "priceExchange": price_ex,
         "t": ts,
         "price": [price.get(t) for t in ts],
@@ -173,15 +242,30 @@ class Handler(BaseHTTPRequestHandler):
                         "SELECT DISTINCT base_asset FROM markets ORDER BY 1").fetchall()]
                 return self._send(200, {"tickers": tickers, "days": self.days})
             if url.path == "/api/data":
-                base = (parse_qs(url.query).get("ticker") or [""])[0].upper()
+                qs = parse_qs(url.query)
+                base = (qs.get("ticker") or [""])[0].upper()
+                tf = (qs.get("tf") or ["1h"])[0]
+                if tf not in INTERVAL:
+                    raise ValueError(f"невідомий таймфрейм {tf}")
                 with psycopg.connect(self.db_url) as conn:
-                    return self._send(200, ticker_data(conn, base, self.days))
+                    return self._send(200, ticker_data(conn, base, self.days, tf))
             if url.path == "/api/predictions":
                 base = (parse_qs(url.query).get("ticker") or [""])[0].upper()
                 return self._send(200, predictions(base))
             if url.path == "/api/pumps":
                 with lock:
                     return self._send(200, {"rows": rows_to_json(read_pumps())})
+            if url.path == "/api/universe":
+                with psycopg.connect(self.db_url) as conn:
+                    db = [r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM markets ORDER BY 1")]
+                try:
+                    binance, err = binance_universe(), None
+                except Exception as e:           # без інтернету — лише тікери з бази
+                    binance, err = [], str(e)
+                return self._send(200, {"binance": binance, "db": db, "error": err,
+                                        "training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
+            if url.path == "/api/jobs":
+                return self._send(200, JOBS)
             return self._error(404, "не знайдено")
         except ValueError as e:
             return self._error(400, str(e))
@@ -200,12 +284,30 @@ class Handler(BaseHTTPRequestHandler):
             return rows
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/pumps":
-            return self._error(404, "не знайдено")
+        path = urlparse(self.path).path
         try:
-            new = parse_row(self._body())
-            rows = self._modify(lambda rows: rows + [new])
-            return self._send(200, {"rows": rows_to_json(rows)})
+            body = self._body()
+            if path == "/api/pumps":
+                new = parse_row(body)
+                rows = self._modify(lambda rows: rows + [new])
+                # перший інтервал на тікері — тікер іде в навчальну вибірку (tickers.txt)
+                added = set_ticker_in_file(TICKERS_PATH, new[0], True, "додано з label.py при першій розмітці")
+                return self._send(200, {"rows": rows_to_json(rows), "added_to_training": added})
+            if path == "/api/load":
+                base = str(body.get("ticker", "")).upper()
+                if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
+                    raise ValueError("невірна назва тікера")
+                if JOBS.get(base, {}).get("state") not in ("queued", "running"):
+                    JOBS[base] = {"state": "queued", "msg": "у черзі"}
+                    _jobs.put(base)
+                return self._send(200, JOBS[base])
+            if path == "/api/training":
+                base = str(body.get("ticker", "")).upper()
+                if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
+                    raise ValueError("невірна назва тікера")
+                set_ticker_in_file(TICKERS_PATH, base, bool(body.get("on")), "переглянуто в label.py")
+                return self._send(200, {"training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
+            return self._error(404, "не знайдено")
         except (ValueError, json.JSONDecodeError) as e:
             return self._error(400, str(e))
 
@@ -238,6 +340,7 @@ def main() -> None:
         sys.exit(f"{e}\nВиправ pumps.csv і запусти знову.")
 
     Handler.db_url, Handler.days = db_url, args.days
+    threading.Thread(target=load_worker, args=(db_url, os.getenv("COINALYZE_API_KEY"), args.days), daemon=True).start()
     # На Windows SO_REUSEADDR дозволяє двом процесам зайняти один порт: другий «стартує», але запитів не отримує.
     # Вимикаємо його, щоб повторний запуск одразу казав, що порт зайнятий.
     ThreadingHTTPServer.allow_reuse_address = False
