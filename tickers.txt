@@ -7,6 +7,5 @@ QNT
 AIN
 NMR
 MUBARAK
-ZEC
 SOON
 G    # фальстарт без OI — негативний приклад

@@ -32,6 +32,7 @@ from screener import FETCH_DAYS, RUN_MINUTE, WATCHLIST_FILE, load_models, score_
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(ROOT, "app", "dashboard.html")
+VENDOR = os.path.join(ROOT, "app", "vendor")
 MODEL_NAMES = {"lightgbm": "LightGBM", "logreg": "Логістична регресія"}
 CANDIDATE_SHARE = 0.5     # «Кандидат»: ймовірність ≥ половини порогу сигналу
 SPARK_HOURS = 48
@@ -189,8 +190,12 @@ def ticker(conn, base: str, model: str, days: int) -> dict:
         "position": pos,
         "series": {
             "t": list(view.index),
-            "price": view["price"].tolist(), "high": view["high"].tolist(), "low": view["low"].tolist(),
-            "oi": view["oi"].tolist(),
+            "open": view["open"].tolist(), "price": view["price"].tolist(),
+            "high": view["high"].tolist(), "low": view["low"].tolist(),
+            "oi": view["oi"].tolist(), "volume": view["volume"].tolist(),
+            # свічки OI у монетах (без впливу ціни) — див. features.aggregate
+            "coinO": view["oi_coins_o"].tolist(), "coinH": view["oi_coins_h"].tolist(),
+            "coinL": view["oi_coins_l"].tolist(), "coin": view["oi_coins_c"].tolist(),
             "prob": {m: s.reindex(view.index).tolist() for m, s in probs.items()},
         },
         "thresholds": thresholds,
@@ -202,15 +207,43 @@ def refresh(conn, base: str) -> dict:
     if not State.api_key:
         raise ValueError("немає COINALYZE_API_KEY у .env")
     started = time.monotonic()
+    last_closed = pd.Timestamp(datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1))
     with refresh_lock:
-        if State.client is None:
-            State.client = Coinalyze(State.api_key)
-        if not collect(State.client, conn, [base], FETCH_DAYS, verbose=False):
-            raise ValueError(f"{base} не знайдено на біржах")
+        # Скринер щогодини оновлює watchlist. Якщо остання закрита година вже в базі, в API не йдемо:
+        # скринер і дашборд ділять один ліміт Coinalyze, і зайві запити упираються в 429 з очікуванням до хвилини.
+        have = conn.execute("""SELECT max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
+                               WHERE m.base_asset = %s""", (base,)).fetchone()[0]
+        fetched = have is None or pd.Timestamp(have) < last_closed
+        if fetched:
+            if State.client is None:
+                State.client = Coinalyze(State.api_key)
+            if not collect(State.client, conn, [base], FETCH_DAYS, verbose=False):
+                raise ValueError(f"{base} не знайдено на біржах")
         scored, last_closed = score_bases(conn, [base], State.models)
     if scored.empty:
         raise ValueError(f"для {base} ще замало історії: потрібно ≥ 7 днів")
-    return {"ok": True, "seconds": round(time.monotonic() - started, 1), "last_closed": last_closed}
+    return {"ok": True, "fetched": fetched, "seconds": round(time.monotonic() - started, 1), "last_closed": last_closed}
+
+
+def rescore_on_start() -> None:
+    """Після перенавчання в signals ще немає оцінок нової версії моделі, а дашборд показує лише її.
+    Оцінюємо наявні в базі дані одразу, не чекаючи наступного циклу скринера (без запитів до API)."""
+    try:
+        with psycopg.connect(State.db_url) as conn:
+            known = {r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM markets")}
+            bases = [t for t in read_tickers_file(os.path.join(ROOT, WATCHLIST_FILE)) if t.upper() in known]
+            if not bases:
+                return
+            versions = [m["trained_at"] for m in State.models]
+            have = {r[0] for r in conn.execute(
+                "SELECT DISTINCT base_asset FROM signals WHERE model_version = ANY(%s)", (versions,))}
+            missing = [b.upper() for b in bases if b.upper() not in have]
+            if missing:
+                with refresh_lock:
+                    score_bases(conn, missing, State.models)
+                print(f"Оцінено новою моделлю: {', '.join(missing)}")
+    except Exception as e:
+        print(f"! не вдалося оцінити тікери при старті: {e}")
 
 
 # ---------------------------------------------------------------- сервер
@@ -244,12 +277,18 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/":
             with open(PAGE, "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
+        if url.path.startswith("/vendor/"):   # локальна копія бібліотеки графіків, інтернет не потрібен
+            path = os.path.normpath(os.path.join(VENDOR, os.path.basename(url.path)))
+            if not path.startswith(VENDOR) or not os.path.isfile(path):
+                return self._send(404, {"error": "не знайдено"})
+            with open(path, "rb") as f:
+                return self._send(200, f.read(), "text/javascript; charset=utf-8")
         if url.path == "/api/meta":
             return self._route(meta)
         if url.path == "/api/scanner":
             return self._route(lambda c: scanner(c, model))
         if url.path == "/api/ticker":
-            days = max(1, min(7, int(q.get("days", 3))))
+            days = max(1, min(60, int(q.get("days", 30))))
             return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days))
         return self._send(404, {"error": "не знайдено"})
 
@@ -274,8 +313,16 @@ def main() -> None:
     if not State.db_url:
         sys.exit("Заповни DATABASE_URL у файлі .env")
     State.models = load_models()
+    threading.Thread(target=rescore_on_start, daemon=True).start()
 
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    # На Windows SO_REUSEADDR дозволяє двом процесам зайняти один порт: другий «стартує», але запитів не отримує.
+    # Вимикаємо його, щоб повторний запуск одразу казав, що порт зайнятий.
+    ThreadingHTTPServer.allow_reuse_address = False
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError:
+        sys.exit(f"Порт {args.port} зайнятий: мабуть, уже запущено інший екземпляр. "
+                 f"Зупини його (Ctrl+C у тому терміналі) або запусти з --port 8767.")
     url = f"http://127.0.0.1:{args.port}/"
     print(f"Pump Detector: {url}  (Ctrl+C — зупинити)")
     if not args.no_browser:

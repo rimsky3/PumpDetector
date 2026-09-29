@@ -1,8 +1,8 @@
 # Training report
 
-Generated 2026-09-29 08:53 UTC. Leave-ticker-out validation: every ticker is scored by a model that never saw it; the probability threshold is chosen by nested leave-ticker-out on the training tickers only.
+Generated 2026-09-29 09:07 UTC. Leave-ticker-out validation: every ticker is scored by a model that never saw it; the probability threshold is chosen by nested leave-ticker-out on the training tickers only.
 
-Data: 13124 hourly bars, 10 tickers (AIN, AKE, G, LSK, MUBARAK, MYX, NMR, QNT, SOON, ZEC), 872 pump hours (6.6%), 22 pump intervals.
+Data: 11862 hourly bars, 9 tickers (AIN, AKE, G, LSK, MUBARAK, MYX, NMR, QNT, SOON), 448 pump hours (3.8%), 19 pump intervals.
 
 ## Summary
 
@@ -10,54 +10,51 @@ Hour level: precision / recall / F1 of the `pump in progress` class; PR-AUC is t
 
 | model | precision | recall | f1 | pr_auc | pumps_caught | median_delay_h | false_starts_triggered | false_alarms_per_30d |
 |---|---|---|---|---|---|---|---|---|
-| rule | 0.360 | 0.502 | 0.420 | — | 21/22 | 0.000 | 7/8 | 6.149 |
-| logreg | 0.637 | 0.585 | 0.610 | 0.705 | 21/22 | 0.000 | 5/8 | 2.800 |
-| lightgbm | 0.553 | 0.569 | 0.561 | 0.570 | 21/22 | 0.000 | 4/8 | 2.526 |
+| rule | 0.474 | 0.705 | 0.567 | — | 18/19 | 0.000 | 6/8 | 3.827 |
+| logreg | 0.585 | 0.696 | 0.636 | 0.645 | 18/19 | 0.000 | 5/8 | 2.612 |
+| lightgbm | 0.652 | 0.779 | 0.710 | 0.716 | 18/19 | 0.000 | 3/8 | 1.640 |
 
 ## rule by ticker
 
 | ticker | f1 | pumps_caught | median_delay_h | false_starts_triggered | false_alarms_per_30d |
 |---|---|---|---|---|---|
-| AIN | 0.704 | 1/1 | 0.000 | 0/0 | 9.000 |
-| AKE | 0.759 | 5/6 | 3.000 | 0/1 | 0.528 |
-| G | 0.149 | 1/1 | 0.000 | 2/2 | 13.196 |
-| LSK | 0.419 | 1/1 | 0.000 | 2/2 | 4.223 |
-| MUBARAK | 0.705 | 5/5 | 0.000 | 1/1 | 1.689 |
-| MYX | 0.037 | 1/1 | 0.000 | 2/2 | 4.751 |
-| NMR | 0.245 | 2/2 | 0.000 | 0/0 | 8.444 |
-| QNT | 0.422 | 1/1 | 0.000 | 0/0 | 11.250 |
-| SOON | 0.523 | 1/1 | 0.000 | 0/0 | 8.504 |
-| ZEC | 0.203 | 3/3 | 5.000 | 0/0 | 0.000 |
+| AIN | 0.780 | 1/1 | 0.000 | 0/0 | 3.934 |
+| AKE | 0.697 | 5/6 | 4.000 | 0/1 | 1.055 |
+| G | 0.290 | 1/1 | 0.000 | 1/2 | 3.692 |
+| LSK | 0.500 | 1/1 | 0.000 | 2/2 | 3.692 |
+| MUBARAK | 0.769 | 5/5 | 0.000 | 1/1 | 4.500 |
+| MYX | 0.062 | 1/1 | 0.000 | 2/2 | 3.692 |
+| NMR | 0.424 | 2/2 | 0.000 | 0/0 | 7.312 |
+| QNT | 0.468 | 1/1 | 0.000 | 0/0 | 3.934 |
+| SOON | 0.519 | 1/1 | 0.000 | 0/0 | 2.832 |
 
 ## logreg by ticker
 
 | ticker | f1 | pumps_caught | median_delay_h | false_starts_triggered | false_alarms_per_30d |
 |---|---|---|---|---|---|
-| AIN | 1.000 | 1/1 | 0.000 | 0/0 | 0.000 |
-| AKE | 0.634 | 5/6 | 0.000 | 0/1 | 5.806 |
-| G | 0.375 | 1/1 | 0.000 | 1/2 | 2.639 |
-| LSK | 0.515 | 1/1 | 0.000 | 2/2 | 5.279 |
-| MUBARAK | 0.746 | 5/5 | 0.000 | 1/1 | 6.192 |
-| MYX | 0.444 | 1/1 | 0.000 | 1/2 | 0.000 |
-| NMR | 0.680 | 2/2 | 0.500 | 0/0 | 1.126 |
-| QNT | 0.557 | 1/1 | 0.000 | 0/0 | 5.062 |
-| SOON | 0.585 | 1/1 | 0.000 | 0/0 | 1.134 |
-| ZEC | 0.538 | 3/3 | 0.000 | 0/0 | 0.567 |
+| AIN | 0.872 | 1/1 | 0.000 | 0/0 | 0.000 |
+| AKE | 0.583 | 5/6 | 0.000 | 0/1 | 12.132 |
+| G | 0.462 | 1/1 | 0.000 | 1/2 | 1.582 |
+| LSK | 0.421 | 1/1 | 15.000 | 2/2 | 2.637 |
+| MUBARAK | 0.810 | 5/5 | 0.000 | 1/1 | 2.250 |
+| MYX | 0.571 | 1/1 | 0.000 | 1/2 | 0.000 |
+| NMR | 0.708 | 2/2 | 0.500 | 0/0 | 0.562 |
+| QNT | 0.530 | 1/1 | 0.000 | 0/0 | 3.934 |
+| SOON | 0.600 | 1/1 | 0.000 | 0/0 | 0.000 |
 
 ## lightgbm by ticker
 
 | ticker | f1 | pumps_caught | median_delay_h | false_starts_triggered | false_alarms_per_30d |
 |---|---|---|---|---|---|
-| AIN | 0.989 | 1/1 | 0.000 | 0/0 | 0.000 |
-| AKE | 0.625 | 5/6 | 0.000 | 0/1 | 3.167 |
-| G | 0.281 | 1/1 | 0.000 | 1/2 | 1.056 |
-| LSK | 0.693 | 1/1 | 0.000 | 2/2 | 3.695 |
-| MUBARAK | 0.579 | 5/5 | 0.000 | 1/1 | 7.881 |
-| MYX | 0.444 | 1/1 | 0.000 | 0/2 | 0.528 |
-| NMR | 0.412 | 2/2 | 2.000 | 0/0 | 0.000 |
-| QNT | 0.593 | 1/1 | 0.000 | 0/0 | 9.000 |
-| SOON | 0.659 | 1/1 | 1.000 | 0/0 | 0.000 |
-| ZEC | 0.429 | 3/3 | 0.000 | 0/0 | 0.000 |
+| AIN | 1.000 | 1/1 | 0.000 | 0/0 | 0.000 |
+| AKE | 0.777 | 5/6 | 3.000 | 0/1 | 0.527 |
+| G | 0.240 | 1/1 | 0.000 | 0/2 | 3.692 |
+| LSK | 0.828 | 1/1 | 0.000 | 2/2 | 2.110 |
+| MUBARAK | 0.695 | 5/5 | 0.000 | 1/1 | 6.750 |
+| MYX | 0.500 | 1/1 | 0.000 | 0/2 | 0.527 |
+| NMR | 0.432 | 2/2 | 2.000 | 0/0 | 0.000 |
+| QNT | 0.646 | 1/1 | 0.000 | 0/0 | 1.124 |
+| SOON | 0.651 | 1/1 | 1.000 | 0/0 | 0.000 |
 
 ## Feature importance
 
@@ -65,27 +62,27 @@ Models fitted on all data. Logistic regression coefficients are on standardised 
 
 | feature | logreg_coef | lightgbm_gain_% |
 |---|---|---|
-| oi_z_7d | 2.563 | 47.100 |
-| ls_long_pct | -3.335 | 15.950 |
-| liq_short_4h_oi | -0.168 | 15.671 |
-| volume_ratio_24h | 0.412 | 5.155 |
-| oi_chg_24h | 0.286 | 3.908 |
-| volatility_24h | -0.757 | 3.286 |
-| liq_long_4h_oi | -0.262 | 2.002 |
-| volume_z_7d | 0.609 | 0.971 |
-| oi_minus_ret_24h | 0.089 | 0.938 |
-| funding | 0.360 | 0.931 |
-| ret_24h | 0.308 | 0.793 |
-| liq_imbalance_4h | 0.020 | 0.544 |
-| ls_chg_24h | 0.789 | 0.522 |
-| funding_z_7d | 0.006 | 0.491 |
-| oi_z_24h | -0.332 | 0.314 |
-| oi_chg_4h | -0.472 | 0.263 |
-| ret_4h | 0.577 | 0.242 |
-| oi_chg_1h | -0.092 | 0.209 |
-| range_1h | 0.097 | 0.206 |
-| funding_chg_24h | -0.396 | 0.204 |
-| pred_funding_gap | -0.018 | 0.181 |
-| buy_ratio_4h | 0.193 | 0.066 |
-| ret_1h | 0.163 | 0.053 |
-| buy_ratio_1h | -0.024 | 0.001 |
+| liq_short_4h_oi | -0.146 | 35.357 |
+| ret_24h | 0.291 | 28.462 |
+| oi_z_7d | 1.887 | 14.260 |
+| volatility_24h | -0.249 | 4.975 |
+| ls_long_pct | -2.355 | 3.595 |
+| volume_ratio_24h | 0.251 | 2.482 |
+| volume_z_7d | 1.099 | 1.668 |
+| funding | 0.477 | 1.592 |
+| oi_chg_24h | 0.352 | 1.001 |
+| oi_z_24h | -0.525 | 0.892 |
+| oi_chg_4h | -0.446 | 0.820 |
+| funding_z_7d | 0.012 | 0.813 |
+| ls_chg_24h | 0.715 | 0.769 |
+| buy_ratio_4h | 0.414 | 0.634 |
+| liq_long_4h_oi | -0.305 | 0.522 |
+| oi_chg_1h | -0.077 | 0.402 |
+| oi_minus_ret_24h | 0.207 | 0.368 |
+| range_1h | 0.135 | 0.368 |
+| ret_1h | 0.254 | 0.205 |
+| funding_chg_24h | -0.505 | 0.193 |
+| liq_imbalance_4h | 0.293 | 0.185 |
+| pred_funding_gap | -0.027 | 0.170 |
+| ret_4h | 0.474 | 0.149 |
+| buy_ratio_1h | -0.268 | 0.117 |

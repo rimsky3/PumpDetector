@@ -79,8 +79,10 @@ no extra dependencies. `#forecast/NMR` in the address opens a ticker directly.
 
 - current pump probability with the model's threshold and status, OI change over 4 hours, volume z-score;
 - risk cards: stop, exit signal and trailing stop (see Risk below) for the current or the last trade;
-- chart: price with hours above the threshold shaded, entry point, stop and trailing lines, and the
-  probability per hour underneath;
+- chart ([TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts), Apache 2.0, a local copy
+  in `app/vendor/` served by `dashboard.py`, no internet needed): candles with signal zones shaded, entry and exit
+  markers of every simulated trade with its result, stop and trailing lines, then OI, volume and the probability
+  per hour with the threshold. Wheel zooms, drag pans, pane borders can be dragged; 1 / 3 / 7 / 30-day buttons;
 - **Прогнозувати** fetches the latest data for this ticker from Coinalyze and scores it again with both models
   (about 18 API calls, a few seconds).
 

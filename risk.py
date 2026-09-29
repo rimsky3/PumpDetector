@@ -77,11 +77,12 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
 
     Угода починається з першого бару з ймовірністю ≥ порогу і закінчується,
     коли ймовірність EXIT_BARS барів поспіль нижче порогу або ціна торкнулась стопу.
-    Повертає поточну угоду (якщо вона відкрита) або останню закриту.
+    Повертає поточну угоду (якщо вона відкрита) або останню закриту;
+    у ключі "trades" — усі закриті угоди для міток на графіку.
     """
     a = atr(h)
     prob = prob.reindex(h.index)
-    trade, last_closed_trade = None, None
+    trade, last_closed_trade, closed = None, None, []
     below = 0
     for ts, p in prob.items():
         if pd.isna(p):
@@ -102,6 +103,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
             exit_price = trade["stop"] if stop_hit else float(h.at[ts, "price"])
             trade.update({"exit_ts": ts, "exit": exit_price, "reason": "stop" if stop_hit else "model",
                           "result_pct": exit_price / trade["entry"] - 1})
+            closed.append(dict(trade))
             last_closed_trade, trade = trade, None
             below = 0
 
@@ -114,8 +116,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
             "hours": int((last_ts - trade["entry_ts"]) / H) + 1,
             "result_pct": float(h.at[last_ts, "price"] / trade["entry"] - 1),
         })
-        return trade
+        return {**trade, "trades": closed}
     if last_closed_trade is not None:
-        last_closed_trade["open"] = False
-        return last_closed_trade
-    return {"open": False}
+        return {**last_closed_trade, "open": False, "trades": closed}
+    return {"open": False, "trades": closed}

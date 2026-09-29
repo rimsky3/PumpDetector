@@ -95,3 +95,18 @@ Observations to test with the model, not conclusions:
   dominated by shorts. This is consistent with a short squeeze feeding the pump.
 - Medians are taken over whole intervals, including late stages. The hard part is recognising the
   *early* hours of a pump, and that is what validation must measure.
+
+## Open interest in coins
+
+Coinalyze converts open interest to USD with the **close price of the hour**, applied to all four points of the
+hourly OI candle. USD open interest therefore jumps between hours whenever the price moves, even if no positions
+changed: on AIN at the start of the 2026-09-14 pump, OI in contracts moved 0.00% between 04:00 and 05:00, while
+OI in USD jumped +45% because the price did.
+
+`features.aggregate` divides each contract's OI by that contract's own hourly close, giving open interest in
+coins: the pure number of open positions. Gaps between hours drop from 0.5–2.6% to about 0.01%, and coins can be
+summed across exchanges. The same chained index as for USD protects against listing jumps.
+
+Coin-based features (`oi_coin_chg_1h/4h/24h`, `oi_coin_z_24h`, `oi_coin_z_7d`) are stored in the `features` table
+but **not used by the model**: they performed worse (see [modeling.md](modeling.md#experiment-open-interest-in-coins)).
+The charts in the labeling tool and the dashboard show OI in coins by default.

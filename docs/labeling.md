@@ -64,10 +64,11 @@ python label.py
 
 This opens http://127.0.0.1:8765, a local page served only to this computer.
 
-- Three synced panels: price (Binance), open interest (sum across exchanges, USD), volume (USD).
-- Hover shows the exact UTC hour, price and OI with their 24-hour change, and OI per exchange.
+- Synced panels drawn with TradingView Lightweight Charts (the same local copy as the dashboard, `app/vendor/`):
+  candles (Binance), open interest (sum across exchanges, USD), volume (USD). Pane borders can be dragged.
+- The line above the chart shows the hovered hour: OHLC, 24-hour change of price and OI, OI per exchange, volume.
 - Mouse wheel zooms, drag pans, and the 7 / 14 / 30 / 60-day buttons set the window. **Лог. шкала** (log scale) helps with large moves.
-- Click the first bar of an interval, then the last. Pick the type, add a note, press **Додати в список** (add to list). The UI is in Ukrainian.
+- Click the first candle of an interval, then the last. Pick the type, add a note, press **Додати в список** (add to list). The UI is in Ukrainian.
 - Each change is written to `pumps.csv` immediately and synced to the database.
 - Labeled intervals stay on the chart, numbered; each ticker button shows how many intervals it has.
 

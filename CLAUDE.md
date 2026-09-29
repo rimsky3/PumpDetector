@@ -59,7 +59,8 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   Docker disk image — на `D:\Docker` (диск C: майже повний, туди нічого великого не класти).
   2026-09-29: зібрано AKE, LSK, MYX, G (пробно за 90 днів, в БД є рядки старші за 60 днів).
 - 2026-09-29: розмічено 6 тікерів (AIN, AKE, G, LSK, MYX, QNT): 10 pump, 8 false_start, ≈270 год класу 1 (~3%).
-- Розмітка: `python label.py` — локальний сервер (stdlib http.server, 127.0.0.1:8765) + `tools/label.html`;
+- Розмітка: `python label.py` — локальний сервер (stdlib http.server, 127.0.0.1:8765) + `tools/label.html`
+  (графік — Lightweight Charts з app/vendor, як у дашборді: свічки, клік по свічці = межа інтервалу);
   графіки з БД, кожна зміна одразу пишеться в pumps.csv і синхронізується з таблицею pumps.
   Спільна логіка читання/запису/перевірки CSV — у `load_pumps.py`.
 - `features.py` готовий (24 ознаки, таблиця `features`, перевірено на відсутність lookahead); опис — docs/features.md.
@@ -74,9 +75,16 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   features.py за замовчуванням лише tickers.txt: watchlist-тікери в базі не розмічені й не мають потрапляти в навчання.
 - Дашборд за макетом «Pump Detector App» (https://claude.ai/artifact/MAivAWzKcz2NKqPQs4JENJ, екрани Прогноз і Скринер):
   `python dashboard.py` (stdlib-сервер, 127.0.0.1:8766) + `app/dashboard.html`, темна тема з макету. Streamlit прибрано — власник його не хоче.
-  Кнопка «Прогнозувати» = collect() одного тікера + screener.score_bases(). Статус: Alert ≥ поріг, Кандидат ≥ ½ порогу.
+  Графік — TradingView Lightweight Charts v5 (локально app/vendor/, роут /vendor/): свічки, зони сигналу, мітки угод, панелі OI/обсяг/ймовірність.
+  Кнопка «Прогнозувати» = collect() одного тікера (лише якщо в базі немає останньої години) + screener.score_bases(). Статус: Alert ≥ поріг, Кандидат ≥ ½ порогу.
 - Ризик: `risk.py` — ATR(14) Уайлдера; стоп = entry − k·ATR, k = 75-й перцентиль MAE пампів (до піку) у NATR,
   рахує train.py і зберігає в bundle['risk'] (зараз k ≈ 2.9); trailing = max high − 1.5·ATR; вихід — 2 бари поспіль нижче порогу.
+- 2026-09-29: додано SOON; ZEC прибрано з навчання (багатоденний тренд великої монети, 49% годин пампу, валив F1 до 0.56) —
+  скоуп: дрібні перпи. На 9 тікерах / 19 пампах: F1 rule 0.57, logreg 0.64, lightgbm 0.71. Шум між перезапусками ±0.02–0.03.
+- OI у монетах: Coinalyze множить усю годинну свічку OI на close години → USD-OI стрибає між годинами з ціною.
+  features.aggregate ділить на close свого контракту (oi_coins_*; розриви ~0.01%). Графіки label/dashboard — OI свічками
+  в монетах (у label перемикач USD). Експеримент experiments/oi_coins.py: монетні ознаки гірші (LightGBM F1 0.68→0.62,
+  шорт-сквіз: ціна ↑, монетний OI ↓) — модель лишається на USD (FEATURES), монетні лише в таблиці (ALL_FEATURES).
 - Telegram-сповіщення — окремим кроком пізніше.
 - далі: більше розмічених тікерів; метрики ранньої фази пампу (ret_24h домінує — модель частково «бачить, що вже виросло»);
   Telegram; деплой на VPS (Docker Compose: база + screener --loop + dashboard).

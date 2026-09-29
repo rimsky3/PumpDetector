@@ -55,6 +55,11 @@ FEATURES = [
     "ls_long_pct", "ls_chg_24h",
 ]
 
+# OI у монетах: ті самі зміни й z-score, але без впливу ціни (див. aggregate).
+# Ознаки для експерименту «OI у монетах проти OI у USD»; чи входять вони в модель — вирішує FEATURES.
+OI_COIN_FEATURES = ["oi_coin_chg_1h", "oi_coin_chg_4h", "oi_coin_chg_24h", "oi_coin_z_24h", "oi_coin_z_7d"]
+ALL_FEATURES = FEATURES + [f for f in OI_COIN_FEATURES if f not in FEATURES]
+
 
 # ---------------------------------------------------------------- завантаження
 
@@ -79,8 +84,8 @@ def load_raw(conn, bases: list[str] | None = None) -> dict[str, pd.DataFrame]:
             WHERE {cond}""", params)
 
     return {
-        "ohlcv": q("ohlcv", "t.h, t.l, t.c, t.v, t.bv, m.volume_denominated"),
-        "oi": q("open_interest", "t.c"),
+        "ohlcv": q("ohlcv", "t.o, t.h, t.l, t.c, t.v, t.bv, m.volume_denominated"),
+        "oi": q("open_interest", "t.o, t.h, t.l, t.c"),
         "funding": q("funding_rate", "t.c"),
         "pred_funding": q("predicted_funding_rate", "t.c"),
         "liq": q("liquidations", "t.long_liq, t.short_liq"),
@@ -103,6 +108,15 @@ def weighted_mean(values: pd.DataFrame, weights: pd.DataFrame) -> pd.Series:
     num = (values * w).sum(axis=1, min_count=1)
     den = w.sum(axis=1, min_count=1)
     return (num / den).where(den > 0, values.mean(axis=1))
+
+
+def chained_log_index(w: pd.DataFrame) -> pd.Series:
+    """«Зв'язаний» лог-індекс суми по контрактах: погодинна зміна рахується лише по контрактах,
+    які мали значення і годину тому, і зараз. Тоді поява нової біржі (лістинг) не виглядає як ріст OI."""
+    prev = w.shift(1)
+    both = w.notna() & prev.notna()
+    step = np.log(w.where(both).sum(axis=1, min_count=1) / prev.where(both).sum(axis=1, min_count=1))
+    return step.fillna(0).cumsum().where(w.notna().any(axis=1))
 
 
 def aggregate(raw: dict[str, pd.DataFrame], base: str) -> pd.DataFrame:
@@ -132,21 +146,26 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str) -> pd.DataFrame:
     px = ohlcv[ohlcv["market"] == px_market].set_index("ts").reindex(grid)
 
     oi_w = wide(part["oi"], "c")
+    # OI у монетах. Coinalyze переводить OI у USD за ціною закриття години — усі o/h/l/c свічки одразу.
+    # Тому в USD OI «стрибає» між годинами разом із ціною, хоча позиції не змінювались.
+    # Ділимо на close того самого контракту: отримуємо чисту кількість відкритих позицій у монетах
+    # (розрив між годинами ≈ 0.01% замість 0.5–2.6%). Сума по біржах коректна: одиниця — монета.
+    close_w = wide(ohlcv, "c").reindex(columns=oi_w.columns).ffill(limit=2)
+    coins = {k: wide(part["oi"], k) / close_w for k in ("o", "h", "l", "c")}
     h = pd.DataFrame(index=grid)
     h.index.name = "ts"
     h["price"] = px["c"].ffill(limit=2)          # поодинокі пропуски заповнюємо попереднім значенням
+    h["open"] = px["o"]                           # для свічок у дашборді; в ознаках не використовується
     h["high"] = px["h"]
     h["low"] = px["l"]
     h["volume"] = wide(ohlcv, "v_usd").sum(axis=1, min_count=1)
     h["buy_volume"] = wide(ohlcv, "bv_usd").sum(axis=1, min_count=1)
     h["oi"] = oi_w.sum(axis=1, min_count=1)
-
-    # «Зв'язаний» індекс OI: погодинна зміна рахується лише по біржах, які мали OI і годину тому,
-    # і зараз. Тоді поява нової біржі (лістинг) не виглядає як ріст OI.
-    prev = oi_w.shift(1)
-    both = oi_w.notna() & prev.notna()
-    step = np.log(oi_w.where(both).sum(axis=1, min_count=1) / prev.where(both).sum(axis=1, min_count=1))
-    h["oi_log_idx"] = step.fillna(0).cumsum().where(h["oi"].notna())
+    h["oi_log_idx"] = chained_log_index(oi_w)
+    for k in ("o", "h", "l", "c"):           # свічки OI у монетах для графіків
+        h[f"oi_coins_{k}"] = coins[k].sum(axis=1, min_count=1)
+    h["oi_coins"] = h["oi_coins_c"]
+    h["oi_coin_log_idx"] = chained_log_index(coins["c"])
 
     h["funding"] = weighted_mean(wide(part["funding"], "c"), oi_w)
     h["pred_funding"] = weighted_mean(wide(part["pred_funding"], "c"), oi_w)
@@ -177,6 +196,11 @@ def compute_features(h: pd.DataFrame) -> pd.DataFrame:
         f[f"ret_{k}h"] = lp.diff(k)              # лог-дохідність за k годин
     f["oi_z_24h"] = zscore(oi, SHORT_WINDOW)
     f["oi_z_7d"] = zscore(oi, BASE_WINDOW)
+    oc = h["oi_coin_log_idx"]
+    for k in (1, 4, 24):
+        f[f"oi_coin_chg_{k}h"] = oc.diff(k)
+    f["oi_coin_z_24h"] = zscore(oc, SHORT_WINDOW)
+    f["oi_coin_z_7d"] = zscore(oc, BASE_WINDOW)
 
     f["volatility_24h"] = lp.diff().rolling(SHORT_WINDOW).std()
     f["range_1h"] = (h["high"] - h["low"]) / h["price"]
@@ -204,7 +228,7 @@ def compute_features(h: pd.DataFrame) -> pd.DataFrame:
     f["ls_chg_24h"] = h["ls_long_pct"].diff(SHORT_WINDOW)
 
     # ділення на нуль (нульовий обсяг, стала серія) дає ±inf — для моделі це пропуск
-    return f[FEATURES].replace([np.inf, -np.inf], np.nan)
+    return f[ALL_FEATURES].replace([np.inf, -np.inf], np.nan)
 
 
 # ---------------------------------------------------------------- мітки
@@ -248,7 +272,7 @@ def build(conn, bases: list[str] | None = None, labels: bool = True) -> pd.DataF
 def save(conn, df: pd.DataFrame, bases: list[str] | None) -> None:
     """Таблиця features повністю похідна від сирих даних і pumps, тому створюється тут, а не в schema.sql.
     Зміна набору ознак = перерахунок: python features.py."""
-    num_cols = ["price", "oi"] + FEATURES
+    num_cols = ["price", "oi"] + ALL_FEATURES   # у таблиці — усі ознаки, модель бере FEATURES
     cols = ["base_asset", "ts"] + num_cols + ["label", "pattern_type"]
     if bases is None:
         conn.execute("DROP TABLE IF EXISTS features")

@@ -41,13 +41,21 @@ held-out ticker. The rule's thresholds are likewise chosen on training tickers o
 
 ## First results (September 2026)
 
-8 tickers, 10 518 hours, 18 pump intervals, 8 false starts in the evaluated window (labels as of 2026-09-29, after one revision below).
+9 tickers, 11 862 hours, 19 pump intervals, 8 false starts (labels as of 2026-09-29).
 
 | Model | Precision | Recall | F1 | PR-AUC | Pumps caught | False starts triggered | False alarms / 30 d |
 |---|---|---|---|---|---|---|---|
-| rule | 0.47 | 0.71 | 0.56 | — | 17/18 | 6/8 | 4.0 |
-| logreg | 0.68 | 0.75 | 0.72 | 0.70 | 17/18 | 5/8 | 1.9 |
-| lightgbm | 0.67 | 0.81 | 0.73 | 0.74 | 17/18 | 4/8 | 1.2 |
+| rule | 0.47 | 0.71 | 0.57 | — | 18/19 | 6/8 | 3.8 |
+| logreg | 0.59 | 0.70 | 0.64 | 0.64 | 18/19 | 5/8 | 2.6 |
+| lightgbm | 0.65 | 0.78 | 0.71 | 0.72 | 18/19 | 3/8 | 1.6 |
+
+**Scope decision: ZEC.** ZEC was labeled with three 3–8 day moves that made up almost half of all pump hours.
+With it, F1 fell to 0.56 (LightGBM) and 0.61 (logistic regression), also on the other tickers: the model was
+learning a multi-day trend of a large coin mixed with leveraged pumps of small ones. ZEC was removed from the
+training set as out of scope (the screener targets small-cap perpetuals), not to improve the numbers.
+
+**Noise level.** Re-running on the same 8 tickers a few hours later, with the 60-day window shifted, moved F1
+by 0.02–0.03. Differences of that size are not meaningful at this sample size.
 
 **Label revision.** Error review showed that AKE 2026-08-28, labeled a false start from 22:00, had OI rising
 steadily from 16:00 with price following. Under the labeling rules it was relabeled as a pump from 16:00.
@@ -61,7 +69,7 @@ same labels.
   false alarms drop by roughly 2.5×, and fewer false starts trigger a signal. The features beyond OI and
   volume carry information.
 - **LightGBM vs logistic regression is not settled.** LightGBM is ahead on pooled metrics, but per-ticker F1
-  swings widely (for example MYX: 0.27 for LightGBM vs 0.67 for logistic regression). With 8 tickers and 18
+  swings widely (for example MYX: 0.27 for LightGBM vs 0.67 for logistic regression). With 9 tickers and 19
   pumps, the gap is within noise.
 - **One pump is missed by every model:** AKE, 2026-09-05 00:00–03:00, four hours, +48% price. It is the
   smallest pump in the set; the models give it at most 0.11 probability.
@@ -77,6 +85,23 @@ same labels.
 - **Feature importance points at a short squeeze.** In logistic regression, the share of accounts long
   (`ls_long_pct`) has the largest coefficient and it is negative: the fewer longs, the more likely a pump.
 - **Small sample.** Conclusions will change as more tickers are labeled.
+
+## Experiment: open interest in coins
+
+Hypothesis: OI in coins (pure position inflow, without the price effect Coinalyze bakes into USD OI) makes better
+features. Same data and labels, `python experiments/oi_coins.py` → `reports/experiment_oi_coins.md`:
+
+| Model | OI in USD (current) | OI in coins | Both |
+|---|---|---|---|
+| rule | 0.57 | 0.49 | — |
+| logreg | 0.63 | 0.63 | 0.65 |
+| lightgbm | **0.68** | 0.62 | 0.65 |
+
+(F1, leave-ticker-out.) **Rejected.** USD OI mixes position inflow with price, and for pump detection that mix is
+the stronger signal. In a short squeeze, price rises while shorts close positions: OI in coins falls, OI in USD
+rises. On AIN's pump, USD OI grew about fourfold while coins grew about a third. The model keeps the USD
+features; the coin features stay in the table for charts and later experiments. Differences of ±0.02–0.03 are
+within noise, so "both" is not an improvement either.
 
 ## Next steps
 

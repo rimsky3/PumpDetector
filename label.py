@@ -29,6 +29,7 @@ from load_pumps import (check_overlaps, parse_row, parse_ts, read_pumps,
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(ROOT, "tools", "label.html")
+VENDOR = os.path.join(ROOT, "app", "vendor")                          # бібліотека графіків, спільна з дашбордом
 PREDICTIONS = os.path.join(ROOT, "reports", "oof_predictions.csv")   # пише train.py
 lock = threading.Lock()  # запис у pumps.csv — по одному
 
@@ -66,12 +67,16 @@ def ticker_data(conn, base: str, days: int) -> dict:
     price_ex = q("""SELECT m.exchange_name FROM markets m WHERE m.base_asset = %s AND m.has_ohlcv
                     ORDER BY m.exchange_name <> 'Binance', m.exchange_name LIMIT 1""")
     price_ex = price_ex[0][0] if price_ex else None
-    price = dict(conn.execute(f"""
-        SELECT extract(epoch FROM o.ts)::bigint, o.c FROM ohlcv o JOIN markets m USING (symbol)
-        WHERE m.base_asset = %s AND m.exchange_name = %s AND o.ts >= {since}""", (base, price_ex)).fetchall())
+    # свічки: open, high, low, close з еталонної біржі
+    candles = {r[0]: r[1:] for r in conn.execute(f"""
+        SELECT extract(epoch FROM o.ts)::bigint, o.o, o.h, o.l, o.c FROM ohlcv o JOIN markets m USING (symbol)
+        WHERE m.base_asset = %s AND m.exchange_name = %s AND o.ts >= {since}""", (base, price_ex)).fetchall()}
+    price = {t: c[3] for t, c in candles.items()}
 
     oi_rows = q(f"""
-        SELECT extract(epoch FROM o.ts)::bigint, m.exchange_name, o.c FROM open_interest o JOIN markets m USING (symbol)
+        SELECT extract(epoch FROM o.ts)::bigint, m.exchange_name, o.o, o.h, o.l, o.c, p.c
+        FROM open_interest o JOIN markets m USING (symbol)
+        LEFT JOIN ohlcv p ON p.symbol = o.symbol AND p.interval = o.interval AND p.ts = o.ts
         WHERE m.base_asset = %s AND o.ts >= {since}""")
     # обсяг OHLCV буває в монетах — переводимо в USD через ціну закриття
     vol = dict(q(f"""
@@ -80,9 +85,21 @@ def ticker_data(conn, base: str, days: int) -> dict:
         FROM ohlcv o JOIN markets m USING (symbol)
         WHERE m.base_asset = %s AND o.ts >= {since} GROUP BY 1"""))
 
-    oi, first = {}, {}
-    for t, ex, v in oi_rows:
-        oi.setdefault(t, {})[ex] = v
+    # свічки OI — сума по біржах: open і close точні, high/low — сума екстремумів бірж
+    # (верхня/нижня межа: піки на різних біржах могли бути в різні хвилини години)
+    # OI у монетах: Coinalyze множить усю годинну свічку OI на close години, тож ділимо назад
+    # на close того самого контракту — зникають стрибки між годинами, які дає рух ціни
+    oi, oi_ohl, coin, first = {}, {}, {}, {}
+    for t, ex, o, h, l, c, px in oi_rows:
+        oi.setdefault(t, {})[ex] = c
+        agg = oi_ohl.setdefault(t, [0.0, 0.0, 0.0])
+        agg[0] += o if o is not None else c
+        agg[1] += h if h is not None else c
+        agg[2] += l if l is not None else c
+        if px:
+            ca = coin.setdefault(t, [0.0, 0.0, 0.0, 0.0])
+            for k, v in enumerate((o, h, l, c)):
+                ca[k] += (v if v is not None else c) / px
         first[ex] = min(first.get(ex, t), t)
     exs = sorted(first)
     ts = sorted(set(price) | set(oi))
@@ -91,7 +108,17 @@ def ticker_data(conn, base: str, days: int) -> dict:
         "priceExchange": price_ex,
         "t": ts,
         "price": [price.get(t) for t in ts],
+        "open": [candles[t][0] if t in candles else None for t in ts],
+        "high": [candles[t][1] if t in candles else None for t in ts],
+        "low": [candles[t][2] if t in candles else None for t in ts],
         "oi": [round(sum(oi[t].values())) if t in oi else None for t in ts],
+        "oiO": [round(oi_ohl[t][0]) if t in oi_ohl else None for t in ts],
+        "oiH": [round(oi_ohl[t][1]) if t in oi_ohl else None for t in ts],
+        "oiL": [round(oi_ohl[t][2]) if t in oi_ohl else None for t in ts],
+        "coinO": [coin[t][0] if t in coin else None for t in ts],
+        "coinH": [coin[t][1] if t in coin else None for t in ts],
+        "coinL": [coin[t][2] if t in coin else None for t in ts],
+        "coin": [coin[t][3] if t in coin else None for t in ts],
         "oiBy": {ex: [round(get(t, ex)) if get(t, ex) is not None else None for t in ts] for ex in exs},
         "vol": [round(vol[t]) if vol.get(t) is not None else None for t in ts],
         "oiStart": first,
@@ -132,6 +159,12 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/":
                 with open(PAGE, "rb") as f:
                     return self._send(200, f.read(), "text/html; charset=utf-8")
+            if url.path.startswith("/vendor/"):
+                path = os.path.normpath(os.path.join(VENDOR, os.path.basename(url.path)))
+                if not path.startswith(VENDOR) or not os.path.isfile(path):
+                    return self._error(404, "не знайдено")
+                with open(path, "rb") as f:
+                    return self._send(200, f.read(), "text/javascript; charset=utf-8")
             if url.path == "/api/tickers":
                 with psycopg.connect(self.db_url) as conn:
                     tickers = [r[0] for r in conn.execute(
@@ -203,7 +236,14 @@ def main() -> None:
         sys.exit(f"{e}\nВиправ pumps.csv і запусти знову.")
 
     Handler.db_url, Handler.days = db_url, args.days
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    # На Windows SO_REUSEADDR дозволяє двом процесам зайняти один порт: другий «стартує», але запитів не отримує.
+    # Вимикаємо його, щоб повторний запуск одразу казав, що порт зайнятий.
+    ThreadingHTTPServer.allow_reuse_address = False
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    except OSError:
+        sys.exit(f"Порт {args.port} зайнятий: мабуть, уже запущено інший екземпляр. "
+                 f"Зупини його (Ctrl+C у тому терміналі) або запусти з --port 8766.")
     url = f"http://127.0.0.1:{args.port}/"
     print(f"Розмітка пампів: {url}  (Ctrl+C — зупинити)")
     if not args.no_browser:

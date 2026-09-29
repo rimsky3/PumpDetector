@@ -75,7 +75,13 @@ button:focus-visible, select:focus-visible, a:focus-visible { outline: 2px solid
 .sw.line { height: 2px; width: 12px; border-radius: 1px; }
 .sw.dash { height: 0; width: 12px; border-top: 2px dashed; border-radius: 0; }
 .chart-wrap { position: relative; }
-canvas { display: block; width: 100%; height: 380px; }
+#chart { width: 100%; height: 560px; }
+@media (max-width: 800px) { #chart { height: 460px; } }
+.ohlc { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; min-height: 18px; }
+.ohlc span { display: inline-flex; gap: 4px; }
+.ohlc i { font-style: normal; color: var(--fg3); }
+.ohlc b { font-weight: 500; }
+.hint { font-size: 11px; color: var(--fg3); margin: 0; }
 .tip { position: absolute; pointer-events: none; background: #141413; border: 1px solid var(--line2); border-radius: 6px; padding: 8px 10px; font-size: 12px; min-width: 180px; box-shadow: 0 6px 18px rgba(0,0,0,.4); }
 .tip .ts { color: var(--fg2); margin-bottom: 4px; }
 .tip .r { display: flex; justify-content: space-between; gap: 14px; }
@@ -120,6 +126,7 @@ button.tr:hover { background: #22221f; }
   .tr { grid-template-columns: minmax(90px, 1fr) 90px 70px 90px; }
 }
 </style>
+<script src="/vendor/lightweight-charts.standalone.production.js"></script>
 </head>
 <body>
 <div class="app">
@@ -146,7 +153,7 @@ button.tr:hover { background: #22221f; }
         <select class="sel" id="tickerSel" aria-label="Тікер"></select>
         <button class="btn primary" id="refreshBtn">Прогнозувати</button>
         <div class="seg" role="group" aria-label="Період графіка">
-          <button data-days="1">1 д</button><button data-days="3" aria-pressed="true">3 д</button><button data-days="7">7 д</button>
+          <button data-days="1">1 д</button><button data-days="3" aria-pressed="true">3 д</button><button data-days="7">7 д</button><button data-days="30">30 д</button>
         </div>
       </div>
       <div class="live" id="fresh"><span class="dot"></span><span>…</span></div>
@@ -182,16 +189,16 @@ button.tr:hover { background: #22221f; }
       <div class="chart-head">
         <span class="t" id="chartTitle">—</span>
         <div class="legend">
-          <span><i class="sw line" style="background:var(--price)"></i>Ціна</span>
-          <span><i class="sw" style="background:var(--hot)"></i>Висока ймовірність</span>
+          <span><i class="sw" style="background:var(--hot);opacity:.4"></i>Зона сигналу</span>
+          <span><b class="warm">▲</b>Вхід</span>
+          <span><b class="dim">▼</b>Вихід</span>
           <span><i class="sw dash" style="border-color:var(--warm)"></i>Стоп</span>
           <span><i class="sw dash" style="border-color:var(--fg2)"></i>Trailing</span>
         </div>
       </div>
-      <div class="chart-wrap">
-        <canvas id="cv" role="img" aria-label="Ціна з підсвіченими годинами високої ймовірності і ймовірність пампу під нею"></canvas>
-        <div class="tip" id="tip" hidden></div>
-      </div>
+      <div class="ohlc num" id="ohlc"></div>
+      <div id="chart" role="img" aria-label="Свічковий графік ціни з зонами сигналу, OI, обсяг і ймовірність пампу"></div>
+      <p class="hint">Колесо миші — масштаб, перетягування — зсув. Межі між панелями можна тягнути.</p>
       <div class="pos-line num" id="posLine"></div>
     </section>
     <p class="explain">Ймовірність — оцінка моделі, що на тікері зараз триває памп. Стоп, trailing і вихід рахуються від першої години з ймовірністю вище порогу. Не торгова рекомендація.</p>
@@ -232,8 +239,10 @@ button.tr:hover { background: #22221f; }
   const pad = (n) => String(n).padStart(2, "0");
   const fmtTs = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:00`; };
   const fmtHM = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
-  const fmtPx = (v) => v == null ? "—" : v >= 1000 ? v.toFixed(1) : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toPrecision(4);
+  const fmtPx = (v) => v == null ? "—" : Math.abs(v) < 1e-9 ? "0" : v >= 1000 ? v.toFixed(1) : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toPrecision(4);
   const fmtPct = (v, d = 1) => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
+  const fmtNum = (v) => v == null ? "—" : Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(2) + "B" : Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M"
+    : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(1) + "K" : v.toFixed(Math.abs(v) >= 10 ? 0 : 2);
   const fmtP = (v) => v == null ? "—" : v.toFixed(2);
   const fmtUsd = (v) => v == null ? "—" : v >= 1e9 ? "$" + (v / 1e9).toFixed(2) + "B" : v >= 1e6 ? "$" + (v / 1e6).toFixed(1) + "M" : "$" + (v / 1e3).toFixed(0) + "K";
   const ago = (t) => { const m = Math.round((Date.now() / 1000 - t) / 60); return m < 1 ? "щойно" : m < 60 ? `${m} хв тому` : `${Math.round(m / 60)} год тому`; };
@@ -295,10 +304,10 @@ button.tr:hover { background: #22221f; }
     if (!st.ticker) return;
     $("tickerSel").value = st.ticker;
     try {
-      st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&days=${st.days}`);
+      st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&days=30`);
       show($("fError"), "");
     } catch (e) { st.data = null; show($("fError"), e.message); }
-    renderForecast(); draw();
+    renderForecast(); renderChart();
   };
 
   const renderForecast = () => {
@@ -346,117 +355,124 @@ button.tr:hover { background: #22221f; }
       }
     }
     $("rExitK").textContent = `· модель, поріг ${fmtP(thr)}`;
-    $("chartTitle").textContent = `${d.ticker} · 1h · ${st.days} д`;
+    $("chartTitle").textContent = `${d.ticker} · 1h`;
   };
 
-  // ---------- графік ----------
-  const cv = $("cv"), ctx = cv.getContext("2d"), tip = $("tip");
-  const M = { l: 64, r: 12, t: 8, b: 24 };
-  let W = 0, Hh = 0, panes = [];
-  const layout = () => {
-    const dpr = window.devicePixelRatio || 1;
-    W = cv.clientWidth; Hh = cv.clientHeight;
-    cv.width = Math.round(W * dpr); cv.height = Math.round(Hh * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const avail = Hh - M.t - M.b - 18;
-    panes = [{ key: "price", y: M.t, h: avail * .7 }, { key: "prob", y: M.t + avail * .7 + 18, h: avail * .3 }];
-  };
-  const draw = () => {
-    ctx.clearRect(0, 0, W, Hh);
-    const d = st.data; if (!d || !d.series.t.length) return;
-    const s = d.series, n = s.t.length, prob = s.prob[st.model] || [], thr = d.threshold, pos = d.position;
-    const t0 = s.t[0], t1 = s.t[n - 1] + H, pw = W - M.l - M.r;
-    const X = (t) => M.l + (t - t0) / (t1 - t0) * pw;
-    const bw = pw / n;
-    const C = { line: cssVar("--line"), fg2: cssVar("--fg2"), fg3: cssVar("--fg3"), price: cssVar("--price"), hot: cssVar("--hot"), muted: cssVar("--muted"), warm: cssVar("--warm") };
-    ctx.font = "11px -apple-system, 'Segoe UI', system-ui, sans-serif";
+  // ---------- графік: TradingView Lightweight Charts (app/vendor, віддає наш сервер) ----------
+  // Панелі: свічки + зони сигналу + вхід/вихід + стоп/trailing | OI | обсяг | ймовірність з порогом.
+  const LWC = window.LightweightCharts;
+  const chartEl = $("chart"), ohlcEl = $("ohlc");
+  let chart = null, S = {}, priceLines = [], markersApi = null, idx = new Map(), rangeKey = null;
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
 
-    // ціна
-    const P = panes[0];
-    let lo = Infinity, hi = -Infinity;
-    s.low.forEach((v) => { if (v != null && v < lo) lo = v; });
-    s.high.forEach((v) => { if (v != null && v > hi) hi = v; });
-    if (pos.open) { if (pos.stop != null) lo = Math.min(lo, pos.stop); }
-    const padP = (hi - lo) * .08 || hi * .02; lo -= padP; hi += padP;
-    const Y = (v) => P.y + P.h - (v - lo) / (hi - lo) * P.h;
-    // підсвітка годин з високою ймовірністю
-    ctx.fillStyle = C.hot; ctx.globalAlpha = .1;
-    for (let i = 0; i < n; i++) if (prob[i] != null && prob[i] >= thr) ctx.fillRect(X(s.t[i]), P.y, bw + .5, P.h);
-    ctx.globalAlpha = 1;
-    // сітка
-    ctx.textAlign = "right"; ctx.textBaseline = "middle";
-    for (let k = 0; k <= 3; k++) {
-      const v = lo + (hi - lo) * k / 3, y = Math.round(Y(v)) + .5;
-      ctx.strokeStyle = C.line; ctx.beginPath(); ctx.moveTo(M.l, y); ctx.lineTo(W - M.r, y); ctx.stroke();
-      ctx.fillStyle = C.fg3; ctx.fillText(fmtPx(v), M.l - 8, y);
-    }
-    // стоп і trailing
-    const hline = (v, color, fromT) => {
-      if (v == null) return; const y = Math.round(Y(v)) + .5, x0 = fromT ? Math.max(M.l, X(fromT)) : M.l;
-      ctx.strokeStyle = color; ctx.setLineDash([5, 4]); ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(W - M.r, y); ctx.stroke(); ctx.setLineDash([]); ctx.lineWidth = 1;
-    };
-    if (pos.open) { hline(pos.stop, C.warm, pos.entry_ts); hline(pos.trailing, C.fg2, pos.entry_ts); }
-    // лінія ціни
-    ctx.strokeStyle = C.price; ctx.lineWidth = 2.2; ctx.lineJoin = "round"; ctx.beginPath();
-    let open = false;
-    for (let i = 0; i < n; i++) { const v = s.price[i]; if (v == null) { open = false; continue; } const x = X(s.t[i] + H / 2), y = Y(v); if (!open) { ctx.moveTo(x, y); open = true; } else ctx.lineTo(x, y); }
-    ctx.stroke(); ctx.lineWidth = 1;
-    // точка входу
-    if (pos.entry_ts && pos.entry_ts >= t0) {
-      const x = X(pos.entry_ts + H / 2), y = Y(pos.entry);
-      ctx.beginPath(); ctx.arc(x, y, 5, 0, Math.PI * 2); ctx.fillStyle = C.warm; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = cssVar("--card"); ctx.stroke(); ctx.lineWidth = 1;
-    }
-
-    // ймовірність
-    const Q = panes[1];
-    const YQ = (v) => Q.y + Q.h - v * Q.h;
-    for (let i = 0; i < n; i++) {
-      const v = prob[i]; if (v == null) continue;
-      ctx.fillStyle = v >= thr ? C.hot : C.muted;
-      const y = YQ(v); ctx.fillRect(X(s.t[i]) + (bw > 4 ? 1 : 0), y, Math.max(1, bw - (bw > 4 ? 2 : 0)), Q.y + Q.h - y);
-    }
-    const yt = Math.round(YQ(thr)) + .5;
-    ctx.strokeStyle = C.fg2; ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(M.l, yt); ctx.lineTo(W - M.r, yt); ctx.stroke(); ctx.setLineDash([]);
-    ctx.fillStyle = C.fg3; ctx.textAlign = "right";
-    ctx.fillText("1", M.l - 8, YQ(1)); ctx.fillText("0", M.l - 8, YQ(0)); ctx.fillText(fmtP(thr), M.l - 8, yt);
-    if (!prob.some((v) => v != null)) { ctx.textAlign = "left"; ctx.fillText("Немає оцінок: запусти скринер або натисни «Прогнозувати»", M.l + 8, Q.y + Q.h / 2); }
-
-    // вісь часу
-    ctx.textAlign = "center"; ctx.textBaseline = "top"; ctx.fillStyle = C.fg3;
-    const step = [3, 6, 12, 24, 48].find((h) => pw / ((t1 - t0) / H / h) >= 80) || 48;
-    for (let t = Math.ceil(t0 / (step * H)) * step * H; t < t1; t += step * H) {
-      const x = X(t); if (x < M.l + 20 || x > W - M.r - 20) continue;
-      const dd = new Date(t * 1000);
-      ctx.fillText(dd.getUTCHours() === 0 ? `${pad(dd.getUTCDate())}.${pad(dd.getUTCMonth() + 1)}` : `${pad(dd.getUTCHours())}:00`, x, Q.y + Q.h + 6);
-    }
-    // перехрестя
-    if (st.hover != null) {
-      const x = Math.round(X(s.t[st.hover] + H / 2)) + .5;
-      ctx.strokeStyle = C.fg3; ctx.beginPath(); ctx.moveTo(x, P.y); ctx.lineTo(x, Q.y + Q.h); ctx.stroke();
-    }
+  const makeChart = () => {
+    const C = { card: cssVar("--card"), line: cssVar("--line"), line2: cssVar("--line2"), fg2: cssVar("--fg2"), fg3: cssVar("--fg3"),
+      up: cssVar("--ok"), down: cssVar("--hot"), oi: "#1baf7a", muted: cssVar("--muted") };
+    chart = LWC.createChart(chartEl, {
+      autoSize: true,
+      layout: { background: { type: "solid", color: C.card }, textColor: C.fg2, fontSize: 11,
+        fontFamily: "-apple-system, 'Segoe UI', system-ui, sans-serif",
+        panes: { separatorColor: C.line2, separatorHoverColor: C.fg3, enableResize: true } },
+      grid: { vertLines: { color: C.line }, horzLines: { color: C.line } },
+      rightPriceScale: { borderColor: C.line2 },
+      timeScale: { borderColor: C.line2, timeVisible: true, secondsVisible: false, rightOffset: 10 },
+      crosshair: { mode: LWC.CrosshairMode.Normal },
+      localization: { timeFormatter: (t) => fmtTs(t) + " UTC" },
+    });
+    const noLast = { priceLineVisible: false, lastValueVisible: false };
+    // зони сигналу — під свічками, на власній прихованій шкалі 0..1
+    S.zones = chart.addSeries(LWC.HistogramSeries, { ...noLast, priceScaleId: "zones", color: rgba(C.down, .13) }, 0);
+    S.zones.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
+    S.candles = chart.addSeries(LWC.CandlestickSeries, {
+      upColor: C.up, downColor: C.down, wickUpColor: C.up, wickDownColor: C.down, borderVisible: false,
+      priceFormat: { type: "custom", formatter: fmtPx, minMove: 1e-8 },
+    }, 0);
+    markersApi = LWC.createSeriesMarkers(S.candles, []);
+    // OI свічками в монетах: зелена — позиції відкривали, червона — закривали; без стрибків від руху ціни
+    S.oi = chart.addSeries(LWC.CandlestickSeries, { title: "OI, монети", upColor: C.oi, downColor: C.down, wickUpColor: C.oi, wickDownColor: C.down,
+      borderVisible: false, priceFormat: { type: "custom", formatter: fmtNum, minMove: 1e-6 } }, 1);
+    S.vol = chart.addSeries(LWC.HistogramSeries, { ...noLast, title: "Обсяг", color: C.muted,
+      priceFormat: { type: "custom", formatter: fmtUsd, minMove: 1 } }, 2);
+    S.prob = chart.addSeries(LWC.HistogramSeries, { title: "Ймовірн.", priceLineVisible: false,
+      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+      autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) }, 3);
+    const panes = chart.panes();
+    [5, 1.8, 1.2, 1.6].forEach((f, i) => panes[i] && panes[i].setStretchFactor(f));
+    chart.subscribeCrosshairMove((p) => renderOhlc(p && p.time != null ? idx.get(p.time) : null));
   };
-  const showTip = (px) => {
-    const d = st.data, i = st.hover;
-    if (!d || i == null) { tip.hidden = true; return; }
-    const s = d.series, pr = s.prob[st.model] || [];
-    tip.replaceChildren();
-    const add = (k, v) => { const r = document.createElement("div"); r.className = "r"; const a = document.createElement("span"); a.textContent = k; const b = document.createElement("b"); b.textContent = v; r.append(a, b); tip.appendChild(r); };
-    const ts = document.createElement("div"); ts.className = "ts"; ts.textContent = fmtTs(s.t[i]) + " UTC"; tip.appendChild(ts);
-    add("Ціна", fmtPx(s.price[i])); add("OI", fmtUsd(s.oi[i])); add("Ймовірність", fmtP(pr[i]));
-    tip.hidden = false;
-    let left = px + 16; if (left + tip.offsetWidth > cv.clientWidth - 8) left = px - tip.offsetWidth - 16;
-    tip.style.left = Math.max(8, left) + "px"; tip.style.top = "12px";
-  };
-  cv.addEventListener("pointermove", (e) => {
+
+  // рядок над графіком: значення під курсором (або останній бар)
+  const renderOhlc = (i) => {
     const d = st.data; if (!d) return;
-    const x = e.clientX - cv.getBoundingClientRect().left, s = d.series, n = s.t.length;
-    if (x < M.l || x > W - M.r) { st.hover = null; tip.hidden = true; draw(); return; }
-    st.hover = Math.max(0, Math.min(n - 1, Math.floor((x - M.l) / (W - M.l - M.r) * n)));
-    draw(); showTip(x);
-  });
-  cv.addEventListener("pointerleave", () => { st.hover = null; tip.hidden = true; draw(); });
-  new ResizeObserver(() => { layout(); draw(); }).observe(cv);
+    const s = d.series; if (i == null) i = s.t.length - 1;
+    const pr = (s.prob[st.model] || [])[i];
+    const chg = s.open[i] ? s.price[i] / s.open[i] - 1 : null;
+    ohlcEl.replaceChildren();
+    const add = (k, v, cls) => {
+      const w = document.createElement("span"), a = document.createElement("i"), b = document.createElement("b");
+      a.textContent = k; b.textContent = v; if (cls) b.className = cls; w.append(a, b); ohlcEl.appendChild(w);
+    };
+    add("", fmtTs(s.t[i]) + " UTC");
+    add("O", fmtPx(s.open[i])); add("H", fmtPx(s.high[i])); add("L", fmtPx(s.low[i]));
+    add("C", fmtPx(s.price[i]), chg == null ? "" : chg >= 0 ? "ok" : "hot");
+    add("OI", fmtUsd(s.oi[i])); add("монет", fmtNum(s.coin[i]));
+    const oc = s.coinO[i] ? s.coin[i] / s.coinO[i] - 1 : null; add("OI 1 год", fmtPct(oc), oc == null ? "" : oc >= 0 ? "ok" : "hot");
+    add("Обсяг", fmtUsd(s.volume[i]));
+    add("P", fmtP(pr), pr != null && pr >= d.threshold ? "hot" : "");
+  };
+
+  const setRange = () => {
+    const t = st.data?.series.t; if (!chart || !t?.length) return;
+    const last = t[t.length - 1];
+    chart.timeScale().setVisibleRange({ from: Math.max(t[0], last - st.days * 86400), to: last });
+  };
+
+  const renderChart = () => {
+    const d = st.data;
+    if (!LWC) { chartEl.textContent = "Бібліотеку графіків не завантажено (app/vendor)."; return; }
+    if (!chart) makeChart();
+    if (!d || !d.series.t.length) return;
+    const s = d.series, thr = d.threshold, pr = s.prob[st.model] || [], pos = d.position;
+    const hot = cssVar("--hot"), muted = cssVar("--muted");
+    idx = new Map(s.t.map((t, i) => [t, i]));
+    const candles = [], zones = [], oi = [], vol = [], prob = [];
+    s.t.forEach((time, i) => {
+      const ok = s.open[i] != null && s.high[i] != null && s.low[i] != null && s.price[i] != null;
+      candles.push(ok ? { time, open: s.open[i], high: s.high[i], low: s.low[i], close: s.price[i] } : { time });
+      zones.push(pr[i] != null && pr[i] >= thr ? { time, value: 1 } : { time });
+      const co = s.coinO[i], cc = s.coin[i];
+      oi.push(co != null && cc != null ? { time, open: co, high: Math.max(s.coinH[i], co, cc), low: Math.min(s.coinL[i], co, cc), close: cc } : { time });
+      vol.push(s.volume[i] != null ? { time, value: s.volume[i] } : { time });
+      prob.push(pr[i] != null ? { time, value: pr[i], color: pr[i] >= thr ? hot : muted } : { time });
+    });
+    S.candles.setData(candles); S.zones.setData(zones); S.oi.setData(oi); S.vol.setData(vol); S.prob.setData(prob);
+
+    // угоди моделі: вхід ▲ під свічкою, вихід ▼ над свічкою з результатом
+    const warm = cssVar("--warm"), fg2 = cssVar("--fg2"), t0 = s.t[0];
+    const trades = [...(pos.trades || []), ...(pos.open ? [pos] : [])];
+    const marks = [];
+    trades.forEach((tr) => {
+      if (tr.entry_ts >= t0) marks.push({ time: tr.entry_ts, position: "belowBar", shape: "arrowUp", color: warm, text: "Вхід" });
+      if (tr.exit_ts && tr.exit_ts >= t0) marks.push({ time: tr.exit_ts, position: "aboveBar", shape: "arrowDown", color: fg2,
+        text: `${tr.reason === "stop" ? "Стоп" : "Вихід"} ${fmtPct(tr.result_pct)}` });
+    });
+    marks.sort((a, b) => a.time - b.time);
+    markersApi.setMarkers(marks);
+
+    // горизонтальні лінії: стоп і trailing відкритої угоди, поріг на панелі ймовірності
+    priceLines.forEach(([ser, l]) => ser.removePriceLine(l)); priceLines = [];
+    const line = (ser, price, color, title) => {
+      if (price == null) return;
+      priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]);
+    };
+    if (pos.open) { line(S.candles, pos.stop, warm, "Стоп"); line(S.candles, pos.trailing, fg2, "Trailing"); }
+    line(S.prob, thr, fg2, "поріг");
+
+    // масштаб скидаємо лише при зміні тікера/моделі, щоб щохвилинне оновлення не збивало зум
+    const key = `${d.ticker}|${st.model}`;
+    if (key !== rangeKey) { rangeKey = key; setRange(); }
+    renderOhlc(null);
+  };
 
   // ---------- Скринер ----------
   const spark = (vals, color) => {
@@ -517,16 +533,23 @@ button.tr:hover { background: #22221f; }
   document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
     st.days = +b.dataset.days;
     document.querySelectorAll("[data-days]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
-    loadTicker();
+    setRange();   // дані вже є за 30 днів — лише змінюємо видимий діапазон
   }));
   $("refreshBtn").addEventListener("click", async () => {
-    const btn = $("refreshBtn"); btn.disabled = true; btn.textContent = "Оновлюю… до хвилини";
+    const btn = $("refreshBtn"); btn.disabled = true; btn.textContent = "Оновлюю…";
+    // якщо даних за останню годину ще немає, сервер іде в Coinalyze; при зайнятому ліміті це до хвилини-двох
+    const ctl = new AbortController(), timer = setTimeout(() => ctl.abort(), 150000);
     try {
-      const r = await api("/api/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: st.ticker }) });
+      const r = await api("/api/refresh", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ symbol: st.ticker }), signal: ctl.signal });
       st.meta = await api("/api/meta"); show($("fError"), "");
       await loadTicker();
-      btn.textContent = `Готово за ${r.seconds} с`;
-    } catch (e) { show($("fError"), e.message); btn.textContent = "Прогнозувати"; }
+      btn.textContent = r.fetched ? `Дані оновлено за ${r.seconds} с` : "Переоцінено, дані актуальні";
+    } catch (e) {
+      show($("fError"), e.name === "AbortError"
+        ? "Coinalyze не відповів за 2.5 хв (скринер зараз вибирає ліміт API). Спробуй за кілька хвилин."
+        : e.message);
+      btn.textContent = "Прогнозувати";
+    } finally { clearTimeout(timer); }
     setTimeout(() => { btn.disabled = false; btn.textContent = "Прогнозувати"; }, 2500);
   });
   window.addEventListener("hashchange", route);
@@ -541,7 +564,7 @@ button.tr:hover { background: #22221f; }
     const ts = $("tickerSel");
     st.meta.tickers.forEach((t) => { const o = document.createElement("option"); o.value = t; o.textContent = t; ts.appendChild(o); });
     if (!st.meta.tickers.includes(st.ticker)) st.ticker = st.meta.tickers[0] || null;
-    layout(); route();
+    route();
     // автооновлення: дані раз на хвилину, відлік до скану щосекунди
     setInterval(async () => { try { st.meta = await api("/api/meta"); } catch (e) { return; } if (st.view === "scanner") loadScanner(); else loadTicker(); }, 60000);
     setInterval(renderFoot, 1000);
