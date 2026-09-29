@@ -69,6 +69,9 @@ This opens http://127.0.0.1:8765, a local page served only to this computer.
 - The line above the chart shows the hovered hour: OHLC, 24-hour change of price and OI, OI per exchange, volume.
 - Mouse wheel zooms, drag pans, and the 7 / 14 / 30 / 60-day buttons set the window. **Лог. шкала** (log scale) helps with large moves.
 - Click the first candle of an interval, then the last. Pick the type, add a note, press **Додати в список** (add to list). The UI is in Ukrainian.
+- **Ruler** (button or Shift + click): measure a span — price change, bars, volume, OI change in USD and coins,
+  model probability. Handy for judging whether an OI spike is big enough to label. Ruler clicks never set
+  interval boundaries.
 - Each change is written to `pumps.csv` immediately and synced to the database.
 - Labeled intervals stay on the chart, numbered; each ticker button shows how many intervals it has.
 

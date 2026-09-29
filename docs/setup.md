@@ -64,6 +64,8 @@ pip install -r requirements.txt
 
 ## Everyday commands
 
+Full reference with every option: [commands.md](commands.md).
+
 | Command | What it does |
 |---|---|
 | `python fetch.py` | Collects 60 days of hourly data for **every** ticker in `tickers.txt` |

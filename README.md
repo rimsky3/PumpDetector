@@ -9,7 +9,7 @@ with price, volume, funding, liquidations and long/short ratio to answer one que
 *is a pump in progress right now?*
 
 > **Status:** work in progress. The full pipeline runs end to end; first results below are preliminary
-> (9 tickers, 19 pumps).
+> (10 tickers, 21 pumps).
 
 ## Approach
 
@@ -40,19 +40,19 @@ Leave-ticker-out, every ticker scored by a model that never saw it:
 
 | Model | Precision | Recall | F1 | PR-AUC | Pumps caught | False alarms / 30 days |
 |---|---|---|---|---|---|---|
-| OI + volume rule | 0.47 | 0.71 | 0.57 | — | 18/19 | 3.8 |
-| Logistic regression | 0.59 | 0.70 | 0.64 | 0.64 | 18/19 | 2.6 |
-| LightGBM | 0.65 | 0.78 | 0.71 | 0.72 | 18/19 | 1.6 |
+| OI + volume rule | 0.46 | 0.64 | 0.54 | — | 20/21 | 3.8 |
+| Logistic regression | 0.62 | 0.70 | 0.66 | 0.66 | 21/21 | 2.7 |
+| LightGBM | 0.59 | 0.77 | 0.67 | 0.70 | 19/21 | 1.7 |
 
 Both models beat the rule on precision and false alarms. The difference between logistic regression and
-LightGBM is within noise at this sample size. The most informative features point to a short squeeze:
+LightGBM is within noise at this sample size (±0.02–0.03 between runs). The most informative features point to a short squeeze:
 pumps happen when most accounts are short. Details, caveats and next steps: [docs/modeling.md](docs/modeling.md).
 
 ## Current dataset
 
-- 9 tickers, about 11 900 hourly bars with a full feature history
-- 19 pump intervals and 8 false starts (moves that looked like a pump but did not develop)
-- 448 pump hours, 3.8% of all bars, so class imbalance is handled explicitly
+- 10 tickers, about 12 800 hourly bars with a full feature history
+- 21 pump intervals and 8 false starts (moves that looked like a pump but did not develop)
+- 461 pump hours, 3.6% of all bars, so class imbalance is handled explicitly
 
 The dataset is intentionally small at this stage and will grow: Coinalyze keeps only ~2 months of
 hourly open-interest history, so new tickers are collected and labeled continuously.
@@ -102,6 +102,7 @@ docs/               documentation
 ## Documentation
 
 - [Setup](docs/setup.md): installation, configuration, troubleshooting
+- [Commands](docs/commands.md): every script and option, typical workflows
 - [Data](docs/data.md): sources, series, units, coverage and known gaps
 - [Labeling](docs/labeling.md): what counts as a pump, labeling rules, file format, tool usage
 - [Features](docs/features.md): aggregation, feature definitions, look-ahead and listing safeguards

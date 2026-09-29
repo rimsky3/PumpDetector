@@ -30,6 +30,7 @@ from load_pumps import (check_overlaps, parse_row, parse_ts, read_pumps,
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(ROOT, "tools", "label.html")
 VENDOR = os.path.join(ROOT, "app", "vendor")                          # бібліотека графіків, спільна з дашбордом
+JS_DIR = os.path.join(ROOT, "app", "js")                              # спільні скрипти сторінок
 PREDICTIONS = os.path.join(ROOT, "reports", "oof_predictions.csv")   # пише train.py
 lock = threading.Lock()  # запис у pumps.csv — по одному
 
@@ -159,9 +160,10 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/":
                 with open(PAGE, "rb") as f:
                     return self._send(200, f.read(), "text/html; charset=utf-8")
-            if url.path.startswith("/vendor/"):
-                path = os.path.normpath(os.path.join(VENDOR, os.path.basename(url.path)))
-                if not path.startswith(VENDOR) or not os.path.isfile(path):
+            if url.path.startswith(("/vendor/", "/js/")):
+                base_dir = VENDOR if url.path.startswith("/vendor/") else JS_DIR
+                path = os.path.normpath(os.path.join(base_dir, os.path.basename(url.path)))
+                if not path.startswith(base_dir) or not os.path.isfile(path):
                     return self._error(404, "не знайдено")
                 with open(path, "rb") as f:
                     return self._send(200, f.read(), "text/javascript; charset=utf-8")
@@ -222,7 +224,7 @@ class Handler(BaseHTTPRequestHandler):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Локальний інструмент розмітки пампів")
     parser.add_argument("--days", type=int, default=60, help="скільки днів історії показувати")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=8765, help="порт на 127.0.0.1")
     parser.add_argument("--no-browser", action="store_true", help="не відкривати браузер автоматично")
     args = parser.parse_args()
 

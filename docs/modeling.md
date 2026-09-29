@@ -86,6 +86,19 @@ same labels.
   (`ls_long_pct`) has the largest coefficient and it is negative: the fewer longs, the more likely a pump.
 - **Small sample.** Conclusions will change as more tickers are labeled.
 
+## Fresh unlabeled hours are not trained on
+
+Tickers in `tickers.txt` are treated as fully labeled: any hour outside a labeled interval is a "0". That breaks
+for the most recent hours, which nobody has reviewed yet. When the model was retrained on 2026-09-29 12:22, QNT's
+live Alert at 09:00 (probability 0.88) went into training as "not a pump", and the new model scored the same
+hour 0.79, below its threshold: the model had been taught to un-see a signal that might be real.
+
+`train.py` therefore drops **unlabeled hours from the last 48 hours** (`--fresh-hours`, 0 to disable). Hours
+inside labeled intervals are kept, so a freshly labeled pump still counts. The model's `data_end` is the cutoff;
+recent labeled intervals are recorded separately so the screener still marks them in-sample. After the fix QNT's
+09:00 hour scores 0.87 against a threshold of 0.81 again. Before retraining, label fresh signals on training
+tickers if they were pumps.
+
 ## Experiment: open interest in coins
 
 Hypothesis: OI in coins (pure position inflow, without the price effect Coinalyze bakes into USD OI) makes better
@@ -100,7 +113,8 @@ features. Same data and labels, `python experiments/oi_coins.py` → `reports/ex
 (F1, leave-ticker-out.) **Rejected.** USD OI mixes position inflow with price, and for pump detection that mix is
 the stronger signal. In a short squeeze, price rises while shorts close positions: OI in coins falls, OI in USD
 rises. On AIN's pump, USD OI grew about fourfold while coins grew about a third. The model keeps the USD
-features; the coin features stay in the table for charts and later experiments. Differences of ±0.02–0.03 are
+features; the coin features stay in the table for charts and later experiments. Re-run on 10 tickers
+(with TRUMP): LightGBM 0.67 in USD vs 0.59 in coins — same conclusion. Differences of ±0.02–0.03 are
 within noise, so "both" is not an improvement either.
 
 ## Next steps

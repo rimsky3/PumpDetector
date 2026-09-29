@@ -8,4 +8,5 @@ AIN
 NMR
 MUBARAK
 SOON
+TRUMP
 G    # фальстарт без OI — негативний приклад

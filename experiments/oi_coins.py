@@ -12,6 +12,7 @@ Coinalyze переводить OI у USD за ціною закриття год
     python experiments/oi_coins.py        → reports/experiment_oi_coins.md
 """
 
+import argparse
 import os
 import sys
 
@@ -42,6 +43,7 @@ def variant_X(df: pd.DataFrame, name: str) -> pd.DataFrame:
 
 
 def main() -> None:
+    argparse.ArgumentParser(description="Експеримент: ознаки на OI у монетах проти OI у USD → reports/experiment_oi_coins.md").parse_args()
     load_dotenv(os.path.join(ROOT, ".env"))
     with psycopg.connect(os.environ["DATABASE_URL"]) as conn:
         df = query_df(conn, "SELECT * FROM features ORDER BY base_asset, ts")

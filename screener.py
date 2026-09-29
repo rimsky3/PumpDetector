@@ -53,6 +53,8 @@ def score(df: pd.DataFrame, models: list[dict]) -> pd.DataFrame:
         p = m["model"].predict_proba(df[m["features"]])[:, 1]
         # in_sample: ця година цього тікера була в навчанні моделі — оцінка не є чесним передбаченням
         seen = df["base_asset"].isin(m["tickers"]).to_numpy() & (df["ts"] <= m["data_end"]).to_numpy()
+        for base, a, b in m.get("in_sample_extra", []):     # свіжі розмічені інтервали теж були в навчанні
+            seen |= ((df["base_asset"] == base) & (df["ts"] >= a) & (df["ts"] <= b)).to_numpy()
         out.append(df[["base_asset", "ts"]].reset_index(drop=True).assign(
             model=m["name"], model_version=m["trained_at"],
             probability=p, threshold=m["threshold"], signal=p >= m["threshold"], in_sample=seen,

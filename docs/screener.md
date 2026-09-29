@@ -89,6 +89,10 @@ with a short explanation.
   candidates / ★ favourites), sorting by probability, OI change over 24 h or price change over 24 h, a 24-hour
   probability sparkline per ticker, and the latest signal episodes.
 
+**Ruler** (like TradingView's measure tool; shared `app/js/ruler.js`, also in the labeling tool): Shift + click on the
+chart or the ruler button, move, click to fix, click again or Esc to remove. Shows the price change, bars and
+time, summed volume, OI change in USD and in coins, and the model's max probability with hours above threshold.
+
 Keyboard: **↑/↓** next ticker, **Enter** refresh the ticker, **F** favourite. **Alert notifications**: when a new
 live signal episode starts while the page is open, a sound, a browser notification and an in-page toast
 (opt-in; favourites, sort order and settings are stored in the browser).

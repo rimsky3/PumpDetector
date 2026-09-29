@@ -34,6 +34,7 @@ import journal as J
 ROOT = os.path.dirname(os.path.abspath(__file__))
 PAGE = os.path.join(ROOT, "app", "dashboard.html")
 VENDOR = os.path.join(ROOT, "app", "vendor")
+JS_DIR = os.path.join(ROOT, "app", "js")                              # спільні скрипти сторінок
 MODEL_NAMES = {"lightgbm": "LightGBM", "logreg": "Логістична регресія"}
 CANDIDATE_SHARE = 0.5     # «Кандидат»: ймовірність ≥ половини порогу сигналу
 SPARK_HOURS = 24
@@ -114,7 +115,7 @@ def meta(conn) -> dict:
             "name": m["name"], "title": MODEL_NAMES.get(m["name"], m["name"]),
             "trained_at": m["trained_at"], "threshold": m["threshold"],
             "tickers": m["tickers"], "pump_intervals": m["pump_intervals"],
-            "validation": m["validation"], "risk": m.get("risk", {}),
+            "validation": m["validation"], "risk": m.get("risk", {}), "settings": m.get("settings", {}),
         } for m in State.models],
         "tickers": sorted(set(watch) | set(scored)),
         "watchlist": watch,
@@ -332,9 +333,10 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/":
             with open(PAGE, "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
-        if url.path.startswith("/vendor/"):   # локальна копія бібліотеки графіків, інтернет не потрібен
-            path = os.path.normpath(os.path.join(VENDOR, os.path.basename(url.path)))
-            if not path.startswith(VENDOR) or not os.path.isfile(path):
+        if url.path.startswith(("/vendor/", "/js/")):   # локальна копія бібліотеки графіків, інтернет не потрібен
+            base_dir = VENDOR if url.path.startswith("/vendor/") else JS_DIR
+            path = os.path.normpath(os.path.join(base_dir, os.path.basename(url.path)))
+            if not path.startswith(base_dir) or not os.path.isfile(path):
                 return self._send(404, {"error": "не знайдено"})
             with open(path, "rb") as f:
                 return self._send(200, f.read(), "text/javascript; charset=utf-8")
@@ -360,8 +362,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Дашборд Pump Detector")
-    parser.add_argument("--port", type=int, default=8766)
-    parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--port", type=int, default=8766, help="порт на 127.0.0.1")
+    parser.add_argument("--no-browser", action="store_true", help="не відкривати браузер автоматично")
     args = parser.parse_args()
 
     load_dotenv(os.path.join(ROOT, ".env"))

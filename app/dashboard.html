@@ -77,7 +77,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .ohlc { display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 11px; color: var(--fg2); min-height: 16px; }
 .ohlc b { color: var(--fg); font-weight: 500; }
 .chart-card { flex: 1; min-height: 420px; background: var(--card); border-radius: 10px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
-#chart { flex: 1; min-height: 380px; }
+#chart { flex: 1; min-height: 380px; position: relative; }
+.tool { height: 30px; width: 34px; display: flex; align-items: center; justify-content: center; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); }
+.tool[aria-pressed="true"] { background: #2962ff; border-color: #2962ff; color: #fff; }
 .chart-help { position: absolute; left: 10px; top: 8px; z-index: 5; }
 .hint { font-size: 11px; color: var(--fg3); margin: 0; }
 .error { font-size: 13px; color: var(--hot-soft); background: var(--alert-bg); border-radius: 8px; padding: 10px 14px; }
@@ -154,6 +156,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 }
 </style>
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
+<script src="/js/ruler.js"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -177,6 +180,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="big" id="probVal">—</div>
         <div class="bar"><i id="probBar" style="width:0"></i><b id="probThr" style="left:80%"></b></div>
         <div class="scale"><span>0</span><span id="probThrTxt">поріг —</span><span>1</span></div>
+        <div class="small" id="probVer">—</div>
+      </div>
+      <div class="card" id="retrainNote" hidden style="border-color:var(--cand-bg)">
+        <div class="t"><span class="amber">Модель перенавчено</span><button class="help" id="retrainX" aria-label="Закрити" style="border:0">×</button></div>
+        <div class="small" id="retrainTxt" style="color:var(--fg2);line-height:1.5"></div>
       </div>
       <div class="card" style="padding-block: 2px;">
         <div class="kv"><span>Δ OI, 4 год <button class="help" data-help="metrics" aria-label="Що це?">?</button></span><b id="mOi">—</b></div>
@@ -242,6 +250,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="seg sm" id="daySeg" role="group" aria-label="Період графіка">
           <button data-days="1">1д</button><button data-days="3" aria-pressed="true">3д</button><button data-days="7">7д</button><button data-days="30">30д</button>
         </div>
+        <button class="tool" id="rulerBtn" aria-pressed="false" title="Лінійка: виміряти відрізок (або Shift + клік на графіку)" aria-label="Лінійка"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"></path><path d="m7 13 2 2M10 10l2 2M13 7l2 2"></path></svg></button>
+        <button class="help" data-help="ruler" aria-label="Що це?">?</button>
         <button class="help" data-help="oiunit" aria-label="Що це?">?</button>
         <div class="seg sm" id="oiSeg" role="group" aria-label="Одиниці OI">
           <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
@@ -390,6 +400,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     position: "Симуляція угоди за сигналами моделі. Вхід — перша година з P вище порогу. Стоп — під входом на k ATR (75-й перцентиль просідання на розмічених пампах), trailing — 1.5 ATR під максимумом, вихід — P нижче порогу 2 години поспіль. Не торгова рекомендація.",
     insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
     oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
+    ruler: "Лінійка, як у TradingView: Shift + клік на графіку (або кнопка) — початок, рух миші — кінець, клік — зафіксувати, ще клік або Esc — прибрати. Показує зміну ціни, кількість барів і час, обсяг, зміну OI у USD і в монетах, максимальну ймовірність і скільки годин сигнал був вище порогу.",
     chart: "Свічки ціни, OI, обсяг і ймовірність за годинами (UTC). Червона зона — години з P вище порогу, ▲ — вхід, ▼ — вихід з результатом, пунктири — стоп і trailing відкритої угоди.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Прогнозувати» підтягує свіжі дані з Coinalyze, якщо останньої години ще немає в базі, і переоцінює тікер обома моделями.",
     filters: "Фільтр списку: усі тікери, лише Alert (P вище порогу), кандидати (вище половини порогу) або обрані ★ (зірочка в рядку або клавіша F).",
@@ -400,7 +411,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     kinds: "Live — оцінки в реальному часі на годинах, яких модель не бачила: єдина чесна перевірка. Історія — дозаповнення при першому запуску. In-sample — години з навчання, лише для порівняння.",
     rule: "Автоматична перевірка сигналу, коли розмітки ще немає: якщо за вказаний час після входу ціна і OI виросли не менше порогів — «Памп · авто», інакше «Хибний · авто». Результат попередній: розмітка його перекриває.",
     labels: "Скільки угод у вибраному обсязі вже перевірено твоєю розміткою в label.py. Автоматичні результати варто переглянути: вони грубіші. Фільтр «Авто, перевірити» показує саме їх.",
-    system: "Чи все працює: коли скринер востаннє оновив дані, скільки викликів Coinalyze і відповідей 429, яким тікерам бракує 7 днів історії, яка версія моделі активна.",
+    system: "Чи все працює: коли скринер востаннє оновив дані, скільки викликів Coinalyze і відповідей 429, яким тікерам бракує 7 днів історії, яка версія моделі активна і з якими налаштуваннями навчена (--fresh-hours: скільки свіжих нерозмічених годин не пішло в навчання).",
     compare: "Як моделі показують себе на вибраних оцінках. «З них пампи» — частка сигналів, що виявились пампом (precision). «Пампів спіймано» — з розмічених пампів. Нижче — валідація на навчанні для порівняння.",
     journal: "Кожна угода моделі: від першої години з P вище порогу до виходу за правилами стопу й виходу — з результатом і відсотком угоди.",
     outcome: "«розмітка» — за твоєю розміткою в label.py, остаточно. «авто» — за автоправилом, попередньо. «Очікує» — горизонт автоправила ще не минув і розмітки немає.",
@@ -470,7 +481,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       row(short.length ? "warn" : "", "Мало історії / відстають", short.length ? short.join(", ") : "немає");
     }
     const mi = modelInfo();
-    if (mi) row("", "Модель", `${mi.trained_at.slice(5, 16)} · ${mi.pump_intervals} пампів`);
+    if (mi) {
+      row("", "Модель", `${mi.trained_at.slice(5, 16)} · ${mi.pump_intervals} пампів`);
+      const cfg = mi.settings || {};
+      if (cfg.fresh_hours != null) row(cfg.fresh_hours ? "" : "warn", "Навчання",
+        cfg.fresh_hours ? `без свіжих ${cfg.fresh_hours} год (−${cfg.fresh_hours_dropped} год)` : "усі години, і свіжі нерозмічені");
+    }
   };
   const renderStatus = () => {
     const t = st.meta?.last_scored_at, dot = $("freshDot");
@@ -493,6 +509,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const bar = $("probBar"); bar.style.width = `${Math.round((prob || 0) * 100)}%`;
     bar.style.background = c.status === "alert" ? cssVar("--hot") : c.status === "candidate" ? cssVar("--amber") : cssVar("--muted");
     $("probThr").style.left = `calc(${(thr * 100).toFixed(1)}% - 1px)`; $("probThrTxt").textContent = `поріг ${fmtP(thr)}`;
+    const mi = modelInfo();
+    $("probVer").textContent = mi ? `${mi.title} · модель від ${mi.trained_at.slice(5, 16)} UTC` : "";
     $("mOi").textContent = fmtPct(c.oi_chg_4h); $("mOi").className = pctCls(c.oi_chg_4h);
     $("mVol").textContent = c.volume_z_7d == null ? "—" : c.volume_z_7d.toFixed(1) + "σ";
     $("mLs").textContent = d.ls_long_pct == null ? "—" : Math.round(d.ls_long_pct) + "%";
@@ -535,6 +553,29 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const chartEl = $("chart"), ohlcEl = $("ohlc");
   let chart = null, S = {}, priceLines = [], markersApi = null, idx = new Map(), rangeKey = null;
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+  const fmtDur = (hrs) => { const d = Math.floor(Math.abs(hrs) / 24), h = Math.abs(hrs) % 24; return (hrs < 0 ? "−" : "") + (d ? `${d} д ${h} год` : `${h} год`); };
+  const signed = (v) => (v >= 0 ? "+" : "−") + fmtPx(Math.abs(v));
+  let ruler = null;
+  // рядки лінійки: ціна, бари і час, обсяг, OI (USD і монети), ймовірність моделі
+  const rulerInfo = (i1, i2, p1, p2) => {
+    const d = st.data; if (!d) return [];
+    const s = d.series, bars = i2 - i1, hrs = (s.t[i2] - s.t[i1]) / H;
+    let vol = 0, pmax = null, above = 0;
+    const pr = s.prob[st.model] || [];
+    for (let i = i1; i <= i2; i++) {
+      vol += s.volume[i] || 0;
+      if (pr[i] != null) { pmax = Math.max(pmax ?? 0, pr[i]); if (pr[i] >= d.threshold) above++; }
+    }
+    const ch = (a, b) => (a && b != null) ? b / a - 1 : null;
+    const oiU = ch(s.oi[i1], s.oi[i2]), oiC = ch(s.coin[i1], s.coin[i2]);
+    return [
+      { v: `${signed(p2 - p1)} (${fmtPct(ch(p1, p2), 2)})` },
+      { v: `${bars} барів, ${fmtDur(hrs)}` },
+      { k: "Обсяг", v: fmtUsd(vol) },
+      { k: "OI", v: `${fmtPct(oiU)} · монети ${fmtPct(oiC)}`, sub: true },
+      { k: "P макс", v: `${fmtP(pmax)} · ${above} год ≥ ${fmtP(d.threshold)}` },
+    ];
+  };
   const makeChart = () => {
     const C = { card: cssVar("--card"), line: cssVar("--line"), line2: cssVar("--line2"), fg2: cssVar("--fg2"), fg3: cssVar("--fg3"),
       up: cssVar("--ok"), down: cssVar("--hot"), oi: cssVar("--oi"), muted: cssVar("--muted") };
@@ -562,7 +603,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const panes = chart.panes();
     [5, 1.8, 1.1, 1.5].forEach((f, i) => panes[i] && panes[i].setStretchFactor(f));
     chart.subscribeCrosshairMove((p) => renderOhlc(p && p.time != null ? idx.get(p.time) : null));
+    if (window.PDRuler) ruler = PDRuler.create({ chart, el: chartEl, series: S.candles, times: () => st.data?.series.t || [],
+      info: rulerInfo, onModeChange: (on) => $("rulerBtn").setAttribute("aria-pressed", String(on)) });
   };
+  $("rulerBtn").addEventListener("click", () => { if (ruler) ruler.toggle(); });
   const renderOhlc = (i) => {
     const d = st.data; if (!d || !d.series.t.length) return;
     const s = d.series; if (i == null) i = s.t.length - 1;
@@ -610,7 +654,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (pos.open) { line(S.candles, pos.stop, warm, "Стоп"); line(S.candles, pos.trailing, fg2, "Trailing"); }
     line(S.prob, thr, fg2, "поріг");
     const key = `${d.ticker}|${st.model}`;
-    if (key !== rangeKey) { rangeKey = key; setRange(); }
+    if (key !== rangeKey) { rangeKey = key; setRange(); if (ruler) ruler.clear(); }
+    if (ruler) ruler.redraw();
     renderOhlc(null);
   };
 
@@ -849,6 +894,20 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     inp.addEventListener("change", () => { const v = parseFloat(inp.value); if (!isFinite(v) || v < 0) { inp.value = st.rule[k]; return; } st.rule[k] = v; LS.set("pd-rule", st.rule); loadJournal(); });
   });
 
+  // ---------- повідомлення після перенавчання ----------
+  // Нова версія моделі переоцінює і минулі години, тож статуси в списку можуть змінитись.
+  // Показуємо один раз на кожну нову версію; що модель казала раніше в реальному часі — у Журналі.
+  const checkRetrain = () => {
+    const seen = LS.get("pd-model-versions", {}), changed = [];
+    (st.meta?.models || []).forEach((m) => { if (seen[m.name] && seen[m.name] !== m.trained_at) changed.push(m); if (!seen[m.name] || seen[m.name] !== m.trained_at) seen[m.name] = m.trained_at; });
+    LS.set("pd-model-versions", seen);
+    if (!changed.length) return;
+    $("retrainTxt").textContent = `Нова версія від ${changed[0].trained_at.slice(5, 16)} UTC переоцінила всі години, тож статуси могли змінитись (новий поріг ${fmtP(changed[0].threshold)}). ` +
+      "Що попередня версія казала в реальному часі — збережено в «Журналі».";
+    $("retrainNote").hidden = false;
+  };
+  $("retrainX").addEventListener("click", () => { $("retrainNote").hidden = true; });
+
   // ---------- старт і автооновлення ----------
   const refreshAll = () => { loadList(); if (st.view === "journal") loadJournal(); else loadTicker(); renderSystem(); };
   const init = async () => {
@@ -858,11 +917,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (!st.meta.models.some((m) => m.name === st.model)) st.model = st.meta.models[0]?.name || "lightgbm";
     if (!st.meta.tickers.includes(st.ticker)) st.ticker = st.meta.tickers[0] || null;
     pressIn("oiSeg", "oi", st.oiUsd ? "usd" : "coins");
-    renderModelSeg(); renderSystem(); renderStatus();
+    renderModelSeg(); renderSystem(); renderStatus(); checkRetrain();
     await loadList();
     route();
     addEventListener("hashchange", route);
-    setInterval(async () => { try { st.meta = await api("/api/meta"); } catch (e) { return; } renderSystem(); refreshAll(); }, 60000);
+    setInterval(async () => { try { st.meta = await api("/api/meta"); } catch (e) { return; } renderSystem(); checkRetrain(); refreshAll(); }, 60000);
     setInterval(renderStatus, 1000);
   };
   init();

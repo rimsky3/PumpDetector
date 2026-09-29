@@ -10,6 +10,7 @@ pumps.csv — джерело істини: таблиця щоразу повн�
     python load_pumps.py
 """
 
+import argparse
 import csv
 import os
 import sys
@@ -99,6 +100,7 @@ def sync_db(conn, rows: list[tuple]) -> None:
 
 
 def main() -> None:
+    argparse.ArgumentParser(description="Перевірити pumps.csv і перезаписати з нього таблицю pumps").parse_args()
     load_dotenv()
     db_url = os.getenv("DATABASE_URL")
     if not db_url:

@@ -40,6 +40,7 @@ from features import FEATURES, load_pumps, query_df
 from risk import stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
+FRESH_HOURS = 48   # останні години без розмітки не йдуть у навчання (ще не підтверджені)
 PREDICTIONS_FILE = os.path.join("reports", "oof_predictions.csv")
 MODELS_DIR = "models"
 
@@ -227,6 +228,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Leave-ticker-out порівняння моделей")
     parser.add_argument("--models", nargs="+", choices=ALL_MODELS, default=ALL_MODELS)
     parser.add_argument("--no-save", action="store_true", help="не зберігати моделі для скринера")
+    parser.add_argument("--fresh-hours", type=int, default=FRESH_HOURS,
+                        help="скільки останніх годин без розмітки не брати в навчання (0 — брати все)")
     args = parser.parse_args()
 
     load_dotenv()
@@ -240,8 +243,26 @@ def main() -> None:
     if df.empty:
         sys.exit("Таблиця features порожня — спершу python features.py")
 
+    # Свіжі години без розмітки ще не підтверджені: памп, що саме розвивається, пішов би в навчання як «0»,
+    # і модель «розвчилась» би бачити його (так зник live-Alert QNT після перенавчання). Години всередині
+    # розмічених інтервалів лишаємо — їх підтвердив власник розмітки.
+    cutoff = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(hours=args.fresh_hours)
+    fresh_unlabeled = (df["ts"] > cutoff) & df["pattern_type"].isna()
+    n_fresh_dropped = int(fresh_unlabeled.sum()) if args.fresh_hours else 0
+    if args.fresh_hours and fresh_unlabeled.any():
+        print(f"Не беру в навчання {int(fresh_unlabeled.sum())} свіжих нерозмічених годин (після {cutoff:%m-%d %H:%M} UTC)")
+        df = df[~fresh_unlabeled].reset_index(drop=True)
+    labeled_recent = df[(df["ts"] > cutoff) & df["pattern_type"].notna()]
+    extra = [(b, g["ts"].min(), g["ts"].max()) for b, g in labeled_recent.groupby("base_asset")]
+
     X, y, groups = df[FEATURES], df["label"].astype(int), df["base_asset"]
     tickers = sorted(groups.unique())
+    # з якими налаштуваннями навчено — у файл моделі, звіт і дашборд, щоб потім було видно, чому модель така
+    settings = {
+        "fresh_hours": args.fresh_hours, "fresh_cutoff": cutoff if args.fresh_hours else None,
+        "fresh_hours_dropped": n_fresh_dropped, "models": args.models, "n_features": len(FEATURES),
+        "hours": int(len(df)), "pump_hours": int(y.sum()), "tickers": len(tickers),
+    }
     print(f"Дані: {len(df)} годин, {len(tickers)} тікерів, пампів {y.sum()} год ({y.mean():.1%})\n")
 
     summary, per_ticker, oof = {}, {}, {}
@@ -285,6 +306,11 @@ def main() -> None:
         "Event level: pumps with at least one signal inside, median hours from pump start to the first signal, "
         "false starts that triggered a signal, and signal episodes outside any labeled interval per 30 days of one ticker.", "",
         md_table(summary),
+        "", "## Training settings", "",
+        f"- `--fresh-hours {args.fresh_hours}`: " + (
+            f"{n_fresh_dropped} unlabeled hours after {cutoff:%Y-%m-%d %H:%M} UTC left out of training"
+            if args.fresh_hours else "all hours used, including fresh unlabeled ones"),
+        f"- models: {', '.join(args.models)}; {len(FEATURES)} features; saved for the screener: {'no' if args.no_save else 'yes'}",
     ]
     for name, t in per_ticker.items():
         t.index.name = "ticker"
@@ -310,10 +336,13 @@ def main() -> None:
                 "threshold": best_f1_threshold(y.to_numpy(), oof[name]),
                 "trained_at": now,
                 "tickers": tickers,
-                "data_end": df["ts"].max(),   # остання година в навчанні: до неї тікери з tickers — in-sample
+                # до data_end години тікерів з навчання — in-sample; після — лише розмічені інтервали з in_sample_extra
+                "data_end": min(df["ts"].max(), cutoff) if args.fresh_hours else df["ts"].max(),
+                "in_sample_extra": extra,
                 "pump_intervals": int((pumps["pattern_type"] == "pump").sum()),
                 "validation": {k: (v if isinstance(v, str) else float(v)) for k, v in summary.loc[name].items()},
                 "risk": risk_info,
+                "settings": settings,
             }
             joblib.dump(bundle, model_path(name))
             print(f"Модель для скринера: {model_path(name)} (поріг {bundle['threshold']:.3f})")

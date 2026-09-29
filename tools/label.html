@@ -45,7 +45,9 @@ button[aria-pressed="true"] { background: var(--accent); border-color: var(--acc
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tk { font-family: var(--mono); }
 .chart { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; position: relative; overflow: hidden; }
-#lw { width: 100%; height: 600px; cursor: crosshair; }
+#lw { width: 100%; height: 600px; cursor: crosshair; position: relative; }
+#rulerBtn { display: inline-flex; align-items: center; gap: 6px; }
+#rulerBtn[aria-pressed="true"] { background: #2962ff; border-color: #2962ff; color: #fff; }
 .with-model #lw { height: 760px; }
 @media (max-width: 600px) { #lw { height: 460px; } .with-model #lw { height: 580px; } }
 .info { display: flex; flex-wrap: wrap; gap: 3px 14px; padding: 8px 12px; font: 12px/1.5 var(--mono); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--line); min-height: 34px; }
@@ -103,6 +105,7 @@ td button { padding: 2px 8px; font-size: 12px; }
 </style>
 
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
+<script src="/js/ruler.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -119,6 +122,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       <button data-days="7">7 д</button><button data-days="14">14 д</button><button data-days="30">30 д</button><button data-days="60" aria-pressed="true">60 д</button>
       <span class="label" style="margin-left:10px">Ціна</span>
       <button id="logBtn" aria-pressed="false">Лог. шкала</button>
+      <button id="rulerBtn" aria-pressed="false" title="Лінійка: виміряти відрізок (або Shift + клік на графіку). Esc — прибрати"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"></path><path d="m7 13 2 2M10 10l2 2M13 7l2 2"></path></svg>Лінійка</button>
       <span class="label" style="margin-left:10px">OI</span>
       <button id="oiCoinBtn" aria-pressed="true" title="OI у монетах: чистий приплив позицій, без впливу ціни">Монети</button><button id="oiUsdBtn" aria-pressed="false" title="OI у USD, як дає Coinalyze: між годинами стрибає разом із ціною">USD</button>
       <span class="label" style="margin-left:10px" id="modelLbl" hidden>Модель</span>
@@ -305,6 +309,26 @@ td button { padding: 2px 8px; font-size: 12px; }
   const chartEl = $("lw"), infoEl = $("info");
   let chart = null, S = {}, mk = {}, idx = new Map(), probLine = null, loadedTk = null;
 
+  const fmtDur = (hrs) => { const d = Math.floor(Math.abs(hrs) / 24), h = Math.abs(hrs) % 24; return (hrs < 0 ? "−" : "") + (d ? `${d} д ${h} год` : `${h} год`); };
+  const signed = (v) => (v >= 0 ? "+" : "−") + fmtPx(Math.abs(v));
+  let ruler = null;
+  const rulerInfo = (i1, i2, p1, p2) => {
+    const d = D(), bars = i2 - i1, hrs = (d.t[i2] - d.t[i1]) / H, p = P();
+    let vol = 0, pmax = null, above = 0;
+    for (let i = i1; i <= i2; i++) {
+      vol += d.vol[i] || 0;
+      if (p && p.score[i] != null) { pmax = Math.max(pmax ?? 0, p.score[i]); if (p.signal[i]) above++; }
+    }
+    const ch = (a, b) => (a && b != null) ? b / a - 1 : null;
+    const rows = [
+      { v: `${signed(p2 - p1)} (${fmtPct(ch(p1, p2))})` },
+      { v: `${bars} барів, ${fmtDur(hrs)}` },
+      { k: "Обсяг", v: fmtUsd(vol) },
+      { k: "OI", v: `${fmtPct(ch(d.oi[i1], d.oi[i2]))} · монети ${fmtPct(ch(d.coin[i1], d.coin[i2]))}`, sub: true },
+    ];
+    if (p) rows.push({ k: "P макс", v: `${pmax == null ? "—" : pmax.toFixed(2)} · ${above} год сигналу` });
+    return rows;
+  };
   const makeChart = () => {
     const withModel = PRED.available;
     $("chart").classList.toggle("with-model", withModel);
@@ -344,9 +368,11 @@ td button { padding: 2px 8px; font-size: 12px; }
     (withModel ? [4, 2.2, 1.1, 1.7] : [4.5, 2.4, 1.3]).forEach((f, i) => panes[i] && panes[i].setStretchFactor(f));
     chart.subscribeCrosshairMove((p) => renderInfo(p && p.time != null ? idx.get(p.time) : null));
     chart.subscribeClick(onChartClick);
+    if (window.PDRuler) ruler = PDRuler.create({ chart, el: chartEl, series: S.candles, times: () => D().t,
+      info: rulerInfo, onModeChange: (on) => $("rulerBtn").setAttribute("aria-pressed", String(on)) });
   };
 
-  const rebuildChart = () => { if (chart) { chart.remove(); chart = null; } loadedTk = null; draw(); };
+  const rebuildChart = () => { if (chart) { chart.remove(); chart = null; ruler = null; } loadedTk = null; draw(); };
 
   // рядок над графіком: значення під курсором (або останній бар)
   const renderInfo = (i) => {
@@ -377,6 +403,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   };
 
   const onChartClick = (param) => {
+    if (ruler && ruler.busy()) return;          // клік належить лінійці, а не розмітці
     if (param.time == null || !idx.has(param.time)) return;
     const t = param.time;
     if (st.a == null || st.b != null) { st.a = t; st.b = null; }
@@ -434,7 +461,8 @@ td button { padding: 2px 8px; font-size: 12px; }
       if (p && p.threshold != null) probLine = S.prob.createPriceLine({ price: p.threshold, color: C.fg3, lineWidth: 1,
         lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: "поріг" });
     }
-    if (loadedTk !== st.tk) { loadedTk = st.tk; chart.timeScale().fitContent(); }
+    if (loadedTk !== st.tk) { loadedTk = st.tk; chart.timeScale().fitContent(); if (ruler) ruler.clear(); }
+    if (ruler) ruler.redraw();
     renderInfo(null);
   };
 
@@ -610,6 +638,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   };
   $("oiCoinBtn").addEventListener("click", () => setOiUnit(false));
   $("oiUsdBtn").addEventListener("click", () => setOiUnit(true));
+  $("rulerBtn").addEventListener("click", () => { if (ruler) ruler.toggle(); });
   $("logBtn").addEventListener("click", () => { st.log = !st.log; $("logBtn").setAttribute("aria-pressed", String(st.log)); draw(); });
   $("modelSel").addEventListener("change", (e) => { st.model = e.target.value; renderErrors(); draw(); });
 
