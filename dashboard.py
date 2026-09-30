@@ -40,6 +40,7 @@ def last_atr(h: pd.DataFrame) -> float | None:
     return float(a.iloc[-1]) if len(a) else None
 from screener import (FETCH_DAYS, INTRADAY_DAYS, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
                       load_models, next_hourly, next_run, score_15m, score_bases, update_15m)
+import fetch_exchange
 import journal as J
 import tiers as T
 
@@ -368,13 +369,62 @@ def rebar(conn, res: dict, base: str, tf: str, days: int) -> dict:
     return res
 
 
+_fresh_at: dict = {}
+_fresh_lock = threading.Lock()
+
+
+def ensure_fresh(conn, base: str, tf: str) -> bool:
+    """Графік відкритого тікера не чекає циклу скринера: якщо в базі бракує останніх закритих 15m/5m-барів,
+    дозавантажуємо короткий хвіст з бірж у ФОНІ (~10 с, без Coinalyze) — відповідь не чекає. Повертає True, якщо
+    дозавантаження запущено: сторінка тоді перезапитає дані за ~15 с. Не частіше разу на 45 с для тікера й ТФ.
+    Модель це не переоцінює — вона рахується скринером на закритих 15m-барах."""
+    if tf not in ("5m", "15m"):
+        return False
+    interval, freq, sec = CHART_TF[tf]
+    key = (base, tf)
+    with _fresh_lock:
+        if time.monotonic() - _fresh_at.get(key, -1e9) < 45:
+            return False
+        _fresh_at[key] = time.monotonic()
+    last = conn.execute("""SELECT max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
+                           WHERE m.base_asset = %s AND o.interval = %s""", (base, interval)).fetchone()[0]
+    closed = pd.Timestamp(datetime.now(timezone.utc)).floor(freq) - pd.Timedelta(seconds=sec)
+    if last is None or pd.Timestamp(last) >= closed:
+        return False
+    days = min(2.0, max(0.05, (closed - pd.Timestamp(last)).total_seconds() / 86400 + 0.02))
+
+    def work():
+        try:
+            with psycopg.connect(State.db_url) as c2:
+                fetch_exchange.collect(c2, [base], [tf], days, log=lambda m: None)
+        except Exception as e:
+            print(f"! дозавантаження {base} {tf}: {e}")
+    threading.Thread(target=work, daemon=True).start()
+    return True
+
+
+def live_symbols(conn, base: str) -> dict:
+    """Символи USDT-перпів на Binance і Bybit — для живої свічки на сторінці (WebSocket бірж напряму)."""
+    rows = dict(conn.execute("""SELECT exchange_name, symbol_on_exchange FROM markets
+                                WHERE base_asset = %s AND quote_asset = 'USDT' AND exchange_name IN ('Binance', 'Bybit')""",
+                             (base,)).fetchall())
+    return {"binance": rows.get("Binance"), "bybit": rows.get("Bybit"),
+            "price_exchange": "Binance" if "Binance" in rows else ("Bybit" if "Bybit" in rows else None)}
+
+
 def ticker(conn, base: str, model: str, days: int, tf: str | None = None) -> dict:
+    native = "15m" if model == T.TIER_MODEL else "1h"
+    refreshing = ensure_fresh(conn, base, tf or native)
     if model == T.TIER_MODEL:
         if State.m15 is None:
             raise ValueError("15m-моделі немає: python train.py")
-        return rebar(conn, ticker_15m(conn, base, days), base, tf, days) if tf else ticker_15m(conn, base, days)
-    res = ticker_1h(conn, base, model, days)
-    return rebar(conn, res, base, tf, days) if tf else res
+        res = ticker_15m(conn, base, days)
+    else:
+        res = ticker_1h(conn, base, model, days)
+    res = rebar(conn, res, base, tf, days) if tf else res
+    res["live"] = live_symbols(conn, base)
+    res["tail_refresh"] = refreshing
+    return res
 
 
 def ticker_1h(conn, base: str, model: str, days: int) -> dict:

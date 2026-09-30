@@ -54,6 +54,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .kv > span { color: var(--fg2); display: flex; align-items: center; gap: 6px; }
 .kv > b { font-weight: 500; }
 .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.live-dot { font-size: 10px; letter-spacing: .04em; color: var(--fg3); display: inline-flex; align-items: center; gap: 4px; }
+.live-dot::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--fg3); }
+.live-dot.on { color: var(--ok); } .live-dot.on::before { background: var(--ok); }
 .tile { background: var(--side); border-radius: 6px; padding: 7px; border: 1px solid var(--muted); min-width: 0; }
 .tile .k, .tile .v, .tile .s { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile .k { font-size: 10px; color: var(--fg3); } .tile .v { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; }
@@ -247,6 +250,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       <div class="l">
         <span class="tk-name" id="tkName">—</span><span class="small" id="tkTf">USDT Perp · 1h</span>
         <span class="tk-price" id="tkPrice">—</span><span id="tkChg">—</span>
+        <span class="live-dot" id="liveDot" title="Жива свічка з бірж" hidden>live</span>
         <span class="badge" id="tkInSample" hidden>in-sample</span><button class="help" id="tkInSampleHelp" data-help="insample" aria-label="Що це?" hidden>?</button>
       </div>
       <div class="r">
@@ -411,7 +415,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
     tf: "Таймфрейм графіка. Модель від цього не змінюється: «15m + 1h» рахує на 15m, годинні — на 1h. На крупнішому ТФ бар показує найвищу оцінку й рівень сигналу за свій час (Alert усередині години не загубиться), на дрібнішому — останню оцінку, відому на момент закриття бару. 5m — для точного входу; оновлюється скринером.",
     ruler: "Лінійка, як у TradingView: Shift + клік на графіку (або кнопка) — початок, рух миші — кінець, клік — зафіксувати, ще клік або Esc — прибрати. Показує зміну ціни, кількість барів і час, обсяг, зміну OI у USD і в монетах, максимальну ймовірність і скільки годин сигнал був вище порогу.",
-    chart: "Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом, пунктири на ціні — стоп і trailing.",
+    chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом, пунктири на ціні — стоп і trailing.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
     filters: "Фільтр списку: усі тікери, лише Alert, Alert і кандидати, або обрані ★ (зірочка в рядку або клавіша F). Для годинних моделей «Кандидат» — P вище половини порогу.",
     notify: "Коли на новому live-барі починається Alert — звук і системне сповіщення браузера, навіть якщо вкладка у фоні. Старі й in-sample оцінки мовчать. Дашборд має бути відкритим.",
@@ -457,7 +461,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("viewForecast").hidden = j; $("rightPanel").hidden = j; $("leftForecast").hidden = j;
     $("viewJournal").hidden = !j; $("leftJournal").hidden = !j;
     $("navForecast").toggleAttribute("aria-current", !j); $("navJournal").toggleAttribute("aria-current", j);
-    if (!j) { $("navForecast").setAttribute("aria-current", "page"); loadTicker(); } else { $("navJournal").setAttribute("aria-current", "page"); loadJournal(); }
+    if (!j) { $("navForecast").setAttribute("aria-current", "page"); loadTicker(); } else { $("navJournal").setAttribute("aria-current", "page"); Live.stop(); loadJournal(); }
     closePop();
   };
   const selectTicker = (t, go = true) => {
@@ -579,6 +583,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       show($("fError"), "");
     } catch (e) { st.data = null; show($("fError"), e.message); }
     renderHead(); renderLeft(); renderChart();
+    Live.start();
+    // сервер у фоні дозавантажує закриті бари, яких ще немає в базі, — перезапитуємо, щойно вони будуть
+    if (st.data && st.data.tail_refresh) { const tk = st.ticker; setTimeout(() => { if (st.ticker === tk) loadTicker(); }, 15000); }
   };
 
   // ---------- графік: TradingView Lightweight Charts (app/vendor) ----------
@@ -701,7 +708,91 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (key !== rangeKey) { rangeKey = key; setRange(); if (ruler) ruler.clear(); }
     if (ruler) ruler.redraw();
     renderOhlc(null);
+    Live.draw();                 // setData прибирає незакриту свічку — повертаємо її
   };
+
+
+  // ---------- жива свічка: WebSocket Binance / Bybit напряму з браузера ----------
+  // Модель оцінює лише закриті бари (скринер, кожні 15 хв). Тут — тільки поточна незакрита свічка «для очей»:
+  // ціна з тієї ж біржі, що й графік; обсяг і OI (монети) — сума Binance + Bybit, як у 15m/5m-даних бази.
+  // На 1h-графіку — лише ціна: годинні обсяг і OI в базі з Coinalyze по всіх біржах, дописувати до них дві біржі не можна.
+  const Live = (() => {
+    const IV = { "5m": ["5m", "5"], "15m": ["15m", "15"], "1h": ["1h", "60"] };
+    let socks = [], timers = [], key = null, bar = null, oi = { bn: null, by: null }, pending = false, alive = 0;
+    const setDot = () => { const dot = $("liveDot"); dot.hidden = !key; dot.classList.toggle("on", alive > 0);
+      dot.title = alive > 0 ? "Поточна свічка оновлюється з бірж у реальному часі (модель — лише на закритих барах)" : "Підключаюсь до бірж…"; };
+    const stop = () => {
+      socks.forEach((w) => { w.onclose = null; try { w.close(); } catch (e) {} });
+      timers.forEach(clearInterval);
+      socks = []; timers = []; key = null; bar = null; oi = { bn: null, by: null }; alive = 0; setDot();
+    };
+    const full = () => st.data && (st.data.tf === "5m" || st.data.tf === "15m");
+    const draw = () => {
+      pending = false;
+      const d = st.data; if (!d || !bar || bar.c == null || !S.candles) return;
+      const t = d.series.t, last = t.length ? t[t.length - 1] : 0;
+      if (bar.time <= last) return;                        // бар уже закрито і він є в базі
+      S.candles.update({ time: bar.time, open: bar.o, high: bar.h, low: bar.l, close: bar.c });
+      if (full()) {
+        S.vol.update({ time: bar.time, value: bar.bnQ + bar.byT });
+        const coins = (oi.bn || 0) + (oi.by || 0);
+        if (coins > 0) {
+          if (bar.oiO == null) bar.oiO = d.series.coin[d.series.coin.length - 1] ?? coins;   // відкриття = закриття попереднього бару
+          bar.oiH = Math.max(bar.oiH ?? coins, coins, bar.oiO); bar.oiL = Math.min(bar.oiL ?? coins, coins, bar.oiO);
+          const k = st.oiUsd ? bar.c : 1;                  // USD — як у базі: уся свічка за ціною закриття
+          S.oi.update({ time: bar.time, open: bar.oiO * k, high: bar.oiH * k, low: bar.oiL * k, close: coins * k });
+        }
+      }
+      $("tkPrice").textContent = fmtPx(bar.c);
+    };
+    const schedule = () => { if (!pending) { pending = true; setTimeout(draw, 250); } };
+    const onKline = (src, startMs, o, h, l, c, quote) => {
+      const d = st.data; if (!d || !d.live) return;
+      const time = Math.floor(startMs / 1000);
+      if (!bar || time > bar.time) bar = { time, o: null, h: null, l: null, c: null, bnQ: 0, byT: 0, oiO: null, oiH: null, oiL: null };
+      if (time < bar.time) return;
+      if (src === d.live.price_exchange) { bar.o = o; bar.h = h; bar.l = l; bar.c = c; }
+      if (src === "Binance") bar.bnQ = quote; else bar.byT = quote;
+      schedule();
+    };
+    const connect = (url, onOpen, onMsg) => {
+      const k = key, w = new WebSocket(url);
+      socks.push(w);
+      w.onopen = () => { alive++; setDot(); if (onOpen) onOpen(w); };
+      w.onmessage = (e) => { try { onMsg(JSON.parse(e.data)); } catch (err) {} };
+      w.onclose = () => {                                  // обрив — перепідключення, поки цей тікер відкритий
+        alive = Math.max(0, alive - 1); setDot(); socks = socks.filter((x) => x !== w);
+        setTimeout(() => { if (key === k) connect(url, onOpen, onMsg); }, 3000);
+      };
+    };
+    const start = () => {
+      const d = st.data; if (!d || !d.live || !d.live.price_exchange || !IV[d.tf] || st.view !== "forecast") { stop(); return; }
+      const k = `${d.ticker}|${d.tf}`;
+      if (k === key) { draw(); return; }
+      stop(); key = k; setDot();
+      const L = d.live, iv = IV[d.tf];
+      if (L.binance) {
+        connect(`wss://fstream.binance.com/market/ws/${L.binance.toLowerCase()}@kline_${iv[0]}`, null,
+          (m) => { if (m.k) onKline("Binance", m.k.t, +m.k.o, +m.k.h, +m.k.l, +m.k.c, +m.k.q); });
+        if (full()) {                                     // у Binance немає потоку OI — опитуємо REST кожні 5 с
+          const poll = async () => { try { const j = await (await fetch(`https://fapi.binance.com/fapi/v1/openInterest?symbol=${L.binance}`)).json(); oi.bn = +j.openInterest; schedule(); } catch (e) {} };
+          poll(); timers.push(setInterval(poll, 5000));
+        }
+      }
+      if (L.bybit) {
+        const topics = [`kline.${iv[1]}.${L.bybit}`].concat(full() ? [`tickers.${L.bybit}`] : []);
+        connect("wss://stream.bybit.com/v5/public/linear",
+          (w) => w.send(JSON.stringify({ op: "subscribe", args: topics })),
+          (m) => {
+            if (!m.topic || !m.data) return;
+            if (m.topic.startsWith("kline.")) m.data.forEach((b) => onKline("Bybit", +b.start, +b.open, +b.high, +b.low, +b.close, +b.turnover));
+            else if (m.data.openInterest != null) { oi.by = +m.data.openInterest; schedule(); }   // тікер шле зміни — OI не в кожному
+          });
+        timers.push(setInterval(() => socks.forEach((w) => { if (w.readyState === 1 && w.url.includes("bybit")) w.send('{"op":"ping"}'); }), 20000));
+      }
+    };
+    return { start, stop, draw };
+  })();
 
   // ---------- права панель: список тікерів ----------
   const visibleRows = () => {

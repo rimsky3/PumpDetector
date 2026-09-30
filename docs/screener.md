@@ -162,6 +162,13 @@ It is a simulation to judge the model, not trading advice.
   and tier inside it (an Alert within the hour is not lost), on a finer chart the last score known at the bar's
   close. Positions are computed on the model's own bars; entry/exit marks go to the chart bar that closes with them.
   The screener refreshes a 5m tail for this (no liquidations: the model does not use 5m).
+- **Live candle.** The page connects straight to the exchanges from the browser: Binance
+  `wss://fstream.binance.com/market/ws/<symbol>@kline_<tf>` (the old `/ws/` path accepts connections but sends
+  nothing), Bybit `kline` and `tickers` topics, and Binance open interest over REST every 5 s. On 5m/15m charts the
+  forming bar shows price, volume (Binance + Bybit) and OI in coins; on 1h only price, because hourly volume and OI
+  come from Coinalyze across all exchanges. The model is not re-scored live: it only scores closed bars. When the
+  chart is opened and the database lacks the latest closed bars, the server fetches the tail in the background and
+  the page reloads about 15 s later.
 - **Journal:** `15m + 1h` rows are Alert trades, `15m кандидат` rows are Candidate trades, both on 15m bars.
   Hourly LightGBM and logistic regression stay selectable for comparison.
 
