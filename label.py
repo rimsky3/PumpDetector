@@ -172,6 +172,201 @@ def model15(conn, base: str) -> dict:
     }
 
 
+# ---------------------------------------------------------------- стан моделі і перенавчання
+
+RETRAIN: dict = {"state": "idle"}      # idle / running / done / error; step, stage, started, log
+_retrain_lock = threading.Lock()
+
+
+def _bundle(path: str) -> dict | None:
+    import joblib
+    return joblib.load(path) if os.path.exists(path) else None
+
+
+def _summary(b15: dict | None, b1: dict | None) -> dict | None:
+    """Ключові цифри валідації моделі (leave-ticker-out при її навчанні)."""
+    if not b15:
+        return None
+    tv, v15 = b15.get("tier_validation", {}), b15.get("validation", {})
+    return {"trained_at": b15.get("trained_at"), "tickers": len(b15.get("tickers", [])),
+            "pumps": b15.get("pump_intervals"), "stop_k": (b15.get("risk") or {}).get("k"),
+            "alert": {k: tv.get(k) for k in ("pumps_caught", "false_starts_triggered", "false_alarms_per_30d", "f1", "precision")},
+            "candidate": {k: v15.get(k) for k in ("pumps_caught", "false_starts_triggered", "false_alarms_per_30d", "f1", "pr_auc")},
+            "f1_1h": (b1 or {}).get("validation", {}).get("f1")}
+
+
+def model_status(conn) -> dict:
+    """Які тікери вже в поточній моделі, які змінились після навчання, які чекають перенавчання; кандидат, якщо є."""
+    cur15, cur1 = _bundle(train.model_path(train.M15_NAME)), _bundle(train.model_path("lightgbm"))
+    reviewed = {t.upper() for t in read_tickers_file(TICKERS_PATH)}
+    pumps = load_pumps(conn)
+    fp_now = train.label_fingerprint(pumps)
+    tickers = {}
+    if cur15:
+        in_full = set(cur15.get("tickers", []))
+        in_part = {b for b, *_ in cur15.get("in_sample_extra", [])} - in_full
+        fp_then = cur15.get("labels_fp")          # немає у моделей, навчених до 2026-09-30
+        for t in sorted(reviewed | set(fp_now) | in_full | in_part):
+            wanted = t in reviewed or t in fp_now            # піде в наступне навчання
+            if t not in in_full and t not in in_part:
+                st = "new" if wanted else None
+            elif not wanted:
+                st = "removed"
+            elif (t in reviewed) != (t in in_full) or (fp_then is not None and fp_then.get(t) != fp_now.get(t)):
+                st = "changed"                               # розмітка чи «У навчання» змінились після навчання
+            else:
+                st = "in"
+            if st:
+                tickers[t] = st
+    cand15 = _bundle(train.model_path(train.M15_NAME, train.CANDIDATE_DIR))
+    cand1 = _bundle(train.model_path("lightgbm", train.CANDIDATE_DIR))
+    return {"current": _summary(cur15, cur1), "candidate": _summary(cand15, cand1), "tickers": tickers,
+            "fingerprints": cur15 is not None and cur15.get("labels_fp") is not None,
+            "pending": sorted(t for t, s in tickers.items() if s in ("new", "changed", "removed")),
+            "retrain": {k: v for k, v in RETRAIN.items() if k != "log"} | {"log": RETRAIN.get("log", [])[-3:]}}
+
+
+def retrain_worker() -> None:
+    """features.py → train.py --candidate у фоні. Нова модель — лише кандидат, у роботу — після «Прийняти»."""
+    import subprocess
+    steps = [("ознаки (features.py)", [sys.executable, "features.py"]),
+             ("навчання кандидата (train.py)", [sys.executable, "train.py", "--candidate"])]
+    RETRAIN.update(state="running", started=time.time(), step=0, steps=len(steps), log=[])
+    try:
+        for i, (stage, cmd) in enumerate(steps, 1):
+            RETRAIN.update(step=i, stage=stage)
+            env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+            p = subprocess.Popen(cmd, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                                 encoding="utf-8", errors="replace", env=env)
+            for line in p.stdout:
+                if line.strip():
+                    RETRAIN["log"] = (RETRAIN.get("log", []) + [line.rstrip()])[-40:]
+            if p.wait() != 0:
+                raise RuntimeError(f"{stage}: помилка (код {p.returncode}) — " + " | ".join(RETRAIN["log"][-3:]))
+        RETRAIN.update(state="done", finished=time.time())
+    except Exception as e:
+        RETRAIN.update(state="error", error=str(e))
+
+
+def retrain_accept() -> str:
+    """Кандидат → у роботу; поточні моделі — у models/backup_<час>/ (відкат — скопіювати назад)."""
+    import shutil
+    cand = os.path.join(ROOT, train.CANDIDATE_DIR)
+    files = [f for f in os.listdir(cand) if f.endswith((".joblib", ".parquet"))] if os.path.isdir(cand) else []
+    if not files:
+        raise ValueError("кандидата немає — спершу «Перенавчити»")
+    backup = os.path.join(ROOT, "models", "backup_" + datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M"))
+    os.makedirs(backup, exist_ok=True)
+    for f in files:
+        live = os.path.join(ROOT, "models", f)
+        if os.path.exists(live):
+            shutil.copy2(live, os.path.join(backup, f))
+        shutil.move(os.path.join(cand, f), live)
+    shutil.rmtree(cand, ignore_errors=True)
+    RETRAIN.update(state="idle")
+    return os.path.relpath(backup, ROOT)
+
+
+# ---------------------------------------------------------------- порівняння поточної моделі і кандидата
+
+COMPARE_PAGE = os.path.join(ROOT, "tools", "compare.html")
+_compare_cache: dict = {}
+
+
+def score_tiers(conn, base: str, m15: dict, m1: dict) -> pd.DataFrame:
+    """Рівні сигналу (tiers.py) заданих 15m- і годинної моделей на всій історії тікера — на льоту."""
+    d15 = build_15m(conn, [base])
+    if d15.empty:
+        return pd.DataFrame()
+    d1 = build(conn, [base], labels=False)
+    s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[FEATURES_15M])[:, 1], threshold=m15["threshold"])
+    s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[FEATURES])[:, 1], threshold=m1["threshold"]) \
+        if not d1.empty else pd.DataFrame(columns=["base_asset", "ts", "probability", "threshold"])
+    return tier_frame(s15, s1, m15.get("confirm", {}).get("share", 0.75))
+
+
+def _oof_tiers(path: str) -> pd.DataFrame | None:
+    if not os.path.exists(path):
+        return None
+    o = pd.read_parquet(path)
+    o["ts"] = pd.to_datetime(o["ts"], utc=True)
+    return o.rename(columns={"p15": "p15"})
+
+
+def _ticker_eval(t: pd.DataFrame, pumps: pd.DataFrame) -> tuple[dict, list]:
+    """Метрики подій одного тікера (рівні Alert і Кандидат) і розбір кожного розміченого інтервалу."""
+    df = t[["base_asset", "ts"]]
+    alert, cand = (t["tier"] == "alert").to_numpy(), (t["tier"] != "calm").to_numpy()
+    m = {"alert": train.event_metrics(df, alert, pumps, train.BAR_15M),
+         "candidate": train.event_metrics(df, cand, pumps, train.BAR_15M),
+         "days": len(t) / 96}
+    per = []
+    for p in pumps.itertuples():
+        inside = in_pump_mask(t["ts"], p.start_ts, p.end_ts)
+        a = t[inside & alert]
+        c = t[inside & cand]
+        first = lambda x: (x["ts"].min() + train.BAR_15M - p.start_ts) / pd.Timedelta(minutes=1) if len(x) else None  # noqa: E731
+        per.append({"start": p.start_ts, "end": p.end_ts, "type": p.pattern_type,
+                    "alert": bool(len(a)), "alert_delay": first(a), "cand": bool(len(c)), "cand_delay": first(c),
+                    "p_max": float(t.loc[inside, "p15"].max()) if inside.any() else None})
+    return m, per
+
+
+def in_pump_mask(ts: pd.Series, a, b):
+    from features import in_pump
+    return in_pump(ts, a, b, train.BAR_15M).to_numpy()
+
+
+def compare(conn) -> dict:
+    """Поточна модель проти кандидата: зведення, по тікерах, по кожному розміченому інтервалу.
+    Кандидат — out-of-fold (leave-ticker-out) з його навчання. Поточна — її out-of-fold, якщо збережені;
+    інакше оцінки на льоту: чесні лише на тікерах, яких вона не бачила в навчанні (fair=False — in-sample)."""
+    cur_dir, cand_dir = train.MODELS_DIR, train.CANDIDATE_DIR
+    p15c, p15n = train.model_path(train.M15_NAME), train.model_path(train.M15_NAME, cand_dir)
+    if not os.path.exists(p15n):
+        raise ValueError("кандидата немає — натисни «Перенавчити» в розмітці")
+    oof_new = _oof_tiers(os.path.join(ROOT, cand_dir, "oof_15m.parquet"))
+    if oof_new is None:
+        raise ValueError("кандидат навчений старою версією train.py (без out-of-fold прогнозів) — натисни «Перенавчити» ще раз")
+    labels_mtime = os.path.getmtime(os.path.join(ROOT, "pumps.csv"))
+    key = (os.path.getmtime(p15c) if os.path.exists(p15c) else 0, os.path.getmtime(p15n), labels_mtime)
+    if key in _compare_cache:
+        return _compare_cache[key]
+
+    import joblib
+    cur15, cur1 = joblib.load(p15c), joblib.load(train.model_path("lightgbm"))
+    new15 = joblib.load(p15n)
+    oof_cur = _oof_tiers(os.path.join(ROOT, cur_dir, "oof_15m.parquet"))
+    cur_seen = set(cur15.get("tickers", [])) | {b for b, *_ in cur15.get("in_sample_extra", [])}
+    pumps = load_pumps(conn)
+
+    tickers, pump_rows = [], []
+    for base in sorted(oof_new["base_asset"].unique()):
+        own = pumps[pumps["base_asset"] == base]
+        tn = oof_new[oof_new["base_asset"] == base]
+        mn, pn = _ticker_eval(tn, own)
+        if oof_cur is not None and base in set(oof_cur["base_asset"]):
+            tc, source = oof_cur[oof_cur["base_asset"] == base], "oof"
+        else:
+            tc, source = score_tiers(conn, base, cur15, cur1), ("unseen" if base not in cur_seen else "in_sample")
+            tc = tc[tc["ts"].isin(tn["ts"])] if len(tc) else tc       # те саме вікно, що в кандидата
+        mc, pc = _ticker_eval(tc, own) if len(tc) else (None, [None] * len(pn))
+        fair = source in ("oof", "unseen")
+        tickers.append({"ticker": base, "source": source, "fair": fair, "new": mn, "cur": mc,
+                        "pumps": int((own["pattern_type"] == "pump").sum()), "false_starts": int((own["pattern_type"] == "false_start").sum())})
+        for a, b in zip(pn, pc):
+            pump_rows.append({"ticker": base, "fair": fair, "start": int(a["start"].timestamp()), "end": int(a["end"].timestamp()),
+                              "type": a["type"], "new": {k: a[k] for k in ("alert", "alert_delay", "cand", "cand_delay", "p_max")},
+                              "cur": ({k: b[k] for k in ("alert", "alert_delay", "cand", "cand_delay", "p_max")} if b else None)})
+    res = {"current": _summary(cur15, cur1), "candidate": _summary(new15, joblib.load(train.model_path("lightgbm", cand_dir))),
+           "current_delay": {"alert": cur15.get("tier_validation", {}).get("median_delay_h"), "candidate": cur15.get("validation", {}).get("median_delay_h")},
+           "candidate_delay": {"alert": new15.get("tier_validation", {}).get("median_delay_h"), "candidate": new15.get("validation", {}).get("median_delay_h")},
+           "current_oof": oof_cur is not None, "tickers": tickers, "pumps": pump_rows}
+    _compare_cache.clear()
+    _compare_cache[key] = res
+    return res
+
+
 # ---------------------------------------------------------------- черга завантажень
 
 JOBS: dict[str, dict] = {}          # тікер → {state: queued/running/done/error, msg}
@@ -312,6 +507,20 @@ def ticker_data(conn, base: str, days: int, tf: str = "1h") -> dict:
     }
 
 
+def _json_safe(o):
+    """NaN/inf → null, numpy → Python (json.dumps сам не вміє)."""
+    import math
+    if isinstance(o, dict):
+        return {k: _json_safe(v) for k, v in o.items()}
+    if isinstance(o, (list, tuple)):
+        return [_json_safe(v) for v in o]
+    if hasattr(o, "item") and not isinstance(o, (str, bytes)):
+        o = o.item()
+    if isinstance(o, float) and (math.isnan(o) or math.isinf(o)):
+        return None
+    return o
+
+
 def rows_to_json(rows: list[tuple]) -> list[dict]:
     return [{"base_asset": b, "start_ts": s.strftime(TS_FORMAT), "end_ts": e.strftime(TS_FORMAT),
              "pattern_type": p, "notes": n or "", "entry_ts": et.strftime(TS_FORMAT) if et else None,
@@ -404,6 +613,15 @@ class Handler(BaseHTTPRequestHandler):
                                         "training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
             if url.path == "/api/jobs":
                 return self._send(200, JOBS)
+            if url.path == "/compare":
+                with open(COMPARE_PAGE, "rb") as f:
+                    return self._send(200, f.read(), "text/html; charset=utf-8")
+            if url.path == "/api/compare":
+                with psycopg.connect(self.db_url) as conn:
+                    return self._send(200, _json_safe(compare(conn)))
+            if url.path == "/api/model_status":
+                with psycopg.connect(self.db_url) as conn:
+                    return self._send(200, model_status(conn))
             if url.path == "/api/stops":
                 with psycopg.connect(self.db_url) as conn:
                     return self._send(200, user_stops(conn))
@@ -444,6 +662,21 @@ class Handler(BaseHTTPRequestHandler):
                     JOBS[base] = {"state": "queued", "msg": "у черзі", "step": 0, "steps": 3, "stage": "у черзі"}
                     _jobs.put(base)
                 return self._send(200, JOBS[base])
+            if path == "/api/retrain":
+                with _retrain_lock:
+                    if RETRAIN.get("state") == "running":
+                        raise ValueError("перенавчання вже йде")
+                    RETRAIN.update(state="running", step=0, stage="старт", started=time.time(), log=[])
+                threading.Thread(target=retrain_worker, daemon=True).start()
+                return self._send(200, {"ok": True})
+            if path == "/api/retrain/accept":
+                backup = retrain_accept()
+                return self._send(200, {"ok": True, "backup": backup})
+            if path == "/api/retrain/discard":
+                import shutil
+                shutil.rmtree(os.path.join(ROOT, train.CANDIDATE_DIR), ignore_errors=True)
+                RETRAIN.update(state="idle")
+                return self._send(200, {"ok": True})
             if path == "/api/pumps/update":        # редагування інтервалу на графіку: межі, тип, нотатка, вхід, стоп
                 base, orig = str(body.get("base_asset", "")).upper(), parse_ts(body["orig_start_ts"])
                 new = parse_row(body)

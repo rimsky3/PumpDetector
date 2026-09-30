@@ -49,6 +49,7 @@ REPORT_FILE = os.path.join("reports", "train_report.md")
 FRESH_HOURS = 48   # останні години без розмітки не йдуть у навчання (ще не підтверджені)
 PREDICTIONS_FILE = os.path.join("reports", "oof_predictions.csv")
 MODELS_DIR = "models"
+CANDIDATE_DIR = os.path.join("models", "candidate")   # --candidate: нова модель тут, у роботу — лише після «Прийняти»
 
 
 M15_NAME = "lightgbm_15m"
@@ -56,8 +57,19 @@ BAR_15M = pd.Timedelta(minutes=15)
 CONFIRM_SHARE = 0.75      # «Alert»: годинна оцінка ≥ 0.75 × її порогу (experiments/two_tier.py)
 
 
-def model_path(name: str) -> str:
-    return os.path.join(MODELS_DIR, f"{name}.joblib")
+def model_path(name: str, out_dir: str | None = None) -> str:
+    return os.path.join(out_dir or MODELS_DIR, f"{name}.joblib")
+
+
+def label_fingerprint(pumps: pd.DataFrame) -> dict:
+    """Відбиток розмітки кожного тікера (межі й типи інтервалів) — щоб потім бачити, чи змінилась розмітка
+    після навчання моделі. Вхід і стоп не входять: модель на них не вчиться."""
+    import hashlib
+    out = {}
+    for base, g in pumps.sort_values(["base_asset", "start_ts"]).groupby("base_asset"):
+        key = ";".join(f"{a:%Y-%m-%d %H:%M}|{b:%Y-%m-%d %H:%M}|{t}" for a, b, t in zip(g["start_ts"], g["end_ts"], g["pattern_type"]))
+        out[base] = hashlib.md5(key.encode()).hexdigest()[:12]
+    return out
 H = pd.Timedelta(hours=1)
 
 
@@ -243,6 +255,8 @@ def main() -> None:
     parser.add_argument("--fresh-hours", type=int, default=FRESH_HOURS,
                         help="скільки останніх годин без розмітки не брати в навчання (0 — брати все)")
     parser.add_argument("--no-15m", action="store_true", help="не навчати 15m-модель (лише годинні)")
+    parser.add_argument("--candidate", action="store_true",
+                        help=f"зберегти моделі як кандидата в {CANDIDATE_DIR} (у роботу — після порівняння і «Прийняти» в label.py)")
     args = parser.parse_args()
 
     load_dotenv()
@@ -344,7 +358,8 @@ def main() -> None:
     m15 = None
     if not args.no_15m:
         m15 = train_15m(db_url, df, pumps, cutoff if args.fresh_hours else None, set(reviewed), extra,
-                        oof.get("lightgbm"), preds, now, args)
+                        oof.get("lightgbm"), preds, now, args,
+                        CANDIDATE_DIR if args.candidate else MODELS_DIR, label_fingerprint(pumps))
         parts += m15["report"]
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
         f.write("\n".join(parts) + "\n")
@@ -352,8 +367,10 @@ def main() -> None:
     preds.to_csv(PREDICTIONS_FILE, index=False)
     print(f"\nЗвіт: {REPORT_FILE}\nПередбачення: {PREDICTIONS_FILE}")
 
+    out_dir = CANDIDATE_DIR if args.candidate else MODELS_DIR
+    labels_fp = label_fingerprint(pumps)
     if not args.no_save:
-        os.makedirs(MODELS_DIR, exist_ok=True)
+        os.makedirs(out_dir, exist_ok=True)
         for name in [m for m in args.models if m in PROBA_MODELS]:
             bundle = {
                 "name": name,
@@ -371,14 +388,15 @@ def main() -> None:
                 "risk": risk_info,
                 "settings": settings,
             }
-            joblib.dump(bundle, model_path(name))
+            bundle["labels_fp"] = labels_fp
+            joblib.dump(bundle, model_path(name, out_dir))
             print(f"Модель для скринера: {model_path(name)} (поріг {bundle['threshold']:.3f})")
         if risk_info.get("k") is not None:
             print(f"Стоп: {risk_info['k']:.2f} NATR (75-й перцентиль MAE, {risk_info['n']} пампів)")
 
 
 def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, reviewed: set, extra: list,
-              oof_1h, preds_1h: pd.DataFrame, now: str, args) -> dict:
+              oof_1h, preds_1h: pd.DataFrame, now: str, args, out_dir: str = MODELS_DIR, labels_fp: dict | None = None) -> dict:
     """15m-LightGBM: leave-ticker-out як для годинних, валідація обох рівнів сигналу, бандл для скринера.
     Тікери й правила ті самі: переглянуті — усі бари, інші — лише розмічені інтервали; свіжі нерозмічені — ні."""
     print("\n15m-модель: ознаки…")
@@ -416,6 +434,11 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
             **event_metrics(d, alert, pumps, BAR_15M)}
     summary = pd.DataFrame(rows).T
     summary.index.name = "tier"
+    # out-of-fold прогнози 15m-контуру — для сторінки порівняння моделей (label.py /compare)
+    oof15 = d[["base_asset", "ts", "label", "pattern_type"]].assign(
+        p15=res["score"].to_numpy(), thr15=res["threshold"].to_numpy(),
+        s1h=s1h if oof_1h is not None else np.nan)
+    oof15["tier"] = np.where(s15 >= 1, np.where(oof15["s1h"] >= CONFIRM_SHARE, "alert", "candidate"), "calm")
     print(summary.to_string())
     report = ["", "## 15m model and signal tiers", "",
               f"LightGBM on {len(d)} 15-minute bars ({len(FEATURES_15M)} features: the hourly set with the same wall-clock "
@@ -440,8 +463,11 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
             "settings": {"fresh_hours": args.fresh_hours, "bars": int(len(d)), "tickers": int(groups.nunique()),
                          "n_features": len(FEATURES_15M)},
         }
-        joblib.dump(bundle, model_path(M15_NAME))
-        print(f"Збережено {model_path(M15_NAME)}: поріг {bundle['threshold']:.3f}, стоп {risk15.get('k')} ATR (15m)")
+        bundle["labels_fp"] = labels_fp or {}
+        os.makedirs(out_dir, exist_ok=True)
+        joblib.dump(bundle, model_path(M15_NAME, out_dir))
+        oof15.to_parquet(os.path.join(out_dir, "oof_15m.parquet"), index=False)
+        print(f"Збережено {model_path(M15_NAME, out_dir)}: поріг {bundle['threshold']:.3f}, стоп {risk15.get('k')} ATR (15m)")
     return {"report": report, "summary": summary}
 
 

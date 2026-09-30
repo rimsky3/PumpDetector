@@ -72,6 +72,44 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
 .pbar { grid-column: 1 / -1; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .pbar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
 .tlist .meta .stage { display: inline-flex; align-items: center; gap: 6px; color: var(--fg2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlist .chip2.ms-in { border-color: var(--tp); color: var(--tp); }
+.tlist .chip2.ms-new { border-color: var(--fs); color: var(--fs); }
+/* права панель: вкладки Тікери / угоди тікера / Модель; блоки — картки з кольоровою рамкою (синя — модель, бурштинова — угоди) */
+.stabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
+.stabs button { flex: 1; min-width: 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent;
+  color: var(--fg3); padding: 9px 4px 7px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stabs button:hover { color: var(--fg); }
+.stabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fs); background: transparent; }
+.stabs .n { font: 500 10px var(--mono); padding: 0 5px; border-radius: 8px; background: var(--line); color: var(--fg2); margin-left: 4px; }
+.stabs .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--fs); margin-left: 5px; vertical-align: middle; }
+.side > .cur { padding: 8px 12px; border-bottom: 1px solid var(--line); flex: none; }
+.spane { display: flex; flex-direction: column; min-height: 0; }
+.spane.list { flex: 1; }
+.spane[hidden] { display: none; }
+.spane.scroll { overflow-y: auto; padding: 10px; gap: 8px; }
+.acc { --c: var(--accent); border: 1px solid color-mix(in srgb, var(--c) 40%, var(--line)); border-radius: 8px;
+  background: color-mix(in srgb, var(--c) 7%, var(--panel)); transition: border-color .15s; font-size: 12px; }
+.acc:hover { border-color: color-mix(in srgb, var(--c) 75%, var(--line)); }
+.acc.warm { --c: var(--fs); }
+.acc-h { display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-weight: 600; font-size: 12px; }
+.acc-h .ico { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; flex: none;
+  background: color-mix(in srgb, var(--c) 22%, var(--panel)); color: var(--c); font-size: 11px; }
+.acc-h .v { margin-left: auto; font: 500 12px var(--mono); font-variant-numeric: tabular-nums; }
+.acc-b { padding: 0 10px 10px; display: grid; gap: 8px; }
+.acc .small { font-size: 11px; color: var(--fg2); } .acc .warn { color: var(--fs); }
+.acc .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.acc table { font-size: 11px; } .acc td, .acc th { padding: 2px 4px; }
+.qtiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.qtiles .wide { grid-column: 1 / -1; }
+.qtiles div { background: var(--bg); border-radius: 6px; padding: 5px 8px; min-width: 0; }
+.qtiles span { display: block; font-size: 10px; color: var(--fg3); }
+.qtiles b { font: 500 14px var(--mono); font-variant-numeric: tabular-nums; }
+.qgrid { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+.qgrid span:nth-child(odd) { color: var(--fg2); }
+.qgrid span:nth-child(even) { font-family: var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
+.up { color: var(--tp); } .down { color: var(--fp); }
+.linkbtn { border: 0; background: none; padding: 0; color: var(--c, var(--accent)); font-size: 12px; justify-self: start; }
+.linkbtn:hover { text-decoration: underline; }
 .side-foot { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--fg3); }
 h1 { font-size: 20px; font-weight: 600; margin: 0; text-wrap: balance; }
 .sub { color: var(--fg2); margin: 2px 0 0; font-size: 13px; }
@@ -268,7 +306,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     <p class="note" id="stopSum"></p>
     <p class="note" id="m15TradeRule"></p>
     <p class="err-sum" id="m15TradeSum" style="display:grid;gap:4px"></p>
-    <details><summary class="note" style="cursor:pointer">Усі угоди</summary>
+    <details id="m15TradesDet"><summary class="note" style="cursor:pointer">Усі угоди</summary>
       <div class="tbl"><table>
         <thead><tr><th>Вхід (UTC)</th><th>Вихід (UTC)</th><th>Результат</th><th>Вихід через</th><th>Розмітка</th><th></th></tr></thead>
         <tbody id="m15Trades"></tbody>
@@ -300,9 +338,18 @@ td button { padding: 2px 8px; font-size: 12px; }
   </section>
 </div>
 
-<aside class="side" aria-labelledby="sideH">
+<aside class="side" aria-label="Права панель">
+  <div class="stabs" role="tablist" aria-label="Права панель">
+    <button role="tab" id="stab-list" data-stab="list" aria-controls="pane-list">Тікери<span class="n" id="sideCount"></span></button>
+    <button role="tab" id="stab-trades" data-stab="trades" aria-controls="pane-trades"><span id="stabTk">Тікер</span> · угоди</button>
+    <button role="tab" id="stab-model" data-stab="model" aria-controls="pane-model">Модель<span class="dot" id="stabDot" hidden></span></button>
+  </div>
+  <div class="cur" id="cur" hidden>
+    <span><b id="curTk"></b> <span id="curInfo"></span></span>
+    <button id="trainBtn" aria-pressed="false" title="Переглянув увесь тікер: де пампу не розмічено — його не було. Тоді в навчання йдуть усі години тікера, а не лише розмічені інтервали (tickers.txt)">У навчання</button>
+  </div>
+  <div class="spane list" id="pane-list" role="tabpanel" aria-labelledby="stab-list">
   <div class="side-head">
-    <h2 id="sideH">Тікери <small id="sideCount"></small></h2>
     <input type="text" id="q" placeholder="Пошук: QNT, AKE…" aria-label="Пошук тікера" autocomplete="off">
     <div class="tabs" role="group" aria-label="Який список показати">
       <button data-list="db" aria-pressed="true">У базі</button><button data-list="all" aria-pressed="false">Усі Binance</button><button data-list="train" aria-pressed="false">У навчанні</button>
@@ -312,13 +359,51 @@ td button { padding: 2px 8px; font-size: 12px; }
         <option value="vol">Обсяг 24г</option><option value="chg">Зміна 24г</option><option value="az">A–Z</option>
       </select>
     </div>
-    <div class="cur" id="cur" hidden>
-      <span><b id="curTk"></b> <span id="curInfo"></span></span>
-      <button id="trainBtn" aria-pressed="false" title="Переглянув увесь тікер: де пампу не розмічено — його не було. Тоді в навчання йдуть усі години тікера, а не лише розмічені інтервали (tickers.txt)">У навчання</button>
-    </div>
   </div>
   <ul class="tlist" id="tlist" aria-label="Список тікерів"></ul>
   <p class="side-foot" id="sideFoot">↑/↓ — сусідній тікер. «Завантажити»: 1h з Coinalyze + 15m/5m з Binance і Bybit, ~1–3 хв.</p>
+  </div>
+  <!-- швидкий огляд поточного тікера: те саме, що в картці «15m-модель на цьому тікері», але під рукою; ↑/↓ гортає тікери -->
+  <div class="spane scroll" id="pane-trades" role="tabpanel" aria-labelledby="stab-trades" hidden>
+    <p class="small" id="qEmpty" style="margin:0;color:var(--fg2)">Відкрий тікер — тут з'являться угоди моделі на ньому.</p>
+    <div class="acc warm" id="qTrades" hidden>
+      <div class="acc-h"><span class="ico" aria-hidden="true">$</span>Угоди за Alert<span class="v" id="qExp"></span></div>
+      <div class="acc-b">
+        <div class="qtiles" id="qTiles"></div>
+        <div class="qgrid" id="qMore"></div>
+        <span class="small" id="qRule"></span>
+        <button class="linkbtn" id="qAll">Таблиця всіх угод ↓</button>
+      </div>
+    </div>
+    <div class="acc" id="qSig" hidden>
+      <div class="acc-h"><span class="ico" aria-hidden="true">◆</span>Сигнали на тікері<span class="v" id="qSigV"></span></div>
+      <div class="acc-b"><div class="qgrid" id="qSigGrid"></div><span class="small warn" id="qSigWarn" hidden>Тікер у навчанні — модель бачила його пампи, це не тест.</span></div>
+    </div>
+    <div class="acc warm">
+      <div class="acc-h"><span class="ico" aria-hidden="true">⊥</span>Твої стопи · усі тікери<span class="v" id="qStopsN"></span></div>
+      <div class="acc-b"><div class="qgrid" id="qStops"></div></div>
+    </div>
+  </div>
+  <div class="spane scroll" id="pane-model" role="tabpanel" aria-labelledby="stab-model" hidden>
+  <div class="acc" id="mstat">
+    <div class="acc-h"><span class="ico" aria-hidden="true">◆</span><span id="msSum">Модель…</span></div>
+    <div class="acc-b">
+    <div class="row"><b id="msLine">Модель…</b><button id="retrainBtn" title="Перебудувати ознаки й навчити кандидата на поточній розмітці (у фоні). У роботу — після порівняння і «Прийняти»">Перенавчити</button></div>
+    <span class="small" id="msPending"></span>
+    <span class="small" id="msRun" hidden><i class="spin" aria-hidden="true"></i> <span id="msRunTxt"></span></span>
+    <span class="small warn" id="msErr" hidden></span>
+    </div>
+  </div>
+  <div class="acc warm" id="msCand" hidden>
+    <div class="acc-h"><span class="ico" aria-hidden="true">★</span>Нова модель готова<span class="v small" id="msCandTime" style="font-family:var(--sans)"></span></div>
+    <div class="acc-b">
+      <table><thead><tr><th></th><th>поточна</th><th>нова</th></tr></thead><tbody id="msCmp"></tbody></table>
+      <span class="small">Кожна модель перевірена на своїх даних (leave-ticker-out). Нова має більше розмітки — великий спад цифр — привід розібратися.</span>
+      <div class="row" style="justify-content:flex-start"><button class="primary" id="acceptBtn">Прийняти</button><button id="discardBtn">Відхилити</button>
+        <a href="/compare" target="_blank" rel="noopener" style="font-size:12px">Детальне порівняння →</a></div>
+    </div>
+  </div>
+  </div>
 </aside>
 </div>
 <script>
@@ -768,6 +853,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       : "";
     renderList();
     renderErrors();   // помилки рахуються за поточною розміткою
+    if (typeof loadModelStatus === "function" && MS_READY) loadModelStatus();
   };
 
   // ---------- помилки моделі ----------
@@ -879,6 +965,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   };
   const renderM15 = () => {
     const M = MODEL15[st.tk], card = $("m15Card");
+    renderQuick();
     card.hidden = !M; if (!M) return;
     const days = M.t.length ? (M.t[M.t.length - 1] - M.t[0]) / 86400 : 0;
     $("m15Warn").hidden = !M.in_training;
@@ -953,6 +1040,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     renderStops();
   };
   const renderStops = () => {
+    renderQuickStops();
     const el = $("stopSum"); if (!el) return;
     if (!STOPS.n) { el.textContent = "Твоїх стопів ще немає: у таблиці «Розмічені пампи» — кнопка «Стоп» біля пампу."; return; }
     el.textContent = `Твої стопи: ${STOPS.n} · медіана ${STOPS.median.toFixed(2)} ATR(15m) (половина — від ${STOPS.p25.toFixed(2)} до ${STOPS.p75.toFixed(2)})` +
@@ -1075,6 +1163,139 @@ td button { padding: 2px 8px; font-size: 12px; }
     saveRow(o, { a: r.a, b: r.b, sp: r.sp });
   });
 
+
+  // ---------- стан моделі і перенавчання (права панель) ----------
+  // Статус тікера: «у моделі» — розмітка як при навчанні поточної моделі; «змінено» — розмітку чи «У навчання»
+  // змінено після навчання; «не в моделі» — піде в наступне навчання. «Перенавчити» — features.py + train.py --candidate
+  // у фоні; кандидат замінює модель лише після «Прийняти» (поточна — у models/backup_…).
+  let MS = { tickers: {}, pending: [], retrain: { state: "idle" } }, MS_READY = true;
+  const MS_CHIP = { in: ["у моделі", "ms-in", "поточна модель навчена на такій самій розмітці цього тікера"],
+                    changed: ["змінено", "ms-new", "розмітку або «У навчання» змінено після навчання — оновиться після перенавчання"],
+                    new: ["не в моделі", "ms-new", "поточна модель цей тікер не бачила — піде в наступне навчання"],
+                    removed: ["прибрано", "ms-new", "тікер був у моделі, але зараз його немає в навчальній вибірці"] };
+  let msTimer = null;
+  const loadModelStatus = async () => {
+    try { MS = await api("GET", "/api/model_status"); } catch (e) { return; }
+    renderModelStatus(); renderList();
+    clearTimeout(msTimer);
+    if (MS.retrain.state === "running") msTimer = setTimeout(loadModelStatus, 3000);
+  };
+  const fmtNum2 = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d);
+  const renderModelStatus = () => {
+    const c = MS.current, r = MS.retrain, box = $("mstat");
+    $("msLine").textContent = c ? `Модель від ${c.trained_at.slice(5, 16)} · ${c.tickers} тікерів · ${c.pumps} пампів` : "Моделі ще немає";
+    // згорнутий рядок: коротко, що з моделлю і чи треба щось робити
+    const sum = $("msSum"); sum.replaceChildren(c ? `Модель ${c.trained_at.slice(5, 16)}` : "Моделі немає");
+    const flag = (txt) => { const b = document.createElement("span"); b.className = "dot"; b.textContent = ` · ${txt}`; sum.appendChild(b); };
+    if (r.state === "running") flag("навчається…");
+    else if (MS.candidate) flag("нова модель готова");
+    else if (MS.pending.length) flag(`чекають: ${MS.pending.slice(0, 3).join(", ")}${MS.pending.length > 3 ? "…" : ""}`);
+    $("stabDot").hidden = !(r.state === "running" || MS.candidate || MS.pending.length);
+    $("stabDot").title = r.state === "running" ? "навчається" : MS.candidate ? "нова модель готова" : "є розмітка, якої модель ще не бачила";
+    $("msPending").textContent = MS.pending.length ? `Чекають перенавчання: ${MS.pending.join(", ")}` : "Уся розмітка вже в моделі";
+    $("msPending").className = "small " + (MS.pending.length ? "warn" : "");
+    const run = r.state === "running";
+    $("retrainBtn").disabled = run;
+    $("retrainBtn").textContent = run ? "Навчається…" : "Перенавчити";
+    $("msRun").hidden = !run;
+    if (run) {
+      const secs = Math.round(Date.now() / 1000 - r.started);
+      $("msRunTxt").textContent = `${r.step}/${r.steps} · ${r.stage} · ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+      $("msRunTxt").title = (r.log || []).join("\n");
+    }
+    $("msErr").hidden = r.state !== "error"; $("msErr").textContent = r.error || "";
+    // кандидат: порівняння ключових цифр (валідація leave-ticker-out кожної моделі — на своїх даних)
+    const k = MS.candidate; $("msCand").hidden = !k;
+    if (k) {
+      const tb = $("msCmp"); tb.replaceChildren();
+      const rowC = (name, a, b, better) => {
+        const tr = document.createElement("tr");
+        [name, a, b].forEach((v, i) => { const td = document.createElement("td"); td.textContent = v; if (i === 2 && better != null) td.className = better ? "cls-tp" : "cls-fp"; tr.appendChild(td); });
+        tb.appendChild(tr);
+      };
+      const num = (s) => { const m = /^(\d+)\/(\d+)$/.exec(s || ""); return m ? +m[1] / +m[2] : null; };
+      const cmp = (x, y, higher) => x == null || y == null || x === y ? null : (higher ? y > x : y < x);
+      rowC("Тікерів · пампів", c ? `${c.tickers} · ${c.pumps}` : "—", `${k.tickers} · ${k.pumps}`);
+      rowC("Alert: спіймано", c?.alert.pumps_caught ?? "—", k.alert.pumps_caught, cmp(num(c?.alert.pumps_caught), num(k.alert.pumps_caught), true));
+      rowC("Alert: фальстарти", c?.alert.false_starts_triggered ?? "—", k.alert.false_starts_triggered, cmp(num(c?.alert.false_starts_triggered), num(k.alert.false_starts_triggered), false));
+      rowC("Alert: хибних / 30 д", fmtNum2(c?.alert.false_alarms_per_30d), fmtNum2(k.alert.false_alarms_per_30d), cmp(c?.alert.false_alarms_per_30d, k.alert.false_alarms_per_30d, false));
+      rowC("Alert: F1", fmtNum2(c?.alert.f1, 2), fmtNum2(k.alert.f1, 2), cmp(c?.alert.f1, k.alert.f1, true));
+      rowC("Стоп, ATR", fmtNum2(c?.stop_k, 2), fmtNum2(k.stop_k, 2));
+      $("msCandTime").textContent = `кандидат від ${k.trained_at.slice(5, 16)}`;
+    }
+  };
+  $("retrainBtn").addEventListener("click", async () => {
+    try { await api("POST", "/api/retrain", {}); status("Перенавчання запущено: ознаки → навчання кандидата (~7–8 хв). Поточна модель працює далі."); }
+    catch (e) { status(e.message, true); }
+    loadModelStatus();
+  });
+  $("acceptBtn").addEventListener("click", async () => {
+    try {
+      const r = await api("POST", "/api/retrain/accept", {});
+      status(`Нову модель прийнято. Попередня — у ${r.backup}. Перезапусти screener.py і dashboard.py`);
+      Object.keys(MODEL15).forEach((k) => delete MODEL15[k]);           // оцінки старої моделі більше не актуальні
+      if (st.tk) runModel15(st.tk, true);
+    } catch (e) { status(e.message, true); }
+    loadModelStatus();
+  });
+  $("discardBtn").addEventListener("click", async () => {
+    try { await api("POST", "/api/retrain/discard", {}); status("Кандидата відхилено, працює поточна модель"); } catch (e) { status(e.message, true); }
+    loadModelStatus();
+  });
+
+
+  // ---------- вкладки правої панелі і швидкий огляд тікера ----------
+  const setSideTab = (name) => {
+    document.querySelectorAll(".stabs button").forEach((b) => {
+      const on = b.dataset.stab === name;
+      b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1;
+      $("pane-" + b.dataset.stab).hidden = !on;
+    });
+    try { localStorage.setItem("label-side-tab", name); } catch (e) {}
+  };
+  document.querySelectorAll(".stabs button").forEach((b) => b.addEventListener("click", () => setSideTab(b.dataset.stab)));
+  try { setSideTab(localStorage.getItem("label-side-tab") || "list"); } catch (e) { setSideTab("list"); }
+  const qGrid = (el, pairs) => {
+    el.replaceChildren();
+    pairs.forEach(([k, v, cls]) => { const a = document.createElement("span"); a.textContent = k; const b = document.createElement("span"); b.textContent = v; if (cls) b.className = cls; el.append(a, b); });
+  };
+  function renderQuick() {
+    const M = MODEL15[st.tk], T = M && M.trade_stats;
+    $("stabTk").textContent = st.tk || "Тікер";
+    $("qEmpty").hidden = !!T;
+    $("qEmpty").textContent = !st.tk ? "Відкрий тікер — тут з'являться угоди моделі на ньому." : M && !T ? "Статистику угод рахує новіша версія сервера: перезапусти python label.py." : `${st.tk}: модель рахується…`;
+    $("qTrades").hidden = !T; $("qSig").hidden = !M;
+    if (M) {
+      const a = M.summary.alert, c = M.summary.candidate, f = (v) => v == null ? "—" : v.toFixed(1);
+      $("qSigV").textContent = `${M.episodes.length} еп.`;
+      qGrid($("qSigGrid"), [["Alert: спіймано пампів", a.pumps_caught], ["Alert: фальстартів із сигналом", String(a.false_starts_triggered)],
+        ["Alert: хибних на 30 д", f(a.false_alarms_per_30d)], ["Кандидат: спіймано", c.pumps_caught],
+        ["Затримка Alert", a.median_delay_h == null ? "—" : `${Math.round(a.median_delay_h * 60)} хв`]]);
+      $("qSigWarn").hidden = !M.in_training;
+    }
+    if (!T) return;
+    const pct = (v) => v == null ? "—" : fmtPct(v), sign = (v) => v == null ? "" : v >= 0 ? "up" : "down";
+    $("qExp").textContent = T.n ? `${pct(T.expectancy)} / угоду` : "угод немає"; $("qExp").className = "v " + sign(T.n ? T.expectancy : null);
+    const tiles = $("qTiles"); tiles.replaceChildren();
+    const tile = (k, v, cls, wide) => { const d = document.createElement("div"); if (wide) d.className = "wide"; const s = document.createElement("span"); s.textContent = k; const b = document.createElement("b"); b.textContent = v; if (cls) b.className = cls; d.append(s, b); tiles.appendChild(d); };
+    tile("Угод · прибуткових", T.n ? `${T.n} · ${Math.round(T.wins / T.n * 100)}%` : "0");
+    tile("По стопу", T.n ? String(T.stops) : "—");
+    tile("Сер. виграш / програш", T.n ? `${pct(T.avg_win)} / ${pct(T.avg_loss)}` : "—", "", true);
+    
+    qGrid($("qMore"), [["У пампах / поза ними", `${pct(T.in_pump)} / ${pct(T.outside)}`]]);
+    $("qRule").textContent = `Вхід — перший бар Alert; стоп ${T.k == null ? "—" : T.k.toFixed(2)} ATR(15m); trailing ${T.trail} ATR; вихід — Alert згас ${T.exit_bars} бари. Без комісій.`;
+  }
+  function renderQuickStops() {
+    $("qStopsN").textContent = STOPS.n ? String(STOPS.n) : "";
+    if (!STOPS.n) { qGrid($("qStops"), [["Ще немає", "кнопка «Стоп» у таблиці пампів"]]); return; }
+    qGrid($("qStops"), [["Медіана", `${STOPS.median.toFixed(2)} ATR`], ["Половина між", `${STOPS.p25.toFixed(2)}–${STOPS.p75.toFixed(2)}`],
+      ["Стоп моделі зараз", STOPS.k_model != null ? `${STOPS.k_model.toFixed(2)} ATR` : "—"]]);
+  }
+  $("qAll").addEventListener("click", () => {
+    const d = $("m15TradesDet"); if (d) d.open = true;
+    $("m15Card").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
   // ---------- керування ----------
   const setRangeBtn = (days) => document.querySelectorAll("[data-days]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.days === days)));
   // дані тікера на ТФ (з кешем); для 1h — ще й передбачення моделей. false — якщо даних немає
@@ -1141,6 +1362,8 @@ td button { padding: 2px 8px; font-size: 12px; }
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = x.base;
       if (x.n) { const c = document.createElement("span"); c.className = "chip2 lb"; c.textContent = `${x.n} розм.`; c.title = "інтервалів у pumps.csv"; nm.appendChild(c); }
       if (x.train) { const c = document.createElement("span"); c.className = "chip2 tr"; c.textContent = "навч."; c.title = "у tickers.txt — іде в навчання"; nm.appendChild(c); }
+      const msx = MS_CHIP[MS.tickers[x.base]];
+      if (msx) { const c = document.createElement("span"); c.className = "chip2 " + msx[1]; c.textContent = msx[0]; c.title = msx[2]; nm.appendChild(c); }
       const num = document.createElement("span"); num.className = "num";
       if (x.u) { num.textContent = fmtPct(x.u.chg); num.classList.add(x.u.chg >= 0 ? "up" : "down"); } else num.textContent = "";
       const meta = document.createElement("span"); meta.className = "meta";
@@ -1177,6 +1400,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     if (scroll) { const on = ul.querySelector("li.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
     // поточний тікер: чи в навчальній вибірці
     $("cur").hidden = !st.tk;
+    renderQuick();
     if (st.tk) {
       const inTr = TRAIN.includes(st.tk), n = rows.filter((r) => r.tk === st.tk).length;
       $("curTk").textContent = st.tk;
@@ -1224,6 +1448,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     try { TRAIN = (await api("POST", "/api/training", { ticker: st.tk, on })).training; }
     catch (e) { status(e.message, true); return; }
     status(on ? `${st.tk} у tickers.txt: у навчання йдуть усі години (нерозмічені — «пампу не було»)` : `${st.tk} прибрано з tickers.txt: у навчанні лишаються тільки розмічені інтервали`);
+    loadModelStatus();
     renderList();
   });
   // ↑/↓ — сусідній тікер зі списку (лише ті, що в базі), коли фокус не в полі вводу
@@ -1348,6 +1573,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     renderRows();
     pollJobs();
     loadStops();
+    loadModelStatus();
     if (!TICKERS.length) { status("У базі ще немає тікерів: вибери монету праворуч у «Усі Binance» і натисни «Завантажити»."); return; }
     // адреса виду http://127.0.0.1:8765/#AKE відкриває одразу потрібний тікер
     const fromHash = decodeURIComponent(location.hash.slice(1)).toUpperCase();

@@ -109,6 +109,23 @@ so: that is not a test. The intended loop: pick a coin the model has not seen, r
 by your rules (not only the model's mistakes: labeling only errors would skew training), then press **У навчання**.
 With fewer than 30 days of 15m history, **Дозавантажити 60 днів** fetches the rest.
 
+**Right panel tabs.** *Tickers* (list, search, loading), *<TICKER> · trades* (quick view of the open ticker: trades at Alert, signal summary, your stops across all tickers; ↑/↓ still switches tickers) and *Model* (status, retrain, candidate). The selected tab is remembered in the browser.
+
+**Model status and retraining.** The *Model* tab shows which model is live (date, tickers, pumps) and, on each
+ticker, whether it is **у моделі** (the live model was trained on exactly this labeling), **змінено** (labels or
+"У навчання" changed since) or **не в моделі** (will enter the next training). Label fingerprints are stored in
+the model file from 2026-09-30 on. **Перенавчити** runs `features.py` and `train.py --candidate` in the background
+(~7–8 minutes); the new model is only a candidate until you compare it with the live one and press **Прийняти**
+(the live model is backed up) or **Відхилити**. Restart `screener.py` and `dashboard.py` after accepting.
+
+**Comparison page** (`http://127.0.0.1:8765/compare`, link *Детальне порівняння* in the panel): summary cards (new
+value, old value, change marked better/worse) for the Alert or Candidate tier; a **fair comparison** block over tickers
+where both models' scores are out-of-sample (tickers the live model never saw, or its saved out-of-fold predictions);
+each model's own validation; a per-ticker chart and table (hatched = the live model saw that ticker in training,
+not a fair comparison); and every labeled interval with filters *caught only by the new / only by the live / both /
+neither / false starts*. Models trained from 2026-09-30 save their out-of-fold 15m predictions (`oof_15m.parquet`)
+next to the model file, so once the live model has them the whole comparison becomes fair.
+
 **Model on the chart (M).** The **Модель на графіку** button (or **M**) hides the model's signals, probability pane
 and P value, leaving only your labels. Label a new ticker with the model hidden, then show it and compare: labels
 made while looking at the model's Alerts drift towards them (anchoring), and the model would then partly confirm

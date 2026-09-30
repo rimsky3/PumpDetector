@@ -68,6 +68,7 @@ with labels contributes only the hours inside its labeled intervals (column `rev
 | `--models …` | `rule logreg lightgbm` | which models to validate |
 | `--no-save` | off | report only; do not overwrite `models/*.joblib` |
 | `--no-15m` | off | skip the 15m model (faster: hourly models only) |
+| `--candidate` | off | save to `models/candidate/` instead of `models/`; the labeling tool compares it with the live model and **Прийняти** promotes it (the live one goes to `models/backup_<time>/`) |
 | `--fresh-hours N` | 48 | unlabeled hours from the last N hours are left out of training; `0` uses everything |
 
 **Why `--fresh-hours`.** Tickers in `tickers.txt` are treated as fully labeled, so an unlabeled hour counts as

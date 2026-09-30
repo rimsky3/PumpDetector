@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Порівняння моделей</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Порівняння поточної моделі і кандидата: зведення → чесне порівняння → по тікерах (графік + таблиця) → по пампах */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3ea; --grid: #edf0f4;
+  --fg: #111418; --fg2: #515966; --fg3: #808895; --accent: #2a78d6; --accent-fg: #fff;
+  --cur: #2a78d6; --new: #d97706;           /* поточна / нова — перевірено валідатором палітри (light) */
+  --good: #2e9e5b; --bad: #e34948;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e; --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --accent: #3987e5; --cur: #3987e5; --new: #b8791a; --good: #3fb56f; --bad: #e66767; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e; --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --accent: #3987e5; --cur: #3987e5; --new: #b8791a; --good: #3fb56f; --bad: #e66767; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 20px 16px 48px; display: grid; gap: 16px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0; } h2 { font-size: 15px; font-weight: 600; margin: 0; }
+.sub { color: var(--fg2); font-size: 13px; margin: 2px 0 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; }
+.group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+a { color: var(--accent); }
+button { font: 500 13px var(--sans); border: 1px solid var(--line); background: var(--panel); color: var(--fg); padding: 5px 11px; border-radius: 6px; cursor: pointer; }
+button:hover { border-color: var(--fg3); }
+button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+button:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+select { font: 13px var(--sans); padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--fg); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 12px; min-width: 0; }
+.note { font-size: 12px; color: var(--fg2); margin: 0; }
+.status { font-size: 13px; min-height: 1.4em; margin: 0; color: var(--good); } .status.err { color: var(--bad); }
+.legend { display: flex; gap: 16px; font-size: 12px; color: var(--fg2); align-items: center; flex-wrap: wrap; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.sw.cur { background: var(--cur); } .sw.new { background: var(--new); }
+.sw.hatch { background: repeating-linear-gradient(45deg, var(--cur) 0 2px, transparent 2px 4px); border: 1px solid var(--cur); }
+/* картки зведення */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.kpi { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px; }
+.kpi .k { font-size: 12px; color: var(--fg2); }
+.kpi .v { display: flex; align-items: baseline; gap: 8px; font: 500 18px var(--mono); font-variant-numeric: tabular-nums; }
+.kpi .v .from { font-size: 13px; color: var(--fg3); font-weight: 400; }
+.kpi .d { font-size: 12px; font-variant-numeric: tabular-nums; }
+.good { color: var(--good); } .bad { color: var(--bad); } .same { color: var(--fg3); }
+/* графік */
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; }
+.chart .ax { font: 11px var(--sans); fill: var(--fg3); } .chart .tk { font: 500 12px var(--mono); fill: var(--fg2); }
+.chart .gridl { stroke: var(--grid); stroke-width: 1; }
+.chart rect.hit { fill: transparent; cursor: default; }
+.chart rect.hit:hover + g rect, .chart .row:hover rect.bar { filter: brightness(1.15); }
+.tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px;
+  font: 12px/1.45 var(--mono); box-shadow: 0 4px 16px rgba(0,0,0,.15); min-width: 180px; z-index: 5; }
+.tip b { font-weight: 500; }
+/* таблиці */
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-weight: 500; color: var(--fg2); font-size: 12px; }
+th.sort { cursor: pointer; } th.sort:hover { color: var(--fg); } th.sort[aria-sort="descending"]::after { content: " ↓"; } th.sort[aria-sort="ascending"]::after { content: " ↑"; }
+td.m { font-family: var(--mono); font-size: 12px; }
+.pair { display: inline-flex; gap: 10px; } .pair .c { color: var(--cur); } .pair .n { color: var(--new); }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line); color: var(--fg2); }
+.tag.fair { border-color: var(--good); color: var(--good); } .tag.ins { border-color: var(--fg3); color: var(--fg3); }
+.yes { color: var(--good); } .no { color: var(--fg3); }
+.empty { color: var(--fg3); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="bar">
+    <div>
+      <h1>Порівняння моделей</h1>
+      <p class="sub" id="dates">—</p>
+    </div>
+    <div class="group">
+      <a href="/">← до розмітки</a>
+      <button class="primary" id="acceptBtn">Прийняти нову</button>
+      <button id="discardBtn">Відхилити</button>
+    </div>
+  </header>
+  <p class="status" id="status" role="status" aria-live="polite"></p>
+
+  <div class="bar">
+    <div class="group" role="group" aria-label="Рівень сигналу">
+      <span class="note">Рівень сигналу:</span>
+      <button data-tier="alert" aria-pressed="true">Alert</button><button data-tier="candidate" aria-pressed="false">Кандидат</button>
+    </div>
+    <div class="legend"><span><i class="sw cur"></i>поточна</span><span><i class="sw new"></i>нова (кандидат)</span><span><i class="sw hatch"></i>поточна бачила тікер у навчанні — не чесно</span></div>
+  </div>
+
+  <section class="card" aria-labelledby="fairH">
+    <h2 id="fairH">Чесне порівняння</h2>
+    <p class="note" id="fairNote"></p>
+    <div class="kpis" id="fairKpis"></div>
+  </section>
+
+  <section class="card" aria-labelledby="valH">
+    <h2 id="valH">Валідація кожної моделі на своїх даних</h2>
+    <p class="note">Leave-ticker-out при навчанні: кожен тікер оцінювала модель, що його не бачила. Але дані різні — у нової більше розмітки, тож це орієнтир, а не дуель. Великий спад — привід розібратися.</p>
+    <div class="kpis" id="valKpis"></div>
+  </section>
+
+  <section class="card" aria-labelledby="tkH">
+    <div class="bar">
+      <h2 id="tkH">По тікерах</h2>
+      <label class="group note">Показник
+        <select id="metricSel">
+          <option value="caught">Спіймано пампів, %</option>
+          <option value="fa">Хибних епізодів на 30 днів</option>
+          <option value="fs">Фальстартів із сигналом, %</option>
+          <option value="delay">Затримка, хв</option>
+        </select>
+      </label>
+    </div>
+    <div class="chart" id="chart"></div>
+    <div class="tbl"><table>
+      <thead><tr><th class="sort" data-k="ticker">Тікер</th><th>Порівняння</th><th class="sort" data-k="pumps">Пампів</th>
+        <th class="sort" data-k="caught">Спіймано</th><th class="sort" data-k="fs">Фальстартів із сигналом</th>
+        <th class="sort" data-k="fa">Хибних / 30 д</th><th class="sort" data-k="delay">Затримка</th><th></th></tr></thead>
+      <tbody id="tkRows"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card" aria-labelledby="pH">
+    <div class="bar">
+      <h2 id="pH">По кожному розміченому інтервалу</h2>
+      <div class="group" role="group" aria-label="Фільтр">
+        <button data-f="all" aria-pressed="true">Усі пампи</button><button data-f="onlynew" aria-pressed="false">Ловить лише нова</button>
+        <button data-f="onlycur" aria-pressed="false">Лише поточна</button><button data-f="both" aria-pressed="false">Обидві</button>
+        <button data-f="none" aria-pressed="false">Жодна</button><button data-f="fs" aria-pressed="false">Фальстарти</button>
+      </div>
+    </div>
+    <div class="tbl"><table>
+      <thead><tr><th>Тікер</th><th>Старт (UTC)</th><th>Тривалість</th><th>Поточна</th><th>Нова</th><th>P макс (нова)</th><th>Порівняння</th><th></th></tr></thead>
+      <tbody id="pRows"></tbody>
+    </table></div>
+    <p class="empty" id="pEmpty" hidden>Під фільтр нічого не підпадає.</p>
+  </section>
+</div>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const pad = (n) => String(n).padStart(2, "0");
+  const fmtTs = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  const fmtMin = (m) => m == null ? "—" : m < 60 ? `${Math.round(m)} хв` : `${Math.floor(m / 60)} год ${Math.round(m % 60)} хв`;
+  const status = (m, err) => { const s = $("status"); s.textContent = m; s.classList.toggle("err", !!err); };
+  const api = async (method, path, body) => {
+    const r = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`); return d;
+  };
+  const frac = (s) => { const m = /^(\d+)\/(\d+)$/.exec(s || ""); return m && +m[2] ? { n: +m[1], d: +m[2], v: +m[1] / +m[2] } : null; };
+
+  let D = null, TIER = "alert", SORT = { k: "caught", dir: -1 }, FILT = "all", METRIC = "caught";
+
+  // показники одного тікера з event_metrics для вибраного рівня
+  const tm = (m) => {
+    if (!m) return null;
+    const e = m[TIER], c = frac(e.pumps_caught), f = frac(e.false_starts_triggered);
+    return { caught: c ? c.v * 100 : null, caughtTxt: e.pumps_caught, fs: f ? f.v * 100 : null, fsTxt: e.false_starts_triggered,
+             fa: e.false_alarms_per_30d, delay: e.median_delay_h == null ? null : e.median_delay_h * 60, days: m.days };
+  };
+  // сума по групі тікерів (для чесного блоку)
+  const pool = (list, side) => {
+    let pc = 0, pt = 0, fc = 0, ft = 0, fa = 0, days = 0; const delays = [];
+    list.forEach((t) => {
+      const m = t[side]; if (!m) return; const e = m[TIER];
+      const c = frac(e.pumps_caught), f = frac(e.false_starts_triggered);
+      if (c) { pc += c.n; pt += c.d; } if (f) { fc += f.n; ft += f.d; }
+      if (e.false_alarms_per_30d != null) { fa += e.false_alarms_per_30d * m.days / 30; days += m.days; }
+      if (e.median_delay_h != null) delays.push(e.median_delay_h * 60);
+    });
+    delays.sort((a, b) => a - b);
+    return { caught: pt ? pc / pt * 100 : null, caughtTxt: `${pc}/${pt}`, fs: ft ? fc / ft * 100 : null, fsTxt: `${fc}/${ft}`,
+             fa: days ? fa / days * 30 : null, delay: delays.length ? delays[Math.floor(delays.length / 2)] : null };
+  };
+  // картка: нова крупно, поточна — «було», різниця зі знаком і словом (колір не єдиний носій сенсу)
+  const kpi = (box, label, cur, nw, fmt, higherBetter, curTxt, newTxt) => {
+    const k = el("div", "kpi"); k.appendChild(el("div", "k", label));
+    const v = el("div", "v"); v.append(el("span", "", newTxt ?? fmt(nw)), el("span", "from", `було ${curTxt ?? fmt(cur)}`)); k.appendChild(v);
+    let d = "без змін", cls = "same";
+    if (cur != null && nw != null && Math.abs(nw - cur) > 1e-9) {
+      const better = higherBetter ? nw > cur : nw < cur;
+      d = `${nw > cur ? "▲" : "▼"} ${fmt(Math.abs(nw - cur))} · ${better ? "краще" : "гірше"}`; cls = better ? "good" : "bad";
+    } else if (cur == null || nw == null) d = "немає даних для порівняння";
+    k.appendChild(el("div", "d " + cls, d)); box.appendChild(k);
+  };
+  const pct = (v) => v == null ? "—" : `${v.toFixed(0)}%`, num1 = (v) => v == null ? "—" : v.toFixed(1), num2 = (v) => v == null ? "—" : v.toFixed(2);
+
+  const renderKpis = () => {
+    // чесне: тікери, де обидві оцінки out-of-sample
+    const fair = D.tickers.filter((t) => t.fair && t.cur);
+    $("fairNote").textContent = fair.length
+      ? `Тікери, яких поточна модель не бачила в навчанні (або її out-of-fold прогнози): ${fair.map((t) => t.ticker).join(", ")}. Тут обидві моделі бачать тікер уперше — порівняння пряме.`
+      : "Таких тікерів ще немає: поточна модель бачила всі тікери кандидата. Розміть новий тікер — і він з'явиться тут. Із наступного навчання модель зберігає свої out-of-fold прогнози, і чесним стане все порівняння.";
+    const fb = $("fairKpis"); fb.replaceChildren();
+    if (fair.length) {
+      const c = pool(fair, "cur"), n = pool(fair, "new");
+      kpi(fb, "Спіймано пампів", c.caught, n.caught, pct, true, c.caughtTxt, n.caughtTxt);
+      kpi(fb, "Фальстартів із сигналом", c.fs, n.fs, pct, false, c.fsTxt, n.fsTxt);
+      kpi(fb, "Хибних епізодів на 30 днів", c.fa, n.fa, num1, false);
+      kpi(fb, "Затримка (медіана)", c.delay, n.delay, fmtMin, false);
+    }
+    const vb = $("valKpis"); vb.replaceChildren();
+    const vc = D.current?.[TIER] || {}, vn = D.candidate?.[TIER] || {};
+    const cc = frac(vc.pumps_caught), nc = frac(vn.pumps_caught), cf = frac(vc.false_starts_triggered), nf = frac(vn.false_starts_triggered);
+    kpi(vb, "Спіймано пампів", cc && cc.v * 100, nc && nc.v * 100, pct, true, vc.pumps_caught, vn.pumps_caught);
+    kpi(vb, "Фальстартів із сигналом", cf && cf.v * 100, nf && nf.v * 100, pct, false, vc.false_starts_triggered, vn.false_starts_triggered);
+    kpi(vb, "Хибних епізодів на 30 днів", vc.false_alarms_per_30d, vn.false_alarms_per_30d, num1, false);
+    kpi(vb, "F1 (по барах)", vc.f1, vn.f1, num2, true);
+    const dc = D.current_delay?.[TIER], dn = D.candidate_delay?.[TIER];
+    kpi(vb, "Затримка (медіана)", dc == null ? null : dc * 60, dn == null ? null : dn * 60, fmtMin, false);
+    kpi(vb, "Стоп, ATR(15m)", D.current?.stop_k, D.candidate?.stop_k, num2, null);
+  };
+
+  // ---------- графік по тікерах: горизонтальні пари стовпчиків (поточна / нова) ----------
+  const METRIC_INFO = { caught: ["Спіймано пампів, %", true, (v) => `${v.toFixed(0)}%`], fa: ["Хибних епізодів на 30 днів", false, (v) => v.toFixed(1)],
+                        fs: ["Фальстартів із сигналом, %", false, (v) => `${v.toFixed(0)}%`], delay: ["Затримка, хв", false, (v) => `${Math.round(v)} хв`] };
+  const renderChart = () => {
+    const box = $("chart"); box.replaceChildren();
+    const [title, , fmt] = METRIC_INFO[METRIC];
+    const rows = D.tickers.map((t) => ({ t, c: tm(t.cur)?.[METRIC], n: tm(t.new)?.[METRIC] })).filter((r) => r.c != null || r.n != null);
+    if (!rows.length) { box.appendChild(el("p", "empty", "Немає даних для цього показника.")); return; }
+    const max = Math.max(1e-9, ...rows.flatMap((r) => [r.c ?? 0, r.n ?? 0]));
+    const W = box.clientWidth || 900, L = 90, R = 60, bh = 8, gap = 2, rowH = bh * 2 + gap + 12, H = rows.length * rowH + 24;
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `${title} по тікерах: поточна і нова модель`);
+    const x = (v) => L + (W - L - R) * v / max, mk = (tag, attrs, parent = svg) => { const e = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); parent.appendChild(e); return e; };
+    // смужка з патерном для «поточна бачила тікер»
+    const defs = mk("defs", {}); const pat = mk("pattern", { id: "hatch", width: 4, height: 4, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+    mk("rect", { width: 2, height: 4, style: "fill: var(--cur)" }, pat);
+    [0, 0.5, 1].forEach((f) => { mk("line", { x1: x(max * f), x2: x(max * f), y1: 0, y2: H - 18, class: "gridl" }); const tx = mk("text", { x: x(max * f), y: H - 4, "text-anchor": "middle", class: "ax" }); tx.textContent = fmt(max * f); });
+    const tip = el("div", "tip"); tip.hidden = true; box.appendChild(tip);
+    rows.forEach((r, i) => {
+      const y0 = i * rowH + 4, g = mk("g", { class: "row" });
+      const lab = mk("text", { x: L - 8, y: y0 + bh + 4, "text-anchor": "end", class: "tk" }, g); lab.textContent = r.t.ticker + (r.t.fair ? "" : " *");
+      const bar = (v, yy, fill, stroke) => { if (v == null) return; const w = Math.max(2, x(v) - L);
+        mk("rect", { x: L, y: yy, width: w, height: bh, rx: 2, style: `fill: ${fill}; stroke: ${stroke || "none"}`, "stroke-width": 1, class: "bar" }, g); };
+      bar(r.c, y0, r.t.fair ? "var(--cur)" : "url(#hatch)", r.t.fair ? null : "var(--cur)");
+      bar(r.n, y0 + bh + gap, "var(--new)");
+      const hit = mk("rect", { x: 0, y: y0 - 2, width: W, height: rowH - 4, class: "hit" }, g);
+      hit.addEventListener("mousemove", (e) => {
+        tip.replaceChildren(el("div", "", r.t.ticker), el("div", "", `${title}`));
+        const line = (name, v, cls) => { const d = el("div"); d.append(`${name}: `, el("b", cls, v == null ? "—" : fmt(v))); tip.appendChild(d); };
+        line("поточна", r.c); line("нова", r.n);
+        tip.appendChild(el("div", "", r.t.fair ? "порівняння чесне" : "поточна бачила тікер у навчанні"));
+        const rc = box.getBoundingClientRect(); tip.hidden = false;
+        tip.style.left = `${Math.min(e.clientX - rc.left + 12, rc.width - 200)}px`; tip.style.top = `${e.clientY - rc.top + 12}px`;
+      });
+      hit.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+    box.insertBefore(svg, tip);
+  };
+
+  // ---------- таблиця по тікерах ----------
+  const renderTickers = () => {
+    const tb = $("tkRows"); tb.replaceChildren();
+    const key = (t) => SORT.k === "ticker" ? t.ticker : SORT.k === "pumps" ? t.pumps : (tm(t.new)?.[SORT.k] ?? -1);
+    const list = D.tickers.slice().sort((a, b) => { const x = key(a), y = key(b); return (x > y ? 1 : x < y ? -1 : 0) * SORT.dir; });
+    document.querySelectorAll("th.sort").forEach((th) => th.setAttribute("aria-sort", th.dataset.k === SORT.k ? (SORT.dir > 0 ? "ascending" : "descending") : "none"));
+    list.forEach((t) => {
+      const c = tm(t.cur), n = tm(t.new), tr = el("tr");
+      const pair = (cv, nv) => { const s = el("span", "pair"); s.append(el("span", "c", cv ?? "—"), el("span", "n", nv ?? "—")); const td = el("td", "m"); td.appendChild(s); return td; };
+      tr.append(el("td", "m", t.ticker));
+      const tdf = el("td"); tdf.appendChild(el("span", "tag " + (t.fair ? "fair" : "ins"), t.fair ? (t.source === "oof" ? "чесне (out-of-fold)" : "чесне: новий тікер") : "поточна бачила")); tr.appendChild(tdf);
+      tr.append(el("td", "m", `${t.pumps} / ${t.false_starts} фс`));
+      tr.append(pair(c?.caughtTxt, n?.caughtTxt), pair(c?.fsTxt, n?.fsTxt), pair(c?.fa?.toFixed(1), n?.fa?.toFixed(1)), pair(c ? fmtMin(c.delay) : null, fmtMin(n?.delay)));
+      const td = el("td"); const a = el("a", "", "відкрити"); a.href = `/#${t.ticker}`; td.appendChild(a); tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+  };
+
+  // ---------- таблиця по інтервалах ----------
+  const renderPumps = () => {
+    const tb = $("pRows"); tb.replaceChildren();
+    const rows = D.pumps.filter((p) => {
+      if (FILT === "fs") return p.type === "false_start";
+      if (p.type !== "pump") return false;
+      const n = TIER === "alert" ? p.new.alert : p.new.cand, c = p.cur ? (TIER === "alert" ? p.cur.alert : p.cur.cand) : null;
+      return FILT === "all" || (FILT === "onlynew" && n && c === false) || (FILT === "onlycur" && c && !n) || (FILT === "both" && n && c) || (FILT === "none" && !n && !c);
+    }).sort((a, b) => b.start - a.start);
+    const cell = (side) => {
+      if (!side) return el("td", "no", "—");
+      const hit = TIER === "alert" ? side.alert : side.cand, dly = TIER === "alert" ? side.alert_delay : side.cand_delay;
+      return el("td", hit ? "yes" : "no", hit ? `✓ ${fmtMin(Math.max(0, dly))}` : "✗ пропуск");
+    };
+    rows.forEach((p) => {
+      const tr = el("tr");
+      tr.append(el("td", "m", p.ticker), el("td", "m", fmtTs(p.start)), el("td", "m", fmtMin((p.end - p.start) / 60)));
+      if (p.type === "false_start") {
+        const f = (side) => { if (!side) return el("td", "no", "—"); const hit = TIER === "alert" ? side.alert : side.cand; return el("td", hit ? "bad" : "yes", hit ? "спрацювала ✗" : "мовчала ✓"); };
+        tr.append(f(p.cur), f(p.new));
+      } else tr.append(cell(p.cur), cell(p.new));
+      tr.append(el("td", "m", p.new.p_max == null ? "—" : p.new.p_max.toFixed(2)));
+      const tdf = el("td"); tdf.appendChild(el("span", "tag " + (p.fair ? "fair" : "ins"), p.fair ? "чесне" : "поточна бачила")); tr.appendChild(tdf);
+      const td = el("td"); const a = el("a", "", "відкрити"); a.href = `/#${p.ticker}`; td.appendChild(a); tr.appendChild(td);
+      tb.appendChild(tr);
+    });
+    $("pEmpty").hidden = rows.length > 0;
+  };
+
+  const render = () => { renderKpis(); renderChart(); renderTickers(); renderPumps(); };
+  const press = (sel, attr, val) => document.querySelectorAll(sel).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === val)));
+  document.querySelectorAll("[data-tier]").forEach((b) => b.addEventListener("click", () => { TIER = b.dataset.tier; press("[data-tier]", "tier", TIER); render(); }));
+  document.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => { FILT = b.dataset.f; press("[data-f]", "f", FILT); renderPumps(); }));
+  document.querySelectorAll("th.sort").forEach((th) => th.addEventListener("click", () => { SORT = { k: th.dataset.k, dir: SORT.k === th.dataset.k ? -SORT.dir : -1 }; renderTickers(); }));
+  $("metricSel").addEventListener("change", (e) => { METRIC = e.target.value; renderChart(); });
+  addEventListener("resize", () => { if (D) renderChart(); });
+  $("acceptBtn").addEventListener("click", async () => {
+    if (!confirm("Прийняти нову модель? Поточна піде в резервну копію models/backup_…")) return;
+    try { const r = await api("POST", "/api/retrain/accept", {}); status(`Нову модель прийнято. Попередня — у ${r.backup}. Перезапусти screener.py і dashboard.py`); $("acceptBtn").disabled = $("discardBtn").disabled = true; }
+    catch (e) { status(e.message, true); }
+  });
+  $("discardBtn").addEventListener("click", async () => {
+    if (!confirm("Відхилити кандидата? Його файли буде видалено.")) return;
+    try { await api("POST", "/api/retrain/discard", {}); status("Кандидата відхилено, працює поточна модель"); $("acceptBtn").disabled = $("discardBtn").disabled = true; }
+    catch (e) { status(e.message, true); }
+  });
+
+  (async () => {
+    status("Рахую порівняння… (перший раз — до хвилини: поточна модель оцінює тікери)");
+    try { D = await api("GET", "/api/compare"); status(""); }
+    catch (e) { status(e.message, true); return; }
+    $("dates").textContent = `Поточна — від ${D.current?.trained_at?.slice(5, 16) ?? "—"} (${D.current?.tickers} тікерів, ${D.current?.pumps} пампів) · нова — від ${D.candidate.trained_at.slice(5, 16)} (${D.candidate.tickers} тікерів, ${D.candidate.pumps} пампів)`;
+    render();
+  })();
+})();
+</script>
+</body>
+</html>
