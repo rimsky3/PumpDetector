@@ -42,8 +42,8 @@ from sklearn.metrics import average_precision_score, f1_score, precision_recall_
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from features import FEATURES, FEATURES_15M, build_15m, in_pump, load_pumps, query_df
-from risk import EXIT_BARS_15M, stop_multiplier
+from features import FEATURES, FEATURES_15M, INTERVAL_15M, build_15m, in_pump, load_pumps, load_raw, query_df
+from risk import EXIT_BARS_15M, entry_stop, stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
 FRESH_HOURS = 48   # останні години без розмітки не йдуть у навчання (ще не підтверджені)
@@ -385,7 +385,8 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
     bases = sorted(df1h["base_asset"].unique())
     with psycopg.connect(db_url) as conn:
         d = build_15m(conn, bases, pumps)
-        risk15 = stop_multiplier(conn, "15min")
+        raw15 = load_raw(conn, bases, INTERVAL_15M)
+        risk15 = stop_multiplier(conn, "15min")      # довідково: від розміченого старту
     d["reviewed"] = d["base_asset"].isin(reviewed)
     d = d[d["reviewed"] | d["pattern_type"].notna()]
     if cutoff is not None:
@@ -402,6 +403,14 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
         key = (d["ts"] + BAR_15M - H).dt.floor("h")
         s1h = d[["base_asset"]].assign(ts=key).merge(hour, on=["base_asset", "ts"], how="left")["s1h"].fillna(0).to_numpy()
         alert = (s15 >= 1) & (s1h >= CONFIRM_SHARE)
+        # стоп 15m-контуру — від фактичного входу моделі (перший out-of-fold Alert у пампі), не від старту
+        from tiers import tier_frame
+        oof_t = tier_frame(d[["base_asset", "ts"]].assign(probability=res["score"].to_numpy(), threshold=res["threshold"].to_numpy()),
+                           hour.assign(probability=hour["s1h"], threshold=1.0)[["base_asset", "ts", "probability", "threshold"]],
+                           CONFIRM_SHARE)
+        es = entry_stop(oof_t, raw15, pumps)
+        if es.get("k") is not None:
+            risk15 = {**es, "k_from_start": risk15.get("k")}
         rows[f"15m + 1h ≥ {CONFIRM_SHARE:g} (alert)"] = {
             **hour_metrics(y, pd.DataFrame({"score": s15, "signal": alert}), False),
             **event_metrics(d, alert, pumps, BAR_15M)}

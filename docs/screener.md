@@ -149,7 +149,11 @@ It is a simulation to judge the model, not trading advice.
 
 ## 15m tier details
 
-- **Data per 15m cycle:** a new watchlist coin gets 10 days of 15m history, the rest a 6-hour tail (upserts). Funding
+- **Data per 15m cycle:** a new watchlist coin gets 10 days of 15m history; the rest get exactly the gap since their
+  last stored bar plus a margin (at least 6 hours, at most 29 days), so a laptop that was off overnight is back-filled
+  without holes. The hourly Coinalyze part does the same (10 days normally, the whole gap after a long pause, up to 60).
+  Data that exchanges keep (candles for years, OI 14–30+ days) can be back-filled later; live signals, the live
+  forward test and data without history (order book, Hyperliquid OI) need the screener running, i.e. a server. Funding
   is always fetched with 2 days of lookback so the last paid rate is known.
 - **Coinalyze budget:** hourly collection ~15 calls per ticker once an hour, 15m liquidations ~3 per ticker every
   15 minutes: about 300 calls an hour for 13 tickers out of 2,400.

@@ -37,8 +37,9 @@ cheaper; `--new` does.
 | `--tf 15m 5m` | both | timeframes |
 | `--days N` | 60 | days of history |
 | `--no-liq` | off | skip 15m/5m liquidations from Coinalyze |
+| `--exchanges …` | `Binance Bybit OKX` | which exchanges to collect from |
 
-Writes the same raw tables as `fetch.py` with `interval` = `15min` / `5min`: candles (buy volume on Binance only),
+Writes the same raw tables as `fetch.py` with `interval` = `15min` / `5min`: candles (buy volume on Binance and OKX),
 open interest, funding, long/short from the exchanges, and liquidations from Coinalyze (exchanges keep no
 liquidation history), with their coverage start in `liquidation_coverage`. Binance OI and long/short go back
 30 days, Bybit the full 60. Public endpoints, no key; ~2,000 requests for 10 tickers, markets in parallel.
@@ -103,6 +104,11 @@ Tests perp and spot volume delta features against the current set → `reports/e
 
 No options. 15m model on database data (exchange candles/OI + Coinalyze 15m liquidations): base features vs
 +liquidations vs +short features vs both, with the current hourly model as reference → `reports/experiment_m15_model.md`.
+
+### `experiments/stop_from_entry.py`
+
+No options. Out-of-fold drawdowns from the 15m model's entries into labeled pumps and a stop-multiplier sweep →
+`reports/experiment_stop.md`.
 
 ### `experiments/timeframe.py`
 

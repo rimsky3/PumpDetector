@@ -61,6 +61,38 @@ def pump_mae(conn, interval: str = "1hour") -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+ENTRY_STOP_PERCENTILE = 90   # 15m: стоп, що не зачепить 9 з 10 відкатів після входу моделі (experiments/stop_from_entry.py)
+
+
+def entry_stop(tiers: pd.DataFrame, raw: dict, pumps: pd.DataFrame, percentile: float = ENTRY_STOP_PERCENTILE) -> dict:
+    """k для 15m-стопу від ФАКТИЧНОГО входу моделі: для кожного розміченого пампу вхід — перший бар Alert
+    усередині (tiers — рівні з out-of-fold оцінок, tiers.tier_frame), просідання від ціни входу до піку — в ATR(15m)
+    на барі входу. Стоп з розміченого старту (pump_mae) для 15m затісний: модель заходить через ~45 хв, коли
+    волатильність у кілька разів більша, і вибивало ~60% угод на звичайних відкатах."""
+    bar = pd.Timedelta(minutes=15)
+    mae = []
+    for base, g in tiers.groupby("base_asset"):
+        h = aggregate(raw, base, "15min")
+        if h.empty:
+            continue
+        a, g = atr(h), g.set_index("ts")
+        for p in pumps[(pumps["base_asset"] == base) & (pumps["pattern_type"] == "pump")].itertuples():
+            inside = g[in_pump(g.index, p.start_ts, p.end_ts, bar) & (g["tier"] == "alert")]
+            if inside.empty:
+                continue
+            e = inside.index[0]
+            entry, atr_e = h["price"].get(e), a.get(e)
+            w = h[(h.index > e) & in_pump(h.index, p.start_ts, p.end_ts, bar)]
+            if pd.isna(entry) or pd.isna(atr_e) or not atr_e or w.empty:
+                continue
+            low = w.loc[:w["high"].idxmax(), "low"].min()
+            mae.append(max(0.0, (entry - low) / atr_e))
+    if not mae:
+        return {"k": None, "n": 0}
+    return {"k": float(np.percentile(mae, percentile)), "n": len(mae), "method": f"p{percentile:g} drawdown from model entry",
+            "median_mae_atr": float(np.median(mae)), "p75_mae_atr": float(np.percentile(mae, 75))}
+
+
 def stop_multiplier(conn, interval: str = "1hour") -> dict:
     """k для стопу: 75-й перцентиль MAE. Повертає також вибірку, щоб було видно, на чому він порахований."""
     mae = pump_mae(conn, interval)

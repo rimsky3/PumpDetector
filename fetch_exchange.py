@@ -34,8 +34,8 @@ from dotenv import load_dotenv
 from exchanges import INTERVAL, MS_H, TF, download, normalize, stats
 from fetch import TICKERS_FILE, Coinalyze, collect_liquidations, read_tickers_file
 
-EXCHANGES = ["Binance", "Bybit"]
-WORKERS = 6        # ринки завантажуються паралельно: запит займає ~1 с, ліміти бірж це дозволяють
+EXCHANGES = ["Binance", "Bybit", "OKX"]   # OKX збираємо з 2026-09-30; моделі й графіки поки без нього (features.INTRADAY_EXCHANGES)
+WORKERS = 4        # ринки паралельно (запит ~1 с); більше — біржі починають рвати TLS-з'єднання
 TABLES = {   # ряд normalize() → таблиця і колонки
     "ohlcv": ("ohlcv", ["o", "h", "l", "c", "v", "bv"]),
     "oi": ("open_interest", ["o", "h", "l", "c"]),
@@ -56,7 +56,7 @@ def upsert(conn, table: str, cols: list[str], symbol: str, interval: str, df) ->
     return len(rows)
 
 
-def collect(conn, bases: list[str], tfs: list[str], days: float, log=print) -> int:
+def collect(conn, bases: list[str], tfs: list[str], days: float, log=print, exchanges=None) -> int:
     """Завантажити tfs за days днів для ринків Binance/Bybit тікерів bases і записати в базу.
     Спільне для fetch_exchange.py і кнопки «Завантажити» в label.py. Повертає кількість записаних рядів."""
     end = int(datetime.now(timezone.utc).timestamp() * 1000)
@@ -64,10 +64,10 @@ def collect(conn, bases: list[str], tfs: list[str], days: float, log=print) -> i
     markets = conn.execute("""
         SELECT symbol, base_asset, exchange_name, symbol_on_exchange FROM markets
         WHERE base_asset = ANY(%s) AND exchange_name = ANY(%s) AND quote_asset = 'USDT'
-        ORDER BY base_asset, exchange_name""", (bases, EXCHANGES)).fetchall()
+        ORDER BY base_asset, exchange_name""", (bases, list(exchanges or EXCHANGES))).fetchall()
     missing = sorted(set(bases) - {m[1] for m in markets})
     if missing:
-        log(f"Немає ринків Binance/Bybit у базі: {', '.join(missing)} (спершу python fetch.py, "
+        log(f"Немає ринків {'/'.join(exchanges or EXCHANGES)} у базі: {', '.join(missing)} (спершу python fetch.py, "
             f"або монети немає на цих біржах)")
 
     def job(m, tf):
@@ -102,6 +102,7 @@ def main() -> None:
     ap.add_argument("--tf", nargs="+", choices=["15m", "5m"], default=["15m", "5m"], help="таймфрейми (за замовчуванням обидва)")
     ap.add_argument("--days", type=float, default=60, help="скільки днів історії (за замовчуванням 60)")
     ap.add_argument("--no-liq", action="store_true", help="не брати ліквідації 15m/5m з Coinalyze")
+    ap.add_argument("--exchanges", nargs="+", choices=EXCHANGES, default=EXCHANGES, help="з яких бірж (за замовчуванням усі)")
     args = ap.parse_args()
 
     load_dotenv()
@@ -111,7 +112,7 @@ def main() -> None:
     bases = [t.upper() for t in (args.tickers or read_tickers_file(TICKERS_FILE))]
     t0 = time.time()
     with psycopg.connect(db_url) as conn:
-        collect(conn, bases, args.tf, args.days)
+        collect(conn, bases, args.tf, args.days, exchanges=args.exchanges)
         api_key = os.getenv("COINALYZE_API_KEY")
         if not args.no_liq and api_key:
             collect_liquidations(Coinalyze(api_key), conn, bases, args.tf, args.days)

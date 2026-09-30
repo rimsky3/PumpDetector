@@ -1,11 +1,14 @@
 """
-exchanges.py — публічні API Binance і Bybit (USDT-перпи): свічки, open interest, long/short, funding.
+exchanges.py — публічні API Binance, Bybit і OKX (USDT-перпи): свічки, open interest, long/short, funding.
 
 Ключ не потрібен, ліміти на порядки вищі за Coinalyze. Значення збігаються з Coinalyze один в один
 (experiments/exchange_direct.py), якщо правильно вирівняти час — див. normalize().
 
 Глибина історії (вересень 2026): свічки і funding — роки; OI і long/short на Bybit — щонайменше рік,
-на Binance — лише 30 днів. Ліквідацій і predicted funding історії немає.
+на Binance — лише 30 днів, на OKX — ~14 днів (5m — 3 дні); обсяг покупок OKX — 90 днів.
+Ліквідацій і predicted funding історії немає.
+Час: Binance і Bybit дають OI знімком на момент T (= закриття бару T−1), OKX мітить усі ряди часом ВІДКРИТТЯ бару
+(перевірено проти Coinalyze: зсув 0) — тому OKX-OI тут зсуваємо на бар уперед, і normalize() обробляє всіх однаково.
 
 Використовують: fetch_exchange.py (15m/5m у базу) і експерименти.
 """
@@ -23,23 +26,42 @@ FUNDING_LOOKBACK = 2 * 24 * 3_600_000   # funding платиться раз на
 MS_H = 3_600_000
 # таймфрейм → мілісекунди бару і назви інтервалу в API бірж (використовує і experiments/timeframe.py)
 TF = {
-    "1h": dict(ms=MS_H, binance="1h", bybit_kline="60", bybit="1h"),
-    "15m": dict(ms=MS_H // 4, binance="15m", bybit_kline="15", bybit="15min"),
-    "5m": dict(ms=MS_H // 12, binance="5m", bybit_kline="5", bybit="5min"),
+    "1h": dict(ms=MS_H, binance="1h", bybit_kline="60", bybit="1h", okx="1H"),
+    "15m": dict(ms=MS_H // 4, binance="15m", bybit_kline="15", bybit="15min", okx="15m"),
+    "5m": dict(ms=MS_H // 12, binance="5m", bybit_kline="5", bybit="5min", okx="5m"),
 }
 
 BINANCE = "https://fapi.binance.com"
 BYBIT = "https://api.bybit.com"
+OKX = "https://www.okx.com"
+OKX_RATE_CODES = {"50011", "50061"}      # OKX повідомляє про ліміт кодом у тілі
 stats = {"requests": 0, "seconds": 0.0}
 _stats_lock = threading.Lock()   # get() викликають з кількох потоків
 
 
 # ---------------------------------------------------------------- завантаження з бірж
 
+_local = threading.local()
+
+
+def _session() -> requests.Session:
+    """Своя сесія на потік: з'єднання перевикористовуються (keep-alive), тож TLS-рукостискань у рази менше —
+    при багатьох паралельних запитах біржі інакше починають рвати з'єднання (SSLEOFError)."""
+    if not hasattr(_local, "s"):
+        _local.s = requests.Session()
+    return _local.s
+
+
 def get(url: str, params: dict):
     for attempt in range(5):
         t0 = time.time()
-        r = requests.get(url, params=params, timeout=30)
+        try:
+            r = _session().get(url, params=params, timeout=30)
+        except requests.exceptions.RequestException:
+            # обрив з'єднання, TLS EOF, таймаут — зазвичай минає за секунду: нова сесія і повтор
+            _local.__dict__.pop("s", None)
+            time.sleep(2 ** attempt)
+            continue
         with _stats_lock:
             stats["requests"] += 1
             stats["seconds"] += time.time() - t0
@@ -53,6 +75,11 @@ def get(url: str, params: dict):
             continue
         if isinstance(data, dict) and data.get("retCode", 0) != 0:
             raise RuntimeError(f"{url}: {data.get('retMsg')}")
+        if isinstance(data, dict) and "code" in data and str(data["code"]) != "0":        # OKX
+            if str(data["code"]) in OKX_RATE_CODES:
+                time.sleep(2 ** attempt)
+                continue
+            raise RuntimeError(f"{url}: {data.get('msg')}")
         return data
     raise RuntimeError(f"{url}: забагато повторів")
 
@@ -146,7 +173,56 @@ def bybit_funding(sym: str, start: int, end: int) -> pd.DataFrame:
     return df.drop_duplicates("ts").sort_values("ts")
 
 
+def okx_pages(path: str, params: dict, start: int, end: int, key: str, ts_col: int = 0) -> list:
+    """OKX віддає найновіші записи першими, до 100 за запит; key — параметр «раніше за» (after / end)."""
+    rows, e = [], end
+    while e > start:
+        page = get(OKX + path, {**params, key: str(e), "limit": "100"})["data"]
+        if not page:
+            break
+        page = [r for r in page if int(r[ts_col] if isinstance(r, list) else r["fundingTime"]) >= start]
+        rows += page
+        if not page:
+            break
+        oldest = int(page[-1][ts_col] if isinstance(page[-1], list) else page[-1]["fundingTime"])
+        if oldest >= e:
+            break
+        e = oldest - 1 if key == "end" else oldest
+    return rows
+
+
+def okx_download(inst: str, start: int, end: int, tf: str) -> dict[str, pd.DataFrame]:
+    """Свічки (обсяг у монетах), обсяг покупок, OI (монети), частка лонг-акаунтів, funding — у форматі Binance/Bybit."""
+    bar, ms = TF[tf]["okx"], TF[tf]["ms"]
+    # history-candles: [ts, o, h, l, c, vol (контракти), volCcy (монети), volCcyQuote, confirm]; лише закриті бари
+    c = okx_pages("/api/v5/market/history-candles", {"instId": inst, "bar": bar}, start, end, "after")
+    k = pd.DataFrame({"ts": [to_ts(r[0]) for r in c], "o": [float(r[1]) for r in c], "h": [float(r[2]) for r in c],
+                      "l": [float(r[3]) for r in c], "c": [float(r[4]) for r in c], "v": [float(r[6]) for r in c]})
+    # taker volume: [ts, sell, buy], unit=0 — у монетах (вирівняно з volCcy свічок, зсув 0)
+    tv = okx_pages("/api/v5/rubik/stat/taker-volume-contract", {"instId": inst, "period": bar, "unit": "0"}, start, end, "end")
+    bv = pd.DataFrame({"ts": [to_ts(r[0]) for r in tv], "bv": [float(r[2]) for r in tv]})
+    k = k.merge(bv.drop_duplicates("ts"), on="ts", how="left").drop_duplicates("ts").sort_values("ts")
+    # OI: [ts, oi (контракти), oiCcy (монети), oiUsd]; мітка — відкриття бару, значення — на його закриття.
+    # Зсуваємо на бар уперед, щоб виглядало як знімок Binance/Bybit (normalize() зсуне назад)
+    o = okx_pages("/api/v5/rubik/stat/contracts/open-interest-history", {"instId": inst, "period": bar}, start, end, "end")
+    oi = pd.DataFrame({"ts": [to_ts(int(r[0]) + ms) for r in o], "value": [float(r[2]) for r in o]})
+    # long/short: [ts, ratio лонг/шорт акаунтів] → частка лонгів, як у Binance longAccount
+    s = okx_pages("/api/v5/rubik/stat/contracts/long-short-account-ratio-contract", {"instId": inst, "period": bar}, start, end, "end")
+    ls = pd.DataFrame({"ts": [to_ts(r[0]) for r in s], "value": [float(r[1]) / (1 + float(r[1])) for r in s]})
+    return {k2: v.drop_duplicates("ts").sort_values("ts") for k2, v in {"klines": k, "oi": oi, "ls": ls}.items()}
+
+
+def okx_download_funding(inst: str, start: int, end: int) -> pd.DataFrame:
+    f = okx_pages("/api/v5/public/funding-rate-history", {"instId": inst}, start, end, "after")
+    return pd.DataFrame({"ts": [to_ts(r["fundingTime"]) for r in f],
+                         "value": [float(r["realizedRate"] or r["fundingRate"]) for r in f]}).drop_duplicates("ts").sort_values("ts")
+
+
 def download(exchange: str, sym: str, start: int, end: int, tf: str = "1h") -> dict[str, pd.DataFrame]:
+    if exchange == "OKX":
+        d = okx_download(sym, start, end, tf)
+        d["funding"] = okx_download_funding(sym, start - FUNDING_LOOKBACK, end)
+        return d
     if exchange == "Binance":
         return {
             "klines": binance_klines(sym, start, end, tf),
@@ -168,7 +244,7 @@ INTERVAL = {"1h": "1hour", "15m": "15min", "5m": "5min"}
 
 def normalize(data: dict[str, pd.DataFrame], tf: str) -> dict[str, pd.DataFrame]:
     """Ряди біржі → одиниці й вирівнювання сирих таблиць Coinalyze (ключ — час ВІДКРИТТЯ бару):
-    - ohlcv: обсяг у монетах; buy volume є лише в Binance (у Bybit — NaN);
+    - ohlcv: обсяг у монетах; buy volume є в Binance і OKX (у Bybit — NaN);
     - OI: знімок біржі в момент T+бар — це закриття бару T; у USD за close бару (o = h = l = c);
     - funding: остання виплачена ставка на початок бару (виплата о T входить у бар T), у відсотках;
     - long/short: частка лонг-акаунтів у відсотках, знімок на момент T."""

@@ -63,6 +63,10 @@ ALL_FEATURES = FEATURES + [f for f in OI_COIN_FEATURES if f not in FEATURES]
 
 # 15m-модель: ті самі FEATURES (вікна за часом — «24h» = доба) + короткі ознаки бару (experiments/m15_model.py)
 INTERVAL_15M = "15min"
+# Біржі, з яких 15m/5m-ряди (свічки, OI, funding, L/S) ідуть у модель і графіки. OKX збирається з 2026-09-30, але
+# 15m-модель навчена на сумі Binance + Bybit, а історії OKX-OI лише ~14 днів: вмикати — після накопичення,
+# експерименту і перенавчання (інакше ознаки зсунуться, а на графіку з'явиться фальшивий «стрибок» OI).
+INTRADAY_EXCHANGES = ("Binance", "Bybit")
 SHORT_FEATURES = ["ret_bar", "ret_2bar", "oi_chg_bar", "oi_chg_2bar", "oi_accel_1h", "ret_accel_1h",
                   "vol_burst", "buy_ratio_bar", "range_bar", "liq_long_1h_oi", "liq_short_1h_oi"]
 FEATURES_15M = FEATURES + SHORT_FEATURES
@@ -78,25 +82,32 @@ def query_df(conn, sql: str, params=()) -> pd.DataFrame:
     return df
 
 
-def load_raw(conn, bases: list[str] | None = None, interval: str = INTERVAL, since=None) -> dict[str, pd.DataFrame]:
+def load_raw(conn, bases: list[str] | None = None, interval: str = INTERVAL, since=None,
+             exchanges=None) -> dict[str, pd.DataFrame]:
     """Сирі ряди з назвою тікера і біржі в кожному рядку. interval: '1hour' (Coinalyze) або '15min' / '5min'
     (біржі напряму + ліквідації Coinalyze; тоді ще й liq_coverage — з якого моменту ліквідації ринку повні)."""
     cond = "t.interval = %s" + (" AND m.base_asset = ANY(%s)" if bases else "")
     params = (interval, bases) if bases else (interval,)
     tcond, tparams = (cond + " AND t.ts >= %s", params + (since,)) if since is not None else (cond, params)
+    # 15m/5m: лише біржі моделі (ліквідації — з Coinalyze по всіх біржах, як у навчанні, їх не фільтруємо)
+    if exchanges is None and interval != INTERVAL:
+        exchanges = INTRADAY_EXCHANGES
+    xcond, xparams = (tcond + " AND m.exchange_name = ANY(%s)", tparams + (list(exchanges),)) if exchanges and exchanges != "all" \
+        else (tcond, tparams)
 
-    def q(table: str, cols: str) -> pd.DataFrame:
+    def q(table: str, cols: str, by_exchange: bool = True) -> pd.DataFrame:
         # market — конкретний контракт (на одній біржі їх буває кілька: USDT і USDC)
+        c, p = (xcond, xparams) if by_exchange else (tcond, tparams)
         return query_df(conn, f"""
             SELECT m.base_asset, t.symbol AS market, m.exchange_name AS exchange, m.quote_asset, t.ts, {cols}
             FROM {table} t JOIN markets m USING (symbol)
-            WHERE {tcond}""", tparams)
+            WHERE {c}""", p)
 
     raw = {
         "ohlcv": q("ohlcv", "t.o, t.h, t.l, t.c, t.v, t.bv, m.volume_denominated"),
         "oi": q("open_interest", "t.o, t.h, t.l, t.c"),
         "funding": q("funding_rate", "t.c"),
-        "liq": q("liquidations", "t.long_liq, t.short_liq"),
+        "liq": q("liquidations", "t.long_liq, t.short_liq", by_exchange=False),
         "ls": q("long_short_ratio", "t.long_pct"),
     }
     if interval != INTERVAL:

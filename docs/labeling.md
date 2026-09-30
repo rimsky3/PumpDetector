@@ -99,6 +99,35 @@ volume), or the training set; search, sort, ↑/↓ to step through. To label a 
 and Bybit in a background queue (one ticker at a time, since the Coinalyze limit is shared with the screener),
 and opens the ticker when done. No files to edit.
 
+**Run the 15m model on a ticker.** The 15m model scores (automatically when a ticker is opened; **Перерахувати модель 15m** re-runs it) the ticker's whole 15m history with
+the 15m model and the hourly LightGBM on the fly (nothing is written to `signals`, so the live journal stays
+clean). The model pane shows the 15m probability with Alerts in red and Candidates in amber on 15m and 5m charts
+(on 1h, the hourly maximum, unless the ticker has hourly out-of-fold predictions). The same signals are drawn on the price pane: ▼ "Alert 0.98" / "Кандидат" above the bar where each episode starts, and a thin red/amber strip at the bottom of the price pane on every signal bar, so they read against your purple labeled zones. A card lists every signal
+episode against your labels and sums it up: pumps caught by Alert and by Candidate, delay, false starts hit,
+false episodes per month; it is recomputed after every label change. If the ticker was in training, the card says
+so: that is not a test. The intended loop: pick a coin the model has not seen, run the model, label the whole ticker
+by your rules (not only the model's mistakes: labeling only errors would skew training), then press **У навчання**.
+With fewer than 30 days of 15m history, **Дозавантажити 60 днів** fetches the rest.
+
+**Model on the chart (M).** The **Модель на графіку** button (or **M**) hides the model's signals, probability pane
+and P value, leaving only your labels. Label a new ticker with the model hidden, then show it and compare: labels
+made while looking at the model's Alerts drift towards them (anchoring), and the model would then partly confirm
+itself.
+
+**Editing a labeled pump on the chart.** Click inside a labeled interval to select it (it turns orange) and an
+edit panel opens under the chart: type, note, stop, delete. Drag the handles on the chart: the left and right edges
+move the start and end (snapping to bars of the current timeframe), the horizontal red handle moves the stop.
+**S** then a click sets the stop (entry = price at the start). Esc or a click outside closes the editor.
+
+**My entry and stop.** While selecting a pump (after the start and end clicks), press **S** (or **Стоп (S)** in the
+selection panel) and click the stop level on the chart. The entry defaults to the price at the start of the impulse;
+press **E** and click to set a different entry bar and price. Both are saved with **Додати в список**. For pumps
+already in the list, the **Стоп** button in the table takes one click: the stop level (entry = price at the pump's start).
+They are stored in `pumps.csv` as optional `entry_ts`, `entry_price`, `stop_price`. From each, the tool computes your
+stop in the model's units, k = (entry − stop) / ATR(15m) at the entry bar, and the model card shows the median and
+spread of your k against the model's stop. With 15–20 of them you can compare your practice with the data-derived
+stop, or adopt it. Esc cancels, × clears.
+
 **What goes into training.** Every labeled interval of every ticker does. The *unlabeled* hours of a ticker
 count as "no pump" only when the ticker is in `tickers.txt`, which means "I reviewed the whole ticker". The
 **У навчання** button adds the open ticker there (use it after looking through all 60 days, including a coin with

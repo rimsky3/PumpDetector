@@ -76,6 +76,9 @@ CREATE TABLE IF NOT EXISTS pumps (
     end_ts       TIMESTAMPTZ NOT NULL,
     pattern_type TEXT,
     notes        TEXT,
+    entry_ts     TIMESTAMPTZ,          -- необов'язково: де власник зайшов би
+    entry_price  DOUBLE PRECISION,
+    stop_price   DOUBLE PRECISION,     -- і де поставив би стоп
     CHECK (end_ts > start_ts)
 );
 

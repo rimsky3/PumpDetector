@@ -8,6 +8,10 @@ label.py — локальний інструмент розмітки пампі
 
 Права панель — усі USDT-перпи Binance. «Завантажити» ставить тікер у чергу: 1h з Coinalyze (fetch.collect),
 потім 15m/5m з бірж (fetch_exchange.collect).
+«Прогнати модель 15m» (/api/model15): 15m-модель і годинний LightGBM оцінюють УСЮ історію тікера на льоту
+(у signals не пишемо — журнал forward-тесту лишається чистим), рівні сигналу — tiers.py, підсумок проти поточної
+розмітки — train.event_metrics. Тікер, якого модель не бачила, — чесний тест; розмітка його помилок — нові приклади.
+
 Розмічені інтервали будь-якого тікера йдуть у навчання (features.py). Решта годин тікера — лише коли він у
 tickers.txt: кнопка «У навчання» = «переглянув увесь тікер, де пампу не розмічено — його не було».
 Виділені інтервали одразу записуються в pumps.csv і синхронізуються з таблицею pumps.
@@ -31,12 +35,17 @@ from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+import pandas as pd
 import psycopg
 import requests
 from dotenv import load_dotenv
 
 import fetch_exchange
 from exchanges import INTERVAL
+from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, aggregate, build, build_15m, load_pumps, load_raw
+from risk import TRAIL_NATR, atr, position_state
+from tiers import tier_frame
+import train
 from fetch import TICKERS_FILE, Coinalyze, collect, collect_liquidations, read_tickers_file, set_ticker_in_file
 from load_pumps import (check_overlaps, parse_row, parse_ts, read_pumps,
                         sync_db, write_pumps, TS_FORMAT)
@@ -72,6 +81,97 @@ def binance_universe() -> list[dict]:
     return rows
 
 
+# ---------------------------------------------------------------- 15m-модель на історії тікера
+
+_models: dict = {"mtime": None, "m15": None, "m1": None}
+_score_cache: dict = {}
+
+
+def models_15m() -> tuple[dict, dict]:
+    """15m-модель і годинний LightGBM (підтвердження Alert). Перечитуються, якщо train.py перезаписав файли."""
+    paths = [train.model_path(train.M15_NAME), train.model_path("lightgbm")]
+    if not all(os.path.exists(p) for p in paths):
+        raise ValueError("немає models/lightgbm_15m.joblib або lightgbm.joblib — спершу python train.py")
+    mtime = tuple(os.path.getmtime(p) for p in paths)
+    if _models["mtime"] != mtime:
+        _models.update(mtime=mtime, m15=train.load_model(train.M15_NAME), m1=train.load_model("lightgbm"))
+        _score_cache.clear()
+    return _models["m15"], _models["m1"]
+
+
+def model15(conn, base: str) -> dict:
+    """Оцінки 15m-моделі й годинного LightGBM по всій історії тікера, рівні сигналу й підсумок проти розмітки."""
+    m15, m1 = models_15m()
+    last = conn.execute("""SELECT max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
+                           WHERE m.base_asset = %s AND o.interval = '15min'""", (base,)).fetchone()[0]
+    key = (base, m15["trained_at"], last)
+    if key not in _score_cache:
+        d15 = build_15m(conn, [base])
+        if d15.empty:
+            raise ValueError(f"для {base} замало 15m-історії: потрібно ≥ 7 днів (кнопка «Завантажити» праворуч)")
+        d1 = build(conn, [base], labels=False)
+        s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[FEATURES_15M])[:, 1],
+                                                threshold=m15["threshold"])
+        s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[FEATURES])[:, 1],
+                                              threshold=m1["threshold"]) if not d1.empty else \
+            pd.DataFrame(columns=["base_asset", "ts", "probability", "threshold"])
+        _score_cache.clear()          # тримаємо лише останній тікер — оцінки дешево перерахувати
+        _score_cache[key] = tier_frame(s15, s1, m15.get("confirm", {}).get("share", 0.75))
+    t = _score_cache[key]
+    share = m15.get("confirm", {}).get("share", 0.75)
+
+    # підсумок проти ПОТОЧНОЇ розмітки (після кожної зміни в pumps.csv — свіжий)
+    pumps = load_pumps(conn)
+    pumps = pumps[pumps["base_asset"] == base]
+    df = t[["base_asset", "ts"]]
+    alert, cand = (t["tier"] == "alert").to_numpy(), (t["tier"] != "calm").to_numpy()
+    epoch = lambda x: int(pd.Timestamp(x).timestamp())  # noqa: E731
+    summary = {name: train.event_metrics(df, sig, pumps, train.BAR_15M) for name, sig in (("alert", alert), ("candidate", cand))}
+    eps = []
+    for kind, sig in (("alert", alert), ("candidate", cand & ~alert)):
+        for e in train.signal_episodes(df, sig, train.BAR_15M).itertuples():
+            own = pumps[(pumps["start_ts"] < e.end) & (pumps["end_ts"] > e.start)]
+            span = t[(t["ts"] >= e.start) & (t["ts"] < e.end)]
+            eps.append({"kind": kind, "start": e.start, "end": e.end, "p_max": float(span["p15"].max()),
+                        "label": ("pump" if (own["pattern_type"] == "pump").any() else own["pattern_type"].iloc[0]) if len(own) else None})
+    eps.sort(key=lambda e: e["start"])
+    # угоди за правилами дашборду: вхід на Alert, стоп k·ATR(15m), trailing, вихід — Alert згас exit_bars барів
+    k, exit_bars = m15.get("risk", {}).get("k"), m15.get("exit_bars", 4)
+    h = aggregate(load_raw(conn, [base], INTERVAL_15M), base, "15min")
+    pos = position_state(h, t.set_index("ts")["alert_score"], 1.0, k, exit_bars) if not h.empty else {"trades": []}
+    trades = []
+    for tr in list(pos.get("trades", [])) + ([pos] if pos.get("open") else []):
+        a = pd.Timestamp(tr["entry_ts"])
+        b = pd.Timestamp(tr["exit_ts"]) + train.BAR_15M if tr.get("exit_ts") is not None else h.index.max() + train.BAR_15M
+        own = pumps[(pumps["start_ts"] < b) & (pumps["end_ts"] > a)]
+        trades.append({"entry_ts": epoch(a), "exit_ts": epoch(tr["exit_ts"]) if tr.get("exit_ts") is not None else None,
+                       "entry": tr["entry"], "exit": tr.get("exit"), "result": tr.get("result_pct"),
+                       "reason": "open" if tr.get("open") else tr.get("reason"),
+                       "label": ("pump" if (own["pattern_type"] == "pump").any() else own["pattern_type"].iloc[0]) if len(own) else None})
+    closed = [x["result"] for x in trades if x["reason"] != "open" and x["result"] is not None]
+    wins, losses = [r for r in closed if r > 0], [r for r in closed if r <= 0]
+    avg = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
+    trade_stats = {
+        "n": len(closed), "wins": len(wins), "avg_win": avg(wins), "avg_loss": avg(losses), "expectancy": avg(closed),
+        "stops": sum(1 for x in trades if x["reason"] == "stop"), "k": k, "exit_bars": exit_bars, "trail": TRAIL_NATR,
+        "in_pump": avg([x["result"] for x in trades if x["reason"] != "open" and x["label"] == "pump"]),
+        "outside": avg([x["result"] for x in trades if x["reason"] != "open" and x["label"] != "pump"]),
+    }
+    trained = base in m15["tickers"] or any(b == base for b, *_ in m15.get("in_sample_extra", []))
+    code = {"alert": 2, "candidate": 1, "calm": 0}
+    return {
+        "t": [epoch(x) for x in t["ts"]], "p15": [round(float(x), 4) for x in t["p15"]],
+        "p1h": [None if pd.isna(x) else round(float(x), 4) for x in t["p1h"]],
+        "tier": [code[x] for x in t["tier"]], "thr15": float(m15["threshold"]),
+        "need1h": float(share * m1["threshold"]), "share": share, "model_version": m15["trained_at"],
+        "in_training": trained,
+        "summary": {k: {kk: (vv if isinstance(vv, str) else (None if pd.isna(vv) else float(vv))) for kk, vv in v.items()}
+                    for k, v in summary.items()},
+        "episodes": [{**e, "start": epoch(e["start"]), "end": epoch(e["end"])} for e in eps],
+        "trades": trades, "trade_stats": trade_stats,
+    }
+
+
 # ---------------------------------------------------------------- черга завантажень
 
 JOBS: dict[str, dict] = {}          # тікер → {state: queued/running/done/error, msg}
@@ -88,15 +188,26 @@ def load_worker(db_url: str, api_key: str, days: int) -> None:
         try:
             if client is None:
                 raise ValueError("немає COINALYZE_API_KEY у .env")
-            job.update(state="running", msg="1h з Coinalyze…")
+            # прогрес для сторінки: крок з 3, і всередині кроку — скільки частин готово
+            job.update(state="running", step=1, steps=3, stage="годинні дані (Coinalyze)", done=0, total=0, msg="1h з Coinalyze…")
             with psycopg.connect(db_url) as conn:
                 if not collect(client, conn, [base], days, verbose=False):
                     raise ValueError("не знайдено в Coinalyze (буває інша назва: 1000… чи k…)")
-                job.update(msg="15m/5m з Binance і Bybit…")
-                n = fetch_exchange.collect(conn, [base], ["15m", "5m"], days, log=lambda m: job.update(msg=m.strip()))
-                job.update(msg="ліквідації 15m/5m з Coinalyze…")
-                collect_liquidations(client, conn, [base], ["15m", "5m"], days, log=lambda m: job.update(msg=m.strip()))
-            job.update(state="done", msg="готово" if n else "готово (лише 1h: на Binance/Bybit немає)")
+                n_mk = conn.execute("""SELECT count(*) FROM markets WHERE base_asset = %s AND quote_asset = 'USDT'
+                                       AND exchange_name = ANY(%s)""", (base, fetch_exchange.EXCHANGES)).fetchone()[0]
+                job.update(step=2, stage="15m/5m з бірж", done=0, total=n_mk * 2, msg="15m/5m з бірж…")
+
+                def part(m):          # рядок журналу fetch_exchange = один ринок × ТФ готовий (або з помилкою)
+                    job.update(msg=m.strip())
+                    if "свічок" in m or "помилка" in m:
+                        job["done"] = job.get("done", 0) + 1
+                n = fetch_exchange.collect(conn, [base], ["15m", "5m"], days, log=part)
+                job.update(step=3, stage="ліквідації (Coinalyze)", done=0, total=2, msg="ліквідації 15m/5m…")
+
+                def liq(m):
+                    job.update(msg=m.strip(), done=job.get("done", 0) + 1)
+                collect_liquidations(client, conn, [base], ["15m", "5m"], days, log=liq)
+            job.update(state="done", step=3, done=2, msg="готово" if n else "готово (лише 1h: на Binance/Bybit/OKX немає)")
         except Exception as e:
             job.update(state="error", msg=str(e))
 
@@ -131,6 +242,9 @@ def ticker_data(conn, base: str, days: int, tf: str = "1h") -> dict:
     1h — з Coinalyze (усі біржі); 15m/5m — з Binance і Bybit (fetch_exchange.py)."""
     interval = INTERVAL[tf]
     since = f"now() - interval '{int(days)} days'"
+    # 15m/5m — лише біржі моделі (features.INTRADAY_EXCHANGES); 1h — усі біржі Coinalyze
+    if tf != "1h":
+        since += " AND m.exchange_name IN (" + ", ".join(f"'{e}'" for e in INTRADAY_EXCHANGES) + ")"
     q = lambda sql: conn.execute(sql, (base, interval)).fetchall()
 
     price_ex = q("""SELECT m.exchange_name FROM markets m WHERE m.base_asset = %s AND m.has_ohlcv
@@ -200,7 +314,28 @@ def ticker_data(conn, base: str, days: int, tf: str = "1h") -> dict:
 
 def rows_to_json(rows: list[tuple]) -> list[dict]:
     return [{"base_asset": b, "start_ts": s.strftime(TS_FORMAT), "end_ts": e.strftime(TS_FORMAT),
-             "pattern_type": p, "notes": n or ""} for b, s, e, p, n in rows]
+             "pattern_type": p, "notes": n or "", "entry_ts": et.strftime(TS_FORMAT) if et else None,
+             "entry_price": ep, "stop_price": sp} for b, s, e, p, n, et, ep, sp in rows]
+
+
+def user_stops(conn) -> dict:
+    """Стопи власника з розмітки → k = (вхід − стоп) / ATR(15m) на барі входу; зведення проти k моделі."""
+    rows = [r for r in read_pumps() if r[7] is not None]
+    out, ks = [], []
+    for base, start, end, ptype, notes, et, ep, sp in rows:
+        h = aggregate(load_raw(conn, [base], INTERVAL_15M, since=et - pd.Timedelta(days=2)), base, "15min")
+        a = atr(h)
+        bar = pd.Timestamp(et).floor("15min")
+        k = (ep - sp) / a.get(bar) if pd.notna(a.get(bar)) and a.get(bar) else None
+        if k is not None:
+            ks.append(k)
+        out.append({"base_asset": base, "start_ts": start.strftime(TS_FORMAT), "k": k, "stop_pct": sp / ep - 1})
+    q = lambda p: float(pd.Series(ks).quantile(p)) if ks else None  # noqa: E731
+    try:
+        k_model = models_15m()[0].get("risk", {}).get("k")
+    except ValueError:
+        k_model = None
+    return {"rows": out, "n": len(ks), "median": q(.5), "p25": q(.25), "p75": q(.75), "k_model": k_model}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -269,6 +404,13 @@ class Handler(BaseHTTPRequestHandler):
                                         "training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
             if url.path == "/api/jobs":
                 return self._send(200, JOBS)
+            if url.path == "/api/stops":
+                with psycopg.connect(self.db_url) as conn:
+                    return self._send(200, user_stops(conn))
+            if url.path == "/api/model15":
+                base = (parse_qs(url.query).get("ticker") or [""])[0].upper()
+                with psycopg.connect(self.db_url) as conn:
+                    return self._send(200, model15(conn, base))
             return self._error(404, "не знайдено")
         except ValueError as e:
             return self._error(400, str(e))
@@ -299,9 +441,44 @@ class Handler(BaseHTTPRequestHandler):
                 if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
                     raise ValueError("невірна назва тікера")
                 if JOBS.get(base, {}).get("state") not in ("queued", "running"):
-                    JOBS[base] = {"state": "queued", "msg": "у черзі"}
+                    JOBS[base] = {"state": "queued", "msg": "у черзі", "step": 0, "steps": 3, "stage": "у черзі"}
                     _jobs.put(base)
                 return self._send(200, JOBS[base])
+            if path == "/api/pumps/update":        # редагування інтервалу на графіку: межі, тип, нотатка, вхід, стоп
+                base, orig = str(body.get("base_asset", "")).upper(), parse_ts(body["orig_start_ts"])
+                new = parse_row(body)
+                if new[0] != base:
+                    raise ValueError("тікер інтервалу змінювати не можна")
+                found = []
+
+                def replace(rows):
+                    out = []
+                    for r in rows:
+                        if r[0] == base and r[1] == orig:
+                            found.append(r)
+                            r = new
+                        out.append(r)
+                    return out
+                rows = self._modify(replace)
+                if not found:
+                    raise ValueError("інтервал не знайдено — онови сторінку")
+                return self._send(200, {"rows": rows_to_json(rows)})
+            if path == "/api/pumps/risk":          # вхід і стоп власника для вже розміченого інтервалу
+                base, start = str(body.get("base_asset", "")).upper(), parse_ts(body["start_ts"])
+
+                def change(rows):
+                    out = []
+                    for r in rows:
+                        if r[0] == base and r[1] == start:
+                            d = dict(zip(["base_asset", "start_ts", "end_ts", "pattern_type", "notes"],
+                                         [r[0], r[1].strftime(TS_FORMAT), r[2].strftime(TS_FORMAT), r[3], r[4] or ""]))
+                            d.update(entry_ts=body.get("entry_ts") or "", entry_price=body.get("entry_price") or "",
+                                     stop_price=body.get("stop_price") or "")
+                            r = parse_row(d)
+                        out.append(r)
+                    return out
+                rows = self._modify(change)
+                return self._send(200, {"rows": rows_to_json(rows)})
             if path == "/api/training":
                 base = str(body.get("ticker", "")).upper()
                 if not re.fullmatch(r"[A-Z0-9]{1,20}", base):

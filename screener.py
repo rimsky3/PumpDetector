@@ -24,6 +24,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 import psycopg
 from dotenv import load_dotenv
@@ -42,7 +43,8 @@ RUN_MINUTES = (2, 17, 32, 47)   # 15m-цикл: бар закрився ~2 хв 
 BAR_15M = pd.Timedelta(minutes=15)
 BACKFILL_15M = 7 * 24 * 4       # скільки 15m-барів історії оцінювати, якщо їх ще немає в signals
 INTRADAY_DAYS = 10              # новому тікеру — 10 днів 15m-історії (тижневі вікна ознак + запас)
-INTRADAY_TAIL_DAYS = 0.25       # решті — останні 6 годин (upsert, дублікатів немає)
+INTRADAY_TAIL_DAYS = 0.25       # мінімальний хвіст — 6 годин (upsert, дублікатів немає)
+MAX_GAP_DAYS = 29               # найдовший пропуск, який дозаповнюємо (історія OI Binance — 30 днів)
 
 
 def load_models() -> list[dict]:
@@ -67,19 +69,26 @@ def last_closed_15m(now: datetime | None = None) -> pd.Timestamp:
 
 
 def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print) -> None:
-    """Свіжі 15m/5m-дані з бірж і 15m-ліквідації з Coinalyze. Новому тікеру — 10 днів, решті — хвіст 6 год.
-    5m моделі не потрібен — лише перемикачу таймфрейму на графіку дашборда."""
+    """Свіжі 15m/5m-дані з бірж і 15m-ліквідації з Coinalyze. 5m моделі не потрібен — лише графіку дашборда.
+
+    Скільки брати — за фактичним пропуском: від останнього бару в базі до зараз плюс запас (не менше 6 год),
+    новому тікеру — 10 днів. Так нічний простій ноутбука дозаповнюється повністю, без дірок посередині.
+    Стеля — 29 днів: далі історія OI на Binance недоступна (на OKX — ~14 днів, на Bybit — рік+)."""
     have = dict(conn.execute("""
         SELECT m.base_asset, max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
         WHERE o.interval = '15min' AND m.base_asset = ANY(%s) GROUP BY 1""", (bases,)).fetchall())
-    stale = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=1)
-    full = [b for b in bases if b not in have or pd.Timestamp(have[b]) < stale]
-    tail = [b for b in bases if b not in full]
+    now = pd.Timestamp(datetime.now(timezone.utc))
+    groups: dict[float, list[str]] = {}
+    for b in bases:
+        if b not in have:
+            days = INTRADAY_DAYS
+        else:
+            gap = (now - pd.Timestamp(have[b])) / pd.Timedelta(days=1)
+            days = min(MAX_GAP_DAYS, max(INTRADAY_TAIL_DAYS, np.ceil((gap + 0.05) * 4) / 4))   # крок 6 год — менше груп
+        groups.setdefault(float(days), []).append(b)
     quiet = lambda m: log(m) if "помилка" in m else None  # noqa: E731
-    for group, days in ((full, INTRADAY_DAYS), (tail, INTRADAY_TAIL_DAYS)):
-        if not group:
-            continue
-        fetch_exchange.collect(conn, group, ["15m", "5m"], days, log=quiet)   # 5m — лише для графіка дашборда
+    for days, group in sorted(groups.items()):
+        fetch_exchange.collect(conn, group, ["15m", "5m"], days, log=quiet)
         if client is not None:
             collect_liquidations(client, conn, group, ["15m"], days, log=lambda m: None)
 
@@ -172,7 +181,11 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
         return
 
     if fetch:
-        collect(client, conn, bases, FETCH_DAYS, verbose=False)
+        # зазвичай 10 днів; після довгого простою — увесь пропуск (Coinalyze тримає ~60 днів; ліміт — за символами, не днями)
+        last1h = conn.execute("""SELECT min(t) FROM (SELECT m.base_asset, max(o.ts) AS t FROM ohlcv o JOIN markets m USING (symbol)
+                                 WHERE o.interval = '1hour' AND m.base_asset = ANY(%s) GROUP BY 1) x""", (bases,)).fetchone()[0]
+        gap = (pd.Timestamp(started) - pd.Timestamp(last1h)) / pd.Timedelta(days=1) if last1h else 0
+        collect(client, conn, bases, int(min(60, max(FETCH_DAYS, np.ceil(gap) + 1))), verbose=False)
         print(f"  дані оновлено за {(datetime.now(timezone.utc) - started).seconds} с")
     scored, last_closed = score_bases(conn, bases, models)
     print(f"  остання закрита година: {last_closed:%m-%d %H:%M} UTC")

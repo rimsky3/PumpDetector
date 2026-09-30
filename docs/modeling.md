@@ -262,6 +262,27 @@ rules that catch 47. **Adopted design:** 15m alone = *Candidate* (earliest, nois
 book), 15m confirmed by the hourly model at ≥ 0.75 of its threshold = *Alert*. With 49 pumps the exact thresholds are
 provisional; the forward test will tune them.
 
+## Experiment: stop measured from the model's entry
+
+`python experiments/stop_from_entry.py` → `reports/experiment_stop.md`. The 15m stop multiplier was the 75th
+percentile of drawdowns from the **labeled start** of pumps, in ATR at the start (k ≈ 1.16). But the 15m tier
+enters on the first Alert, a median 45 minutes later, when the move is ~9% along and ATR is several times higher.
+Measured from the model's actual entries (out-of-fold, 46 pumps), the drawdown before the peak is: median 0.55 ATR,
+75th percentile 1.44, 90th 2.51. Trades on all out-of-fold Alerts (no fees):
+
+| Stop, ATR | Trades | Win | Stopped out | Avg trade |
+|---|---|---|---|---|
+| 1.16 (old) | 207 | 32% | 62% | +3.7% |
+| 1.44 | 182 | 40% | 52% | +4.7% |
+| 2.0 | 166 | 44% | 38% | +5.2% |
+| **2.5 (90th pct)** | 160 | **45%** | **30%** | **+5.3%** |
+| 4.0 | 153 | 48% | 10% | +5.6% |
+
+**Adopted:** k = 90th percentile of drawdown from the model's entry (`risk.entry_stop`, computed by `train.py` on
+out-of-fold signals), ≈ 2.5 ATR(15m). The old start-based value is kept in the model file as `k_from_start`.
+Typical trade profile: many small losses, few large wins (median trade still slightly negative, trades inside
+labeled pumps +12–16% on average).
+
 ## Next steps
 
 - More labeled tickers, which is the main lever.

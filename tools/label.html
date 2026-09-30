@@ -64,6 +64,14 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
 .tlist .meta { grid-column: 1 / -1; font-size: 11px; color: var(--fg3); display: flex; justify-content: space-between; gap: 8px; align-items: center; }
 .tlist .meta.err { color: var(--fp); }
 .tlist .meta button { padding: 1px 8px; font-size: 11px; }
+.tlist li.loading { cursor: progress; }
+.spin { width: 10px; height: 10px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%;
+  display: inline-block; flex: none; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.pbar { grid-column: 1 / -1; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+.tlist .meta .stage { display: inline-flex; align-items: center; gap: 6px; color: var(--fg2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-foot { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--fg3); }
 h1 { font-size: 20px; font-weight: 600; margin: 0; text-wrap: balance; }
 .sub { color: var(--fg2); margin: 2px 0 0; font-size: 13px; }
@@ -88,6 +96,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 .info b.dim { color: var(--fg2); font-weight: 400; }
 .info b.tk-name { font-weight: 600; color: var(--accent); }
 .info b.up { color: var(--oi); } .info b.down { color: var(--fp); }
+td.cls-tp, b.up { color: var(--tp); } td.cls-fp, b.down { color: var(--fp); } td.cls-fs { color: var(--fs); }
 .info b.cls-tp { color: var(--tp); } .info b.cls-fp { color: var(--fp); } .info b.cls-fs { color: var(--fs); } .info b.cls-fn { color: var(--fn); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; font-size: 12px; color: var(--fg2); margin: 0; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -128,6 +137,11 @@ td button { padding: 2px 8px; font-size: 12px; }
 .status { margin: 4px 0 0; font-size: 13px; color: var(--oi); min-height: 1.5em; }
 .status.err { color: #e34948; }
 .note { font-size: 12px; color: var(--fg2); margin: 0; }
+.handles { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.handle { position: absolute; top: 0; pointer-events: auto; }
+.handle.h-start, .handle.h-end { width: 6px; cursor: ew-resize; background: linear-gradient(90deg, transparent 2px, var(--sel-edge) 2px, var(--sel-edge) 4px, transparent 4px); }
+.handle.h-stop { height: 6px; cursor: ns-resize; background: linear-gradient(0deg, transparent 2px, var(--fp) 2px, var(--fp) 4px, transparent 4px); }
+.handle:hover { filter: brightness(1.4); }
 .selbar { position: static; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
 .selbar.active { position: sticky; bottom: env(safe-area-inset-bottom, 0px); border-color: var(--sel-edge); box-shadow: 0 -6px 20px rgba(0,0,0,.18); }
 .selbody { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 24px; align-items: start; }
@@ -161,6 +175,8 @@ td button { padding: 2px 8px; font-size: 12px; }
       <button id="oiCoinBtn" aria-pressed="true" title="OI у монетах: чистий приплив позицій, без впливу ціни">Монети</button><button id="oiUsdBtn" aria-pressed="false" title="OI у USD, як дає Coinalyze: між годинами стрибає разом із ціною">USD</button>
       <span class="label" style="margin-left:10px" id="modelLbl" hidden>Модель</span>
       <select id="modelSel" hidden aria-label="Модель для перегляду помилок" style="width:auto"></select>
+      <button id="runBtn" title="15m-модель і годинна оцінюють усю історію тікера (автоматично при відкритті): де був би Кандидат і Alert. Кнопка — перерахувати, напр. після дозавантаження даних">Перерахувати модель 15m</button>
+      <button id="modelBtn" aria-pressed="true" title="Показувати на графіку сигнали моделі (клавіша M). Вимкни, поки розмічаєш: так розмітка не підлаштовується під модель">Модель на графіку</button>
     </div>
   </div>
 
@@ -176,10 +192,36 @@ td button { padding: 2px 8px; font-size: 12px; }
     <span><i class="sw fp"></i>хибний сигнал</span>
     <span><i class="sw fs"></i>сигнал на фальстарті</span>
     <span><i class="sw fn"></i>пропущена година пампу</span>
+    <span><i class="sw" style="background:var(--fp)"></i>15m-модель: Alert (▼ і смужка внизу ціни)</span>
+    <span><i class="sw" style="background:var(--fs)"></i>15m-модель: Кандидат</span>
   </p>
 
+  <section class="selbar active" id="editbar" aria-label="Редагування розміченого пампу" hidden>
+    <div class="selbody">
+      <dl class="sel-dl">
+        <dt>Інтервал</dt><dd id="eTitle">—</dd>
+        <dt>Мій стоп</dt><dd><span id="eStop">—</span> <button id="eStopBtn" title="Клавіша S, потім клік на рівні стопу (вхід — ціна на старті)">Стоп (S)</button>
+          <button id="eStopClr" title="Прибрати стоп" hidden>×</button></dd>
+        <dt></dt><dd class="note">Тягни ручки на графіку: ліва/права межа — старт/кінець, горизонтальна — стоп.</dd>
+      </dl>
+      <div class="sel-form">
+        <div class="fields">
+          <label for="eType">Тип</label>
+          <select id="eType"><option value="pump">pump</option><option value="false_start">false_start</option><option value="other">other</option></select>
+          <label for="eNote">Нотатка</label>
+          <input type="text" id="eNote">
+        </div>
+        <div class="actions">
+          <button class="primary" id="eSave">Зберегти тип і нотатку</button>
+          <button id="eDel">Видалити</button>
+          <button id="eClose">Закрити (Esc)</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section class="selbar" id="selbar" aria-label="Виділений памп">
-    <p class="hint" id="selHint">Клік по свічці ставить початок пампу (відкриття бару), другий клік — останній бар пампу (кінець = його закриття). Межі можна ставити на будь-якому ТФ: де старт видно чіткіше — 5m чи 15m — там і став. Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. На одному тікері можна розмітити кілька пампів.</p>
+    <p class="hint" id="selHint">Клік по свічці ставить початок пампу (відкриття бару), другий клік — останній бар пампу (кінець = його закриття). Стоп — клавіша S і клік на рівні стопу (вхід — ціна на старті; E — інший вхід). Клік по вже розміченому імпульсу — вибрати його: межі й стоп можна перетягувати. Межі можна ставити на будь-якому ТФ: де старт видно чіткіше — 5m чи 15m — там і став. Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. На одному тікері можна розмітити кілька пампів.</p>
     <div class="selbody" id="selBody" hidden>
       <dl class="sel-dl">
         <dt>Тікер</dt><dd id="sTk">—</dd>
@@ -187,6 +229,10 @@ td button { padding: 2px 8px; font-size: 12px; }
         <dt>Тривалість</dt><dd id="sDur">—</dd>
         <dt>Ціна</dt><dd id="sPx">—</dd>
         <dt>OI</dt><dd id="sOi">—</dd>
+        <dt>Мій стоп</dt><dd><span id="sStop">—</span>
+          <button id="stopBtn" title="Клавіша S, потім клік на графіку — рівень стопу. Вхід — ціна на старті імпульсу (E — задати інший)">Стоп (S)</button>
+          <button id="entryBtn" title="Клавіша E, потім клік — бар і ціна входу, якщо не на старті">Вхід (E)</button>
+          <button id="stopClr" title="Прибрати вхід і стоп" hidden>×</button></dd>
       </dl>
       <div class="sel-form">
         <div class="fields">
@@ -207,6 +253,30 @@ td button { padding: 2px 8px; font-size: 12px; }
     </div>
   </section>
 
+  <section class="card" aria-labelledby="m15H" id="m15Card" hidden>
+    <h2 id="m15H">15m-модель на цьому тікері</h2>
+    <p class="status err" id="m15Warn" hidden>Тікер був у навчанні: модель бачила його пампи, це не тест. Чесно — лише на тікерах, яких модель не бачила.</p>
+    <p class="note" id="m15Meta"></p>
+    <p class="err-sum" id="m15Sum" style="display:grid;gap:4px"></p>
+    <p class="note" id="m15More" hidden>Історії мало для повного тесту. <button id="m15Load">Дозавантажити 60 днів</button></p>
+    <div class="tbl"><table>
+      <thead><tr><th>Сигнал</th><th>Початок (UTC)</th><th>Тривалість</th><th>P макс</th><th>Розмітка</th><th></th></tr></thead>
+      <tbody id="m15Rows"></tbody>
+    </table></div>
+    <p class="empty" id="m15Empty" hidden>Модель не дала жодного сигналу на цьому тікері.</p>
+    <h2 style="margin-top:6px">Угоди за Alert</h2>
+    <p class="note" id="stopSum"></p>
+    <p class="note" id="m15TradeRule"></p>
+    <p class="err-sum" id="m15TradeSum" style="display:grid;gap:4px"></p>
+    <details><summary class="note" style="cursor:pointer">Усі угоди</summary>
+      <div class="tbl"><table>
+        <thead><tr><th>Вхід (UTC)</th><th>Вихід (UTC)</th><th>Результат</th><th>Вихід через</th><th>Розмітка</th><th></th></tr></thead>
+        <tbody id="m15Trades"></tbody>
+      </table></div>
+    </details>
+    <p class="note">Розміть весь тікер за своїми правилами (не лише помилки моделі) — підсумок перераховується після кожної зміни. Переглянув повністю — «У навчання» праворуч.</p>
+  </section>
+
   <section class="card" aria-labelledby="errH" id="errCard" hidden>
     <h2 id="errH">Помилки моделі</h2>
     <p class="err-sum" id="errSum"></p>
@@ -221,7 +291,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   <section class="card" aria-labelledby="listH">
     <h2 id="listH">Розмічені пампи</h2>
     <div class="tbl"><table>
-      <thead><tr><th>Тікер</th><th>Початок (UTC)</th><th>Кінець (UTC)</th><th>Тип</th><th>Нотатка</th><th></th></tr></thead>
+      <thead><tr><th>Тікер</th><th>Початок (UTC)</th><th>Кінець (UTC)</th><th>Тип</th><th>Нотатка</th><th>Мій вхід / стоп</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
     <p class="empty" id="emptyRows">Поки нічого. Виділи памп на графіку і натисни «Додати в список».</p>
@@ -275,12 +345,14 @@ td button { padding: 2px 8px; font-size: 12px; }
     const [y, m, dd] = d.split("-").map(Number), [hh, mm] = t.split(":").map(Number);
     return Date.UTC(y, m - 1, dd, hh, mm) / 1000;
   };
-  const fromServer = (list) => list.map((r) => ({ tk: r.base_asset, a: parseTs(r.start_ts), b: parseTs(r.end_ts), type: r.pattern_type, note: r.notes || "" }));
+  const fromServer = (list) => list.map((r) => ({ tk: r.base_asset, a: parseTs(r.start_ts), b: parseTs(r.end_ts), type: r.pattern_type, note: r.notes || "",
+    et: r.entry_ts ? parseTs(r.entry_ts) : null, ep: r.entry_price ?? null, sp: r.stop_price ?? null }));
   const status = (msg, isErr) => { const el = $("status"); el.textContent = msg; el.classList.toggle("err", !!isErr); };
 
   let rows = [];
   // a — момент початку, b — момент кінця (виключно): моменти часу, не прив'язані до ТФ
-  const st = { tk: null, tf: "1h", log: false, oiUsd: false, a: null, b: null, model: "lightgbm" };
+  const st = { tk: null, tf: "1h", log: false, oiUsd: false, a: null, b: null, model: "lightgbm", showModel: true };
+  try { st.showModel = localStorage.getItem("label-show-model") !== "0"; } catch (e) {}
   const BAR = () => TF_SEC[st.tf];
   // бар (t — відкриття) у пампі, якщо на момент його закриття памп уже триває: a < t + бар ≤ b (як features.in_pump)
   const inPump = (t, a, b) => t + BAR() > a && t + BAR() <= b;
@@ -398,7 +470,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     return rows;
   };
   const makeChart = () => {
-    const withModel = PRED.available;
+    const withModel = PRED.available || Object.keys(MODEL15).length > 0;
     $("chart").classList.toggle("with-model", withModel);
     chart = LWC.createChart(chartEl, {
       autoSize: true,
@@ -415,6 +487,10 @@ td button { padding: 2px 8px; font-size: 12px; }
     // під свічками: збережені інтервали і поточне виділення — стовпчики на прихованих шкалах 0..1
     S.saved = chart.addSeries(LWC.HistogramSeries, { ...bare, priceScaleId: "saved" }, 0); hidden(S.saved);
     S.sel = chart.addSeries(LWC.HistogramSeries, { ...bare, priceScaleId: "sel", color: C.sel }, 0); hidden(S.sel);
+    // сигнали 15m-моделі — тонка смужка внизу панелі ціни (не перекриває свічки і розмітку)
+    S.ustops = [];               // стопи власника — окремі відрізки (див. draw), створюються при кожному малюванні
+    S.sig = chart.addSeries(LWC.HistogramSeries, { ...bare, priceScaleId: "sig" }, 0);
+    S.sig.priceScale().applyOptions({ scaleMargins: { top: 0.965, bottom: 0 }, visible: false });
     S.candles = chart.addSeries(LWC.CandlestickSeries, {
       upColor: C.oi, downColor: C.fp, wickUpColor: C.oi, wickDownColor: C.fp, borderVisible: false,
       priceFormat: { type: "custom", formatter: fmtPx, minMove: 1e-8 } }, 0);
@@ -438,6 +514,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     (withModel ? [4, 2.2, 1.1, 1.7] : [4.5, 2.4, 1.3]).forEach((f, i) => panes[i] && panes[i].setStretchFactor(f));
     chart.subscribeCrosshairMove((p) => renderInfo(p && p.time != null ? idx.get(p.time) : null));
     chart.subscribeClick(onChartClick);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => placeHandles && placeHandles());
     if (window.PDRuler) ruler = PDRuler.create({ chart, el: chartEl, series: S.candles, times: () => D().t,
       info: rulerInfo, onModeChange: (on) => $("rulerBtn").setAttribute("aria-pressed", String(on)) });
   };
@@ -466,8 +543,11 @@ td button { padding: 2px 8px; font-size: 12px; }
     const exs = Object.keys(d.oiBy);
     if (exs.length > 1) exs.forEach((ex) => add(ex, fmtUsd(d.oiBy[ex][i]), "dim"));
     add("Обсяг", fmtUsd(d.vol[i]));
-    const p = P();
-    if (p && p.score[i] != null) {
+    const m15 = M15At(), p = m15 || !st.showModel ? null : P();
+    if (m15 && m15.score[i] != null) {
+      add("P 15m", m15.score[i].toFixed(3));
+      if (m15.tier[i]) add("", M15_TEXT[m15.tier[i]], m15.tier[i] === 2 ? "cls-fp" : "cls-fs");
+    } else if (p && p.score[i] != null) {
       add(st.model === "rule" ? "Правило" : "P", st.model === "rule" ? (p.signal[i] ? "сигнал" : "—") : p.score[i].toFixed(3));
       const c = hourClass(i); if (c) add("", CLASS_TEXT[c], "cls-" + c);
     }
@@ -477,7 +557,15 @@ td button { padding: 2px 8px; font-size: 12px; }
     if (ruler && ruler.busy()) return;          // клік належить лінійці, а не розмітці
     if (param.time == null || !idx.has(param.time)) return;
     const t = param.time;
-    if (st.a == null || st.b != null) { st.a = t; st.b = null; }
+    if (RISK.row) { onRiskClick(param); return; }
+    if (SEL.mode) { onSelClick(param); return; }
+    // клік по розміченому імпульсу (коли нове виділення не триває) — вибрати його для редагування
+    if (st.a == null || st.b != null) {
+      const hit = rowAt(t);
+      if (hit) { if (EDIT.row && EDIT.row.a === hit.a) return; selectRow(hit); return; }
+      if (EDIT.row) { closeEdit(); return; }                // клік поза ним — зняти вибір
+    }
+    if (st.a == null || st.b != null) { st.a = t; st.b = null; clearSel(); }
     else if (t >= st.a) st.b = t + BAR();                 // кінець — закриття клікнутого бару
     else { st.b = barAt(st.a) + BAR(); st.a = t; }        // другий клік лівіше першого — міняємо місцями
     renderSel(); draw();
@@ -500,7 +588,8 @@ td button { padding: 2px 8px; font-size: 12px; }
       const ok = d.open[i] != null && d.high[i] != null && d.low[i] != null && d.price[i] != null;
       candles.push(ok ? { time, open: d.open[i], high: d.high[i], low: d.low[i], close: d.price[i] } : { time });
       const ty = typeAt(time);
-      saved.push(ty ? { time, value: 1, color: ty === "pump" ? C.saved : C["saved-alt"] } : { time });
+      const chosen = EDIT.row && EDIT.row.tk === st.tk && inPump(time, EDIT.row.a, EDIT.row.b);
+      saved.push(chosen ? { time, value: 1, color: C.sel } : ty ? { time, value: 1, color: ty === "pump" ? C.saved : C["saved-alt"] } : { time });
       const inSel = st.a != null && (st.b != null ? inPump(time, st.a, st.b) : time <= st.a && st.a < time + BAR());
       sel.push(inSel ? { time, value: 1 } : { time });
       const [o, hh, l, c] = st.oiUsd ? [d.oiO[i], d.oiH[i], d.oiL[i], d.oi[i]] : [d.coinO[i], d.coinH[i], d.coinL[i], d.coin[i]];
@@ -516,32 +605,101 @@ td button { padding: 2px 8px; font-size: 12px; }
       color: r.type === "pump" ? C.mark : C.fg3, text: `#${k + 1}${r.type === "pump" ? "" : " " + r.type}` }));
     if (st.a != null) marks.push({ time: barAt(st.a), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "початок" });
     if (st.b != null) marks.push({ time: barAt(st.b - 1), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "кінець" });
+    // мій вхід і стоп: ▲ «мій вхід» і пунктир стопу від входу до кінця пампу (+ незбережений вхід у режимі розмітки)
+    const mine = own.filter((r) => r.sp != null);
+    mine.forEach((r) => { const te = barAt(r.et); if (te != null) marks.push({ time: te, position: "belowBar", shape: "arrowUp", color: C.mark, text: "мій вхід" }); });
+    if (RISK.row && RISK.et != null) marks.push({ time: RISK.et, position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: `вхід ${fmtPx(RISK.ep)}` });
+    const se = st.a != null && st.b != null && SEL.stop != null ? selEntry() : null;
+    if (se) marks.push({ time: barAt(se.t), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: `вхід ${fmtPx(se.px)}` });
+    // кожен стоп — окремий короткий відрізок від входу до кінця свого пампу. Одна лінія з пропусками не годиться:
+    // бібліотека з'єднує точки через пропуски, і стопи різних пампів злипались у похилу лінію
+    S.ustops.forEach((x) => chart.removeSeries(x)); S.ustops = [];
+    const segs = mine.map((r) => ({ from: barAt(r.et), to: barAt(r.b - 1), v: r.sp }));
+    if (se) segs.push({ from: barAt(se.t), to: barAt(st.b - 1), v: SEL.stop });
+    segs.forEach((g) => {
+      if (g.from == null || g.to == null || g.v == null) return;
+      const to = g.to > g.from ? g.to : d.t[Math.min(d.t.length - 1, idx.get(g.from) + 1)];
+      if (to == null || to <= g.from) return;
+      const ser = chart.addSeries(LWC.LineSeries, { color: C.fp, lineWidth: 2, lineStyle: LWC.LineStyle.Dashed,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        priceFormat: { type: "custom", formatter: fmtPx, minMove: 1e-8 } }, 0);
+      ser.setData([{ time: g.from, value: g.v }, { time: to, value: g.v }]);
+      S.ustops.push(ser);
+    });
+    // 15m-модель: смужка на барах із сигналом і ▼ над свічкою старту кожного епізоду
+    const m15 = M15At(), M = MODEL15[st.tk];
+    S.sig.setData(d.t.map((time, i) => m15 && m15.tier[i] ? { time, value: 1, color: m15.tier[i] === 2 ? C.fp : C.fs } : { time }));
+    if (M && st.showModel) M.episodes.forEach((e) => {
+      const time = barAt(e.start);
+      if (time != null) marks.push({ time, position: "aboveBar", shape: "arrowDown", size: 0.8,
+        color: e.kind === "alert" ? C.fp : C.fs, text: e.kind === "alert" ? `Alert ${e.p_max.toFixed(2)}` : "Кандидат" });
+    });
     mk.candles.setMarkers(marks.filter((m) => idx.has(m.time)).sort((a, b) => a.time - b.time));
     const listing = Object.entries(d.oiStart).filter(([, t0]) => t0 - d.t[0] >= 36 * H && idx.has(t0))
       .map(([ex, t0]) => ({ time: t0, position: "aboveBar", shape: "arrowDown", color: C.mark, text: `+${ex}: стрибок суми, не памп` }));
     mk.oi.setMarkers(listing.sort((a, b) => a.time - b.time));
 
     if (S.prob) {
-      const p = P(), prob = [], cls = [];
+      const m15 = M15At(), p = m15 || !st.showModel ? null : P(), prob = [], cls = [];
       d.t.forEach((time, i) => {
+        if (m15) {
+          prob.push(m15.score[i] != null ? { time, value: m15.score[i] } : { time });
+          cls.push(m15.tier[i] ? { time, value: 1, color: m15.tier[i] === 2 ? C.fp : C.fs } : { time });
+          return;
+        }
         prob.push(p && p.score[i] != null ? { time, value: p.score[i] } : { time });
         const c = hourClass(i); cls.push(c ? { time, value: 1, color: C[c] } : { time });
       });
       S.prob.setData(prob); S.cls.setData(cls);
-      S.prob.applyOptions({ title: MODEL_NAMES[st.model] || st.model });
+      S.prob.applyOptions({ title: m15 ? "15m-модель" : MODEL_NAMES[st.model] || st.model });
       if (probLine) { S.prob.removePriceLine(probLine); probLine = null; }
-      if (p && p.threshold != null) probLine = S.prob.createPriceLine({ price: p.threshold, color: C.fg3, lineWidth: 1,
-        lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: "поріг" });
+      const thr = m15 ? m15.thr : p && p.threshold;
+      if (thr != null) probLine = S.prob.createPriceLine({ price: thr, color: C.fg3, lineWidth: 1,
+        lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true, title: m15 ? "поріг 15m" : "поріг" });
     }
     wm.applyOptions({ lines: [{ text: `${st.tk} · ${st.tf}`, color: C.line, fontSize: 56, fontStyle: "600", fontFamily: FONT.sans }] });
     if (loadedTk !== st.tk) { loadedTk = st.tk; chart.timeScale().fitContent(); if (ruler) ruler.clear(); }
     if (ruler) ruler.redraw();
+    placeHandles();
     renderInfo(null);
   };
 
   // ---------- панель виділення ----------
+  // стоп і вхід для поточного виділення: вхід за замовчуванням — відкриття бару старту імпульсу
+  const SEL = { mode: null, stop: null, et: null, ep: null };
+  const selEntry = () => {
+    if (SEL.et != null) return { t: SEL.et, px: SEL.ep };
+    const t = barAt(st.a); if (t == null) return null;
+    const i = idx.get(t); const px = D().open[i] ?? D().price[i];
+    return px != null ? { t, px } : null;
+  };
+  const setSelMode = (mode) => {
+    if (st.a == null || st.b == null) { status("Спершу виділи памп: клік — старт, клік — кінець", true); return; }
+    SEL.mode = SEL.mode === mode ? null : mode;
+    status(SEL.mode === "stop" ? "Клікни на графіку рівень стопу (нижче входу). Esc — скасувати"
+      : SEL.mode === "entry" ? "Клікни бар і ціну входу. Esc — скасувати" : "");
+    renderSel();
+  };
+  const onSelClick = (param) => {
+    const price = param.point ? S.candles.coordinateToPrice(param.point.y) : null;
+    if (price == null || !isFinite(price)) return;
+    if (SEL.mode === "entry") { SEL.et = param.time; SEL.ep = price; SEL.mode = null; status(`Вхід ${fmtTs(param.time)} @ ${fmtPx(price)}`); }
+    else {
+      const e = selEntry();
+      if (e && price >= e.px) { status("Стоп для лонгу має бути нижче ціни входу — клікни нижче", true); return; }
+      SEL.stop = price; SEL.mode = null; status(`Стоп ${fmtPx(price)}` + (e ? ` (${fmtPct(price / e.px - 1)} від входу ${fmtPx(e.px)})` : ""));
+    }
+    renderSel(); draw();
+  };
+  const clearSel = () => { SEL.mode = null; SEL.stop = SEL.et = SEL.ep = null; };
   const renderSel = () => {
     const d = D();
+    const e = st.a != null && st.b != null ? selEntry() : null;
+    $("sStop").textContent = SEL.stop != null && e ? `${fmtPx(SEL.stop)} · ${fmtPct(SEL.stop / e.px - 1)} від входу ${fmtPx(e.px)}${SEL.et != null ? "" : " (старт)"}`
+      : SEL.mode ? (SEL.mode === "stop" ? "клікни рівень стопу…" : "клікни вхід…") : "не задано";
+    $("stopBtn").setAttribute("aria-pressed", String(SEL.mode === "stop"));
+    $("entryBtn").setAttribute("aria-pressed", String(SEL.mode === "entry"));
+    $("stopClr").hidden = SEL.stop == null && SEL.et == null;
     $("sTk").textContent = st.a != null ? st.tk : "—";
     $("sA").textContent = st.a != null ? fmtTs(st.a) : "—";
     $("sB").textContent = st.b != null ? fmtTs(st.b) : (st.a != null ? "клікни ще раз" : "—");
@@ -573,11 +731,30 @@ td button { padding: 2px 8px; font-size: 12px; }
       [[r.tk, "m"], [fmtTs(r.a), "m"], [fmtTs(r.b), "m"], [r.type, ""], [r.note, ""]].forEach(([v, c]) => {
         const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.appendChild(td);
       });
+      // вхід і стоп власника: «0.0208 · −3.0% (2.4 ATR)»; кнопка «Стоп» — задати клік-кліком на графіку
+      const tdr = document.createElement("td"); tdr.className = "m";
+      if (r.sp != null) {
+        const k = STOPS.byKey[`${r.tk}|${fmtTs(r.a)}`];
+        tdr.append(`${fmtPx(r.ep)} · ${fmtPct(r.sp / r.ep - 1)}` + (k != null ? ` (${k.toFixed(1)} ATR)` : ""), " ");
+      }
+      if (r.type === "pump") {
+        const rb = document.createElement("button"); rb.textContent = r.sp != null ? "Змінити" : "Стоп";
+        rb.title = "Один клік на графіку — рівень стопу (вхід — ціна на старті пампу)";
+        rb.addEventListener("click", () => startRisk(r));
+        tdr.appendChild(rb);
+        if (r.sp != null) {
+          const xb = document.createElement("button"); xb.textContent = "×"; xb.title = "Прибрати вхід і стоп";
+          xb.addEventListener("click", () => saveRisk(r, null, null, null));
+          tdr.appendChild(xb);
+        }
+      }
+      tr.appendChild(tdr);
       const td = document.createElement("td"); const btn = document.createElement("button"); btn.textContent = "Видалити";
       btn.addEventListener("click", async () => {
         btn.disabled = true;
         try {
           rows = fromServer((await api("DELETE", "/api/pumps", { base_asset: r.tk, start_ts: fmtTs(r.a) })).rows);
+          refreshM15(r.tk);
           status(`Видалено ${r.tk} ${fmtTs(r.a)}, pumps.csv оновлено`);
         } catch (e) { status(e.message, true); btn.disabled = false; }
         renderRows(); draw();
@@ -667,6 +844,237 @@ td button { padding: 2px 8px; font-size: 12px; }
       + "Помилки рахуються за поточною розміткою, тож після її зміни перезапусти features.py і train.py.";
   };
 
+
+  // ---------- 15m-модель на всій історії тікера (/api/model15) ----------
+  // Оцінки рахує сервер на льоту (у signals не пишуться). На графіку: 15m і 5m — P 15m-моделі, червоне — Alert,
+  // жовте — Кандидат; на 1h — максимум за годину, якщо для тікера немає годинних out-of-fold прогнозів.
+  const MODEL15 = {};                                     // тікер → відповідь /api/model15
+  const M15At = () => {
+    const M = MODEL15[st.tk]; if (!M || !st.showModel) return null;
+    if (st.tf === "1h" && P()) return null;               // навчальний тікер на 1h — годинні OOF, як раніше
+    const pos = new Map(M.t.map((t, i) => [t, i])), d = D(), score = [], tier = [];
+    d.t.forEach((t) => {
+      let js = [];
+      if (st.tf === "15m") js = [pos.get(t)];
+      else if (st.tf === "5m") js = [pos.get(Math.floor((t + 300) / 900) * 900 - 900)];     // остання оцінка на закритті 5m-бару
+      else for (let k = 0; k < 4; k++) js.push(pos.get(t + k * 900));                       // 1h — максимум за годину
+      js = js.filter((j) => j != null);
+      score.push(js.length ? Math.max(...js.map((j) => M.p15[j])) : null);
+      tier.push(js.length ? Math.max(...js.map((j) => M.tier[j])) : 0);
+    });
+    return { score, tier, thr: M.thr15 };
+  };
+  const M15_TEXT = { 2: "Alert", 1: "Кандидат" };
+  // quiet — автоматичний запуск при відкритті тікера: помилку (напр. мало 15m-історії) не показуємо червоним
+  const runModel15 = async (tk = st.tk, quiet = false) => {
+    const btn = $("runBtn"); btn.disabled = true; btn.textContent = "Рахую…";
+    try {
+      const firstTime = !Object.keys(MODEL15).length && !PRED.available;
+      MODEL15[tk] = await api("GET", `/api/model15?ticker=${encodeURIComponent(tk)}`);
+      if (tk === st.tk) { if (firstTime) rebuildChart(); else draw(); }
+      if (!quiet) status("");
+    } catch (e) { if (quiet) delete MODEL15[tk]; else status(e.message, true); }
+    btn.disabled = false; btn.textContent = "Перерахувати модель 15m";
+    renderM15();
+  };
+  const renderM15 = () => {
+    const M = MODEL15[st.tk], card = $("m15Card");
+    card.hidden = !M; if (!M) return;
+    const days = M.t.length ? (M.t[M.t.length - 1] - M.t[0]) / 86400 : 0;
+    $("m15Warn").hidden = !M.in_training;
+    $("m15Meta").textContent = `Модель від ${M.model_version.slice(5, 16)} · історія 15m: ${days.toFixed(0)} дн. · Alert: 15m ≥ ${M.thr15.toFixed(2)} і 1h ≥ ${M.need1h.toFixed(2)}`;
+    $("m15More").hidden = days >= 30;
+    const sum = $("m15Sum"); sum.replaceChildren();
+    const line = (name, s) => {
+      const p = document.createElement("span");
+      const caught = s.pumps_caught, delay = s.median_delay_h == null ? "—" : `${Math.round(s.median_delay_h * 60)} хв`;
+      p.append(`${name}: спіймано пампів `); const b = document.createElement("b"); b.textContent = caught; p.appendChild(b);
+      p.append(` · затримка ${delay} · фальстартів із сигналом ${s.false_starts_triggered} · хибних епізодів на 30 д ${s.false_alarms_per_30d == null ? "—" : s.false_alarms_per_30d.toFixed(1)}`);
+      sum.appendChild(p);
+    };
+    line("Alert", M.summary.alert); line("Кандидат або Alert", M.summary.candidate);
+    const tb = $("m15Rows"); tb.replaceChildren();
+    M.episodes.slice().reverse().forEach((e) => {
+      const tr = document.createElement("tr");
+      const lab = e.label === "pump" ? "памп ✓" : e.label === "false_start" ? "фальстарт" : e.label ? e.label : "не розмічено";
+      [[M15_TEXT[e.kind === "alert" ? 2 : 1], e.kind === "alert" ? "cls-fp" : "cls-fs"], [fmtTs(e.start), "m"], [fmtMin(e.end - e.start), "m"],
+       [e.p_max.toFixed(2), "m"], [lab, e.label === "pump" ? "cls-tp" : ""]].forEach(([v, c]) => {
+        const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.appendChild(td);
+      });
+      const td = document.createElement("td"); const btn = document.createElement("button"); btn.textContent = "Показати";
+      btn.addEventListener("click", () => { showRange(e.start - 36 * H, e.end + 36 * H); setRangeBtn(-1); $("chart").scrollIntoView({ behavior: "smooth", block: "start" }); });
+      td.appendChild(btn); tr.appendChild(td); tb.appendChild(tr);
+    });
+    $("m15Empty").hidden = M.episodes.length > 0;
+    // угоди за правилами дашборду — щоб бачити не лише «чи вгадала», а й скільки це дає з таким стопом
+    const T = M.trade_stats, pct = (v) => v == null ? "—" : fmtPct(v);
+    if (!T) {                     // відповідь старого сервера без угод — сторінку оновлено, а label.py ні
+      $("m15TradeRule").textContent = "Статистику угод рахує новіша версія сервера: перезапусти python label.py (Ctrl+C і знову).";
+      $("m15TradeSum").replaceChildren(); $("m15Trades").replaceChildren();
+      return;
+    }
+    $("m15TradeRule").textContent = `Вхід — перший бар Alert; стоп ${T.k == null ? "—" : T.k.toFixed(2)} ATR(15m); trailing ${T.trail} ATR; вихід — Alert згас ${T.exit_bars} бари. Без комісій і прослизання.`;
+    const ts = $("m15TradeSum"); ts.replaceChildren();
+    const row = (label, value, cls) => { const p = document.createElement("span"); p.append(label + " "); const b = document.createElement("b"); b.textContent = value; if (cls) b.className = cls; p.appendChild(b); ts.appendChild(p); };
+    if (!T.n) row("Закритих угод:", "0");
+    else {
+      row("Угод:", `${T.n} · прибуткових ${T.wins} (${Math.round(T.wins / T.n * 100)}%) · по стопу ${T.stops}`);
+      row("Сер. виграш / програш:", `${pct(T.avg_win)} / ${pct(T.avg_loss)}`);
+      row("Очікування на угоду:", pct(T.expectancy), T.expectancy >= 0 ? "up" : "down");
+      row("У розмічених пампах / поза ними:", `${pct(T.in_pump)} / ${pct(T.outside)}`);
+    }
+    const tt = $("m15Trades"); tt.replaceChildren();
+    M.trades.slice().reverse().forEach((x) => {
+      const tr = document.createElement("tr");
+      const lab = x.label === "pump" ? "памп ✓" : x.label === "false_start" ? "фальстарт" : x.label ? x.label : "не розмічено";
+      [[fmtTs(x.entry_ts), "m"], [x.exit_ts ? fmtTs(x.exit_ts) : "відкрита", "m"],
+       [x.result == null ? "—" : fmtPct(x.result), x.result == null ? "" : x.result >= 0 ? "cls-tp" : "cls-fp"],
+       [{ stop: "стоп", model: "модель", open: "—" }[x.reason] || x.reason, ""], [lab, x.label === "pump" ? "cls-tp" : ""]].forEach(([v, c]) => {
+        const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.appendChild(td);
+      });
+      const td = document.createElement("td"); const btn = document.createElement("button"); btn.textContent = "Показати";
+      btn.addEventListener("click", () => { showRange(x.entry_ts - 24 * H, (x.exit_ts || x.entry_ts) + 24 * H); setRangeBtn(-1); $("chart").scrollIntoView({ behavior: "smooth", block: "start" }); });
+      td.appendChild(btn); tr.appendChild(td); tt.appendChild(tr);
+    });
+  };
+  // після зміни розмітки — підсумок проти нової розмітки (оцінки на сервері в кеші, це швидко)
+  const refreshM15 = (tk) => { if (MODEL15[tk]) runModel15(tk); };
+
+  // ---------- мій вхід і стоп (розмітка ризику) ----------
+  // Для розміченого пампу: клік — де зайшов би (час бару і ціна в точці кліку), другий клік — рівень стопу.
+  // Сервер рахує «мій k» = (вхід − стоп) / ATR(15m) на барі входу — для порівняння зі стопом моделі.
+  const RISK = { row: null, et: null, ep: null };
+  let STOPS = { byKey: {}, n: 0 };
+  const loadStops = async () => {
+    try {
+      const s = await api("GET", "/api/stops");
+      STOPS = { ...s, byKey: Object.fromEntries(s.rows.map((x) => [`${x.base_asset}|${x.start_ts}`, x.k])) };
+    } catch (e) { STOPS = { byKey: {}, n: 0 }; }
+    renderStops();
+  };
+  const renderStops = () => {
+    const el = $("stopSum"); if (!el) return;
+    if (!STOPS.n) { el.textContent = "Твоїх стопів ще немає: у таблиці «Розмічені пампи» — кнопка «Стоп» біля пампу."; return; }
+    el.textContent = `Твої стопи: ${STOPS.n} · медіана ${STOPS.median.toFixed(2)} ATR(15m) (половина — від ${STOPS.p25.toFixed(2)} до ${STOPS.p75.toFixed(2)})` +
+      (STOPS.k_model != null ? ` · стоп моделі зараз ${STOPS.k_model.toFixed(2)} ATR` : "");
+  };
+  const startRisk = (r) => {
+    if (r.tk !== st.tk) { status(`Спершу відкрий ${r.tk}`, true); return; }
+    // вхід — ціна на старті розміченого пампу (відкриття бару старту), тож потрібен лише клік на рівні стопу
+    RISK.row = r; RISK.et = barAt(r.a);
+    const i = idx.get(RISK.et); RISK.ep = RISK.et != null ? (D().open[i] ?? D().price[i]) : null;
+    if (RISK.ep == null) { RISK.row = null; status("Старт цього пампу поза завантаженим графіком", true); return; }
+    if (!EDIT.row) { showRange(r.a - 12 * H, r.b + 12 * H); setRangeBtn(-1); $("chart").scrollIntoView({ behavior: "smooth", block: "start" }); }
+    status(`${r.tk} ${fmtTs(r.a)}: вхід ${fmtPx(RISK.ep)} (старт). Клікни рівень стопу. Esc — скасувати`);
+    draw();
+  };
+  const onRiskClick = (param) => {
+    const price = param.point ? S.candles.coordinateToPrice(param.point.y) : null;
+    if (price == null || !isFinite(price)) return;
+    if (price >= RISK.ep) { status("Стоп для лонгу має бути нижче ціни входу — клікни нижче", true); return; }
+    saveRisk(RISK.row, RISK.et, RISK.ep, price);
+  };
+  const saveRisk = async (r, et, ep, sp) => {
+    RISK.row = null;
+    try {
+      rows = fromServer((await api("POST", "/api/pumps/risk", { base_asset: r.tk, start_ts: fmtTs(r.a),
+        entry_ts: et != null ? fmtTs(et) : "", entry_price: ep != null ? String(ep) : "", stop_price: sp != null ? String(sp) : "" })).rows);
+      status(sp != null ? `${r.tk}: вхід ${fmtPx(ep)}, стоп ${fmtPx(sp)} (${fmtPct(sp / ep - 1)}) збережено` : `${r.tk}: вхід і стоп прибрано`);
+    } catch (e) { status(e.message, true); }
+    await loadStops(); renderRows();
+    if (EDIT.row) EDIT.row = rows.find((x) => x.tk === r.tk && x.a === r.a) || null;
+    renderEdit(); draw();
+  };
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && RISK.row) { RISK.row = null; status("Вхід і стоп — скасовано"); draw(); } });
+
+
+  // ---------- редагування розміченого інтервалу прямо на графіку ----------
+  // Клік по розміченому імпульсу — він виділяється, під графіком панель редагування. Ручки на графіку:
+  // ліва/права межа — перетягнути старт/кінець (прилипає до барів ТФ), горизонтальна — рівень стопу.
+  // S — поставити стоп кліком (вхід — ціна на старті), Esc — закрити. Збереження — /api/pumps/update.
+  const EDIT = { row: null, drag: null };
+  const rowAt = (t) => rows.find((r) => r.tk === st.tk && inPump(t, r.a, r.b));
+  const openAt = (t) => { const i = idx.get(t); return i == null ? null : (D().open[i] ?? D().price[i]); };
+  const selectRow = (r) => {
+    EDIT.row = r; st.a = st.b = null; clearSel(); RISK.row = null;
+    $("eType").value = r.type; $("eNote").value = r.note || "";
+    renderEdit(); renderSel(); draw();
+  };
+  const closeEdit = () => { EDIT.row = null; EDIT.drag = null; renderEdit(); draw(); };
+  const renderEdit = () => {
+    const r = EDIT.row, box = $("editbar");
+    box.hidden = !r;
+    if (!r) { placeHandles(); return; }
+    $("eTitle").textContent = `${r.tk} · ${fmtTs(r.a)} → ${fmtTs(r.b)} · ${fmtMin(r.b - r.a)}`;
+    $("eStop").textContent = r.sp != null ? `${fmtPx(r.sp)} · ${fmtPct(r.sp / r.ep - 1)} від входу ${fmtPx(r.ep)}` : "не задано";
+    $("eStopClr").hidden = r.sp == null;
+    $("eStopBtn").hidden = r.type !== "pump";
+    placeHandles();
+  };
+  // збереження зміненого рядка: межі / тип / нотатка / вхід / стоп
+  const saveRow = async (r, patch) => {
+    const n = { ...r, ...patch };
+    // вхід за замовчуванням (бар старту) їде разом зі стартом
+    if (patch.a != null && r.et != null && r.et === barAt(r.a)) { n.et = barAt(n.a); n.ep = openAt(n.et) ?? r.ep; if (n.sp != null && n.sp >= n.ep) n.sp = null; }
+    try {
+      rows = fromServer((await api("POST", "/api/pumps/update", {
+        base_asset: r.tk, orig_start_ts: fmtTs(r.a), start_ts: fmtTs(n.a), end_ts: fmtTs(n.b),
+        pattern_type: n.type, notes: n.note || "",
+        entry_ts: n.sp != null && n.et != null ? fmtTs(n.et) : "", entry_price: n.sp != null && n.ep != null ? String(n.ep) : "",
+        stop_price: n.sp != null ? String(n.sp) : "" })).rows);
+      status(`${r.tk} ${fmtTs(n.a)} → ${fmtTs(n.b)} збережено`);
+    } catch (e) { status(e.message, true); rows = fromServer((await api("GET", "/api/pumps")).rows); }
+    EDIT.row = rows.find((x) => x.tk === r.tk && x.a === n.a) || rows.find((x) => x.tk === r.tk && x.a === r.a) || null;
+    refreshM15(r.tk); loadStops(); renderRows(); renderEdit(); draw();
+  };
+
+  // ручки поверх графіка: позиції з координат бібліотеки, оновлюються при прокрутці/масштабі
+  const hBox = document.createElement("div"); hBox.className = "handles"; chartEl.appendChild(hBox);
+  const mk3 = (cls, title) => { const h = document.createElement("div"); h.className = "handle " + cls; h.title = title; hBox.appendChild(h); return h; };
+  const HS = mk3("h-start", "Перетягни — змінити старт"), HE = mk3("h-end", "Перетягни — змінити кінець"), HP = mk3("h-stop", "Перетягни — змінити стоп");
+  const placeHandles = () => {
+    const r = EDIT.row;
+    [HS, HE, HP].forEach((h) => { h.hidden = true; });
+    if (!r || !chart || r.tk !== st.tk) return;
+    const ts = chart.timeScale(), half = (ts.options().barSpacing || 6) / 2, ph = chart.panes()[0].getHeight();
+    const xs = ts.timeToCoordinate(barAt(r.a)), xe = ts.timeToCoordinate(barAt(r.b - 1));
+    if (xs != null) { HS.hidden = false; HS.style.left = `${xs - half - 3}px`; HS.style.height = `${ph}px`; }
+    if (xe != null) { HE.hidden = false; HE.style.left = `${xe + half - 3}px`; HE.style.height = `${ph}px`; }
+    if (r.sp != null && xs != null) {
+      const y = S.candles.priceToCoordinate(r.sp);
+      if (y != null) { HP.hidden = false; HP.style.top = `${y - 3}px`; HP.style.left = `${xs - half}px`; HP.style.width = `${Math.max(12, (xe ?? xs) - xs + 2 * half)}px`; }
+    }
+  };
+  const startDrag = (kind) => (e) => {
+    if (!EDIT.row) return;
+    e.preventDefault(); e.stopPropagation();
+    EDIT.drag = { kind, row: { ...EDIT.row } };
+    chart.applyOptions({ handleScroll: false, handleScale: false });
+  };
+  HS.addEventListener("mousedown", startDrag("start")); HE.addEventListener("mousedown", startDrag("end")); HP.addEventListener("mousedown", startDrag("stop"));
+  document.addEventListener("mousemove", (e) => {
+    const g = EDIT.drag; if (!g) return;
+    const rect = chartEl.getBoundingClientRect(), r = EDIT.row;
+    if (g.kind === "stop") {
+      const p = S.candles.coordinateToPrice(e.clientY - rect.top);
+      if (p != null && p < r.ep) r.sp = p;
+    } else {
+      const t = chart.timeScale().coordinateToTime(e.clientX - rect.left); if (t == null) return;
+      const bt = D().t[nearestIdx(t)];
+      if (g.kind === "start" && bt < r.b) r.a = bt;
+      if (g.kind === "end" && bt + BAR() > r.a) r.b = bt + BAR();
+    }
+    renderEdit(); draw();
+  });
+  document.addEventListener("mouseup", () => {
+    const g = EDIT.drag; if (!g) return;
+    EDIT.drag = null; chart.applyOptions({ handleScroll: true, handleScale: true });
+    const r = EDIT.row, o = g.row;
+    if (r.a === o.a && r.b === o.b && r.sp === o.sp) return;
+    // зберігаємо від ОРИГІНАЛЬНОГО рядка (його старт — ключ на сервері)
+    saveRow(o, { a: r.a, b: r.b, sp: r.sp });
+  });
+
   // ---------- керування ----------
   const setRangeBtn = (days) => document.querySelectorAll("[data-days]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.days === days)));
   // дані тікера на ТФ (з кешем); для 1h — ще й передбачення моделей. false — якщо даних немає
@@ -689,8 +1097,10 @@ td button { padding: 2px 8px; font-size: 12px; }
       if (st.tf === "1h" || !(await load(tk, "1h"))) return;
       setTf("1h", false);
     }
-    st.tk = tk; st.a = st.b = null;
+    st.tk = tk; st.a = st.b = null; EDIT.row = null; renderEdit();
     if (location.hash.slice(1) !== tk) history.replaceState(null, "", "#" + tk);
+    renderM15();
+    if (!MODEL15[tk]) runModel15(tk, true);        // 15m-модель одразу: менше секунди, а без неї 15m/5m-панель порожня
     renderList(true);
     setRangeBtn(60); renderSel(); renderErrors(); draw();
   };
@@ -709,8 +1119,10 @@ td button { padding: 2px 8px; font-size: 12px; }
   const fmtVol = (v) => v ? fmtUsd(v).replace("$", "") : "—";
   const listItems = () => {
     const inDb = new Set(TICKERS), byBase = new Map(UNI.map((u) => [u.base, u]));
+    // «У базі» показує й тікери, що зараз завантажуються (або завантаження впало) — одразу після натискання
+    const pending = Object.entries(JOBS).filter(([t, j]) => !inDb.has(t) && j.state !== "done").map(([t]) => t);
     let bases = LS.list === "all" ? UNI.map((u) => u.base).concat(TICKERS.filter((t) => !byBase.has(t)))
-      : LS.list === "train" ? TRAIN.slice() : TICKERS.slice();
+      : LS.list === "train" ? TRAIN.slice() : TICKERS.concat(pending);
     const q = LS.q.trim().toUpperCase();
     if (q) bases = bases.filter((b) => b.includes(q));
     const items = bases.map((b) => ({ base: b, u: byBase.get(b), db: inDb.has(b), train: TRAIN.includes(b),
@@ -735,8 +1147,20 @@ td button { padding: 2px 8px; font-size: 12px; }
       const left = document.createElement("span");
       left.textContent = x.u ? `обсяг ${fmtVol(x.u.vol)}` : (x.db ? "лише в базі" : "");
       meta.appendChild(left);
-      if (x.job && (x.job.state === "queued" || x.job.state === "running")) {
-        const s = document.createElement("span"); s.textContent = x.job.msg; meta.appendChild(s);
+      const loading = x.job && (x.job.state === "queued" || x.job.state === "running");
+      let bar = null;
+      if (loading) {
+        // крок з 3 і частини всередині кроку: «2/3 · 15m/5m з бірж · 3/6»
+        const j = x.job, s = document.createElement("span"); s.className = "stage";
+        const sp = document.createElement("i"); sp.className = "spin"; sp.setAttribute("aria-hidden", "true");
+        s.append(sp, j.state === "queued" ? "у черзі…" : `${j.step}/${j.steps} · ${j.stage}` + (j.total ? ` · ${j.done}/${j.total}` : ""));
+        s.title = j.msg || "";
+        left.replaceWith(s);
+        bar = document.createElement("span"); bar.className = "pbar";
+        const fill = document.createElement("i");
+        const frac = j.state === "queued" ? 0 : ((j.step - 1) + (j.total ? Math.min(1, j.done / j.total) : 0.3)) / j.steps;
+        fill.style.width = `${Math.round(frac * 100)}%`; bar.appendChild(fill);
+        li.classList.add("loading"); li.setAttribute("aria-busy", "true");
       } else if (x.job && x.job.state === "error") {
         meta.classList.add("err"); left.textContent = x.job.msg;
       }
@@ -746,7 +1170,8 @@ td button { padding: 2px 8px; font-size: 12px; }
         meta.appendChild(b);
       }
       li.append(nm, num, meta);
-      if (x.db) li.addEventListener("click", () => setTicker(x.base));
+      if (bar) li.appendChild(bar);
+      if (x.db && !loading) li.addEventListener("click", () => setTicker(x.base));
       ul.appendChild(li);
     });
     if (scroll) { const on = ul.querySelector("li.on"); if (on) on.scrollIntoView({ block: "nearest" }); }
@@ -811,6 +1236,9 @@ td button { padding: 2px 8px; font-size: 12px; }
     if (list[j] !== st.tk) { e.preventDefault(); setTicker(list[j]); }
   });
 
+  $("runBtn").addEventListener("click", () => { if (st.tk) runModel15(); });
+  $("m15Load").addEventListener("click", () => { if (st.tk) { loadTicker(st.tk); status(`${st.tk}: дозавантажую 60 днів — потім натисни «Перерахувати модель 15m»`); } });
+
   // ТФ: виділення і видимий проміжок часу зберігаються — межі це моменти, а не номери барів
   const setTf = (tf, redraw = true) => {
     st.tf = tf;
@@ -844,21 +1272,60 @@ td button { padding: 2px 8px; font-size: 12px; }
   $("oiCoinBtn").addEventListener("click", () => setOiUnit(false));
   $("oiUsdBtn").addEventListener("click", () => setOiUnit(true));
   $("rulerBtn").addEventListener("click", () => { if (ruler) ruler.toggle(); });
+  // сигнали моделі на графіку: вимикати на час розмітки (без «якоря» на модель), вмикати для порівняння
+  const setShowModel = (on) => {
+    st.showModel = on; $("modelBtn").setAttribute("aria-pressed", String(on));
+    try { localStorage.setItem("label-show-model", on ? "1" : "0"); } catch (e) {}
+    draw();
+  };
+  $("modelBtn").setAttribute("aria-pressed", String(st.showModel));
+  $("modelBtn").addEventListener("click", () => setShowModel(!st.showModel));
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, select, textarea")) return;
+    if (e.key === "m" || e.key === "M" || e.key === "ь" || e.key === "Ь") { e.preventDefault(); setShowModel(!st.showModel); }
+  });
   $("logBtn").addEventListener("click", () => { st.log = !st.log; $("logBtn").setAttribute("aria-pressed", String(st.log)); draw(); });
   $("modelSel").addEventListener("change", (e) => { st.model = e.target.value; renderErrors(); draw(); });
 
-  $("clrBtn").addEventListener("click", () => { st.a = st.b = null; renderSel(); draw(); });
+  $("clrBtn").addEventListener("click", () => { st.a = st.b = null; clearSel(); renderSel(); draw(); });
+  $("stopBtn").addEventListener("click", () => setSelMode("stop"));
+  $("eStopBtn").addEventListener("click", () => { if (EDIT.row) startRisk(EDIT.row); });
+  $("eStopClr").addEventListener("click", () => { if (EDIT.row) saveRow(EDIT.row, { sp: null }); });
+  $("eSave").addEventListener("click", () => { if (EDIT.row) saveRow(EDIT.row, { type: $("eType").value, note: $("eNote").value.trim(), sp: $("eType").value === "pump" ? EDIT.row.sp : null }); });
+  $("eClose").addEventListener("click", closeEdit);
+  $("eDel").addEventListener("click", async () => {
+    const r = EDIT.row; if (!r) return;
+    try { rows = fromServer((await api("DELETE", "/api/pumps", { base_asset: r.tk, start_ts: fmtTs(r.a) })).rows); status(`Видалено ${r.tk} ${fmtTs(r.a)}`); refreshM15(r.tk); loadStops(); }
+    catch (e) { status(e.message, true); }
+    EDIT.row = null; renderEdit(); renderRows(); draw();
+  });
+  $("entryBtn").addEventListener("click", () => setSelMode("entry"));
+  $("stopClr").addEventListener("click", () => { clearSel(); renderSel(); draw(); status("Вхід і стоп прибрано"); });
+  // S — стоп, E — вхід (коли фокус не в полі вводу); Esc — скасувати режим
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, select, textarea")) return;
+    const k = e.key.toLowerCase();
+    if ((k === "s" || k === "і" || k === "ы") && EDIT.row) { e.preventDefault(); startRisk(EDIT.row); }
+    else if (k === "s" || k === "і" || k === "ы") { e.preventDefault(); setSelMode("stop"); }
+    else if (k === "e" || k === "у") { e.preventDefault(); setSelMode("entry"); }
+    else if (e.key === "Escape" && SEL.mode) { SEL.mode = null; status("Скасовано"); renderSel(); }
+    else if (e.key === "Escape" && EDIT.row && !RISK.row) closeEdit();
+  });
   $("addBtn").addEventListener("click", async () => {
     if (st.a == null || st.b == null) return;
     $("addBtn").disabled = true;
     const tk = st.tk, a = st.a;
     try {
+      const e = SEL.stop != null ? selEntry() : null;
       const res = await api("POST", "/api/pumps", {
         base_asset: tk, start_ts: fmtTs(st.a), end_ts: fmtTs(st.b),
         pattern_type: $("pType").value, notes: $("pNote").value.trim(),
+        entry_ts: e ? fmtTs(e.t) : "", entry_price: e ? String(e.px) : "", stop_price: e ? String(SEL.stop) : "",
       });
+      if (e) loadStops();
       rows = fromServer(res.rows);
-      st.a = st.b = null; $("pNote").value = "";
+      refreshM15(tk);
+      st.a = st.b = null; $("pNote").value = ""; clearSel();
       status(`Додано ${tk} ${fmtTs(a)}, збережено в pumps.csv і базі`);
     } catch (e) { status(e.message, true); }
     renderSel(); renderRows(); draw();
@@ -880,6 +1347,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     } catch (e) { status(`Сервер не відповідає: ${e.message}. Чи запущено python label.py?`, true); return; }
     renderRows();
     pollJobs();
+    loadStops();
     if (!TICKERS.length) { status("У базі ще немає тікерів: вибери монету праворуч у «Усі Binance» і натисни «Завантажити»."); return; }
     // адреса виду http://127.0.0.1:8765/#AKE відкриває одразу потрібний тікер
     const fromHash = decodeURIComponent(location.hash.slice(1)).toUpperCase();
