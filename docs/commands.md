@@ -7,7 +7,8 @@ options straight from the code. Run everything from the project folder with the 
 
 | Task | Commands |
 |---|---|
-| Add a ticker for training | in `python label.py`: find it under **Усі Binance** → **Завантажити** → label it (the first saved interval adds it to `tickers.txt`) → `python features.py` → `python features.py` → `python train.py` → restart `screener.py` and `dashboard.py` |
+| Add a ticker for training | in `python label.py`: find it under **Усі Binance** → **Завантажити** → label it → after reviewing the whole ticker press **У навчання** → `python features.py` → `python train.py` → restart `screener.py` and `dashboard.py` |
+| Confirm a journal signal | open the ticker in `label.py`, label the interval as `pump` or `false_start` → `python features.py` (only that interval enters training) |
 | Scan a coin live only | add it to `watchlist.txt`; the screener picks it up on its next cycle (7 days of history needed) |
 | Fix a label | edit it in `python label.py` (or `pumps.csv` + `python load_pumps.py`) → `python features.py` → `python train.py` |
 | Weekly data refresh | `python fetch.py` (all tickers; extends history, which the provider keeps for ~2 months) |
@@ -52,8 +53,8 @@ does this automatically on every change.
 |---|---|---|
 | `tickers …` | all of `tickers.txt` | recompute only these tickers; without arguments the table is rebuilt |
 
-Run after new data or changed labels. Only `tickers.txt` is used: watchlist-only coins are unlabeled and must
-not enter training.
+Run after new data or changed labels. Tickers in `tickers.txt` (reviewed) contribute every hour; any other ticker
+with labels contributes only the hours inside its labeled intervals (column `reviewed` = false).
 
 ## Model
 

@@ -10,3 +10,5 @@ MUBARAK
 SOON
 TRUMP
 G    # фальстарт без OI — негативний приклад
+ARK    # переглянуто повністю в label.py
+MOVR    # переглянуто повністю в label.py

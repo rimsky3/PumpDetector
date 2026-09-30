@@ -96,10 +96,12 @@ volume), or the training set; search, sort, ↑/↓ to step through. To label a 
 and Bybit in a background queue (one ticker at a time, since the Coinalyze limit is shared with the screener),
 and opens the ticker when done. No files to edit.
 
-A ticker joins the **training set** (`tickers.txt`) automatically when its first interval is saved, or with the
-**У навчання** button for a coin you reviewed and found no pumps on (a useful negative example). Loading alone
-does not add it: in training, every unlabeled hour of a ticker counts as "no pump", so only reviewed tickers
-belong there.
+**What goes into training.** Every labeled interval of every ticker does. The *unlabeled* hours of a ticker
+count as "no pump" only when the ticker is in `tickers.txt`, which means "I reviewed the whole ticker". The
+**У навчання** button adds the open ticker there (use it after looking through all 60 days, including a coin with
+no pumps at all, which is a useful negative example). Loading or labeling a single interval never adds it. This
+matters for the journal: confirming one signal on a watchlist coin as `pump` or `false_start` adds just that
+interval to training, without declaring the rest of the coin's history pump-free.
 `http://127.0.0.1:8765/#AKE` opens a specific ticker directly.
 
 ## Reviewing model errors

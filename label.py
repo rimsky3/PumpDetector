@@ -7,8 +7,9 @@ label.py — локальний інструмент розмітки пампі
 можна ставити на будь-якому, це моменти часу.
 
 Права панель — усі USDT-перпи Binance. «Завантажити» ставить тікер у чергу: 1h з Coinalyze (fetch.collect),
-потім 15m/5m з бірж (fetch_exchange.collect). У tickers.txt (навчальна вибірка) тікер потрапляє, коли на ньому
-збережено перший інтервал, або кнопкою «У навчання» (переглянув — пампів немає: теж корисний негативний приклад).
+потім 15m/5m з бірж (fetch_exchange.collect).
+Розмічені інтервали будь-якого тікера йдуть у навчання (features.py). Решта годин тікера — лише коли він у
+tickers.txt: кнопка «У навчання» = «переглянув увесь тікер, де пампу не розмічено — його не було».
 Виділені інтервали одразу записуються в pumps.csv і синхронізуються з таблицею pumps.
 Якщо є reports/oof_predictions.csv (python train.py), показує сигнали моделей і їхні помилки.
 
@@ -290,9 +291,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/pumps":
                 new = parse_row(body)
                 rows = self._modify(lambda rows: rows + [new])
-                # перший інтервал на тікері — тікер іде в навчальну вибірку (tickers.txt)
-                added = set_ticker_in_file(TICKERS_PATH, new[0], True, "додано з label.py при першій розмітці")
-                return self._send(200, {"rows": rows_to_json(rows), "added_to_training": added})
+                return self._send(200, {"rows": rows_to_json(rows)})
             if path == "/api/load":
                 base = str(body.get("ticker", "")).upper()
                 if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
@@ -305,7 +304,7 @@ class Handler(BaseHTTPRequestHandler):
                 base = str(body.get("ticker", "")).upper()
                 if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
                     raise ValueError("невірна назва тікера")
-                set_ticker_in_file(TICKERS_PATH, base, bool(body.get("on")), "переглянуто в label.py")
+                set_ticker_in_file(TICKERS_PATH, base, bool(body.get("on")), "переглянуто повністю в label.py")
                 return self._send(200, {"training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
             return self._error(404, "не знайдено")
         except (ValueError, json.JSONDecodeError) as e:

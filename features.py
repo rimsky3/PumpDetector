@@ -15,9 +15,10 @@ features.py — ознаки для моделі з сирих рядів Coinal
     python features.py              # перерахувати ознаки для тікерів з tickers.txt і записати в таблицю features
     python features.py AKE QNT      # лише для вибраних тікерів (решта рядків таблиці лишається)
 
-Таблиця features — навчальна вибірка, тому за замовчуванням лише tickers.txt (розмічені тікери).
-Тікери зі скринера (watchlist.txt) теж лежать у базі, але не розмічені: якби вони потрапили в навчання,
-модель вважала б, що пампів на них не було.
+Таблиця features — навчальна вибірка:
+    тікери з tickers.txt — повністю переглянуті: усі години, нерозмічена година = «пампу не було» (reviewed = true);
+    будь-який інший тікер з розміткою в pumps — лише години всередині розмічених інтервалів (reviewed = false).
+Так розмітку окремого сигналу з журналу можна взяти в навчання, не оголошуючи решту 60 днів тікера «без пампів».
 """
 
 import argparse
@@ -294,14 +295,14 @@ def save(conn, df: pd.DataFrame, bases: list[str] | None) -> None:
     """Таблиця features повністю похідна від сирих даних і pumps, тому створюється тут, а не в schema.sql.
     Зміна набору ознак = перерахунок: python features.py."""
     num_cols = ["price", "oi"] + ALL_FEATURES   # у таблиці — усі ознаки, модель бере FEATURES
-    cols = ["base_asset", "ts"] + num_cols + ["label", "pattern_type"]
+    cols = ["base_asset", "ts"] + num_cols + ["label", "pattern_type", "reviewed"]
     if bases is None:
         conn.execute("DROP TABLE IF EXISTS features")
     conn.execute(f"""
         CREATE TABLE IF NOT EXISTS features (
             base_asset TEXT NOT NULL, ts TIMESTAMPTZ NOT NULL,
             {", ".join(f"{c} DOUBLE PRECISION" for c in num_cols)},
-            label SMALLINT NOT NULL, pattern_type TEXT,
+            label SMALLINT NOT NULL, pattern_type TEXT, reviewed BOOLEAN NOT NULL,
             PRIMARY KEY (base_asset, ts))""")
     if bases:
         conn.execute("DELETE FROM features WHERE base_asset = ANY(%s)", (bases,))
@@ -322,14 +323,26 @@ def main() -> None:
     if not db_url:
         sys.exit("Заповни DATABASE_URL у файлі .env")
     full = not args.tickers
-    bases = [t.upper() for t in (args.tickers or read_tickers_file(TICKERS_FILE))]
-    if not bases:
-        sys.exit(f"Немає тікерів: передай їх аргументами або додай у {TICKERS_FILE}")
+    reviewed = {t.upper() for t in read_tickers_file(TICKERS_FILE)}
 
     with psycopg.connect(db_url) as conn:
+        labeled = {r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM pumps")}
+        # без аргументів — переглянуті тікери і всі тікери з розміткою
+        bases = [t.upper() for t in args.tickers] if args.tickers else sorted(reviewed | labeled)
+        if not bases:
+            sys.exit(f"Немає тікерів: передай їх аргументами або додай у {TICKERS_FILE}")
         df = build(conn, bases)
         if df.empty:
             sys.exit("Немає даних для ознак.")
+        df["reviewed"] = df["base_asset"].isin(reviewed)
+        # тікер не переглянуто повністю — лише розмічені інтервали: решта годин не «без пампу», а «невідомо»
+        df = df[df["reviewed"] | df["pattern_type"].notna()].reset_index(drop=True)
+        partial = sorted(set(df.loc[~df["reviewed"], "base_asset"]))
+        if partial:
+            print(f"Лише розмічені інтервали (тікер не в {TICKERS_FILE}): {', '.join(partial)}")
+        lost = sorted(labeled - set(df["base_asset"]))
+        if lost and not args.tickers:
+            print(f"Розмітка без ознак (мало історії в базі — потрібно 7 днів до інтервалу): {', '.join(lost)}")
         save(conn, df, None if full else bases)
 
     print(f"Ознак: {len(FEATURES)}, рядків: {len(df)}\n")

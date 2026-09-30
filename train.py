@@ -175,7 +175,7 @@ def event_metrics(df: pd.DataFrame, signal: pd.Series, pumps: pd.DataFrame) -> d
         own = labeled[labeled["base_asset"] == e.base_asset]
         if not ((own["ps"] < e.end) & (own["pe"] > e.start)).any():
             false_eps += 1
-    days = df.groupby("base_asset")["ts"].agg(lambda s: (s.max() - s.min()) / H / 24).sum()
+    days = len(df) / 24          # оцінених годин (у тікерів лише з інтервалами між інтервалами є розриви)
 
     return {
         "pumps_caught": f"{len(delays)}/{n_pump}",
@@ -252,16 +252,24 @@ def main() -> None:
     if args.fresh_hours and fresh_unlabeled.any():
         print(f"Не беру в навчання {int(fresh_unlabeled.sum())} свіжих нерозмічених годин (після {cutoff:%m-%d %H:%M} UTC)")
         df = df[~fresh_unlabeled].reset_index(drop=True)
-    labeled_recent = df[(df["ts"] > cutoff) & df["pattern_type"].notna()]
+    if "reviewed" not in df:                       # таблиця від старої версії features.py
+        df["reviewed"] = True
+    labeled_recent = df[df["reviewed"] & (df["ts"] > cutoff) & df["pattern_type"].notna()]
     extra = [(b, g["ts"].min(), g["ts"].max()) for b, g in labeled_recent.groupby("base_asset")]
+    # тікери лише з розміченими інтервалами: у навчанні були тільки ці інтервали (кожен окремим відрізком)
+    for b, g in df[~df["reviewed"]].groupby("base_asset"):
+        run = (g["ts"].diff() != H).cumsum()
+        extra += [(b, r["ts"].min(), r["ts"].max()) for _, r in g.groupby(run)]
 
     X, y, groups = df[FEATURES], df["label"].astype(int), df["base_asset"]
     tickers = sorted(groups.unique())
+    reviewed = sorted(df.loc[df["reviewed"], "base_asset"].unique())    # нерозмічена година тут = «пампу не було»
     # з якими налаштуваннями навчено — у файл моделі, звіт і дашборд, щоб потім було видно, чому модель така
     settings = {
         "fresh_hours": args.fresh_hours, "fresh_cutoff": cutoff if args.fresh_hours else None,
         "fresh_hours_dropped": n_fresh_dropped, "models": args.models, "n_features": len(FEATURES),
         "hours": int(len(df)), "pump_hours": int(y.sum()), "tickers": len(tickers),
+        "labeled_only_tickers": len(tickers) - len(reviewed),
     }
     print(f"Дані: {len(df)} годин, {len(tickers)} тікерів, пампів {y.sum()} год ({y.mean():.1%})\n")
 
@@ -335,8 +343,9 @@ def main() -> None:
                 "features": FEATURES,
                 "threshold": best_f1_threshold(y.to_numpy(), oof[name]),
                 "trained_at": now,
-                "tickers": tickers,
-                # до data_end години тікерів з навчання — in-sample; після — лише розмічені інтервали з in_sample_extra
+                "tickers": reviewed,
+                # до data_end години переглянутих тікерів — in-sample; крім того — розмічені інтервали з in_sample_extra
+                # (свіжі розмічені і всі інтервали тікерів поза tickers.txt)
                 "data_end": min(df["ts"].max(), cutoff) if args.fresh_hours else df["ts"].max(),
                 "in_sample_extra": extra,
                 "pump_intervals": int((pumps["pattern_type"] == "pump").sum()),

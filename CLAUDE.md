@@ -121,8 +121,12 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   сирі таблиці (interval '15min'/'5min'). УСІ запити до сирих таблиць мають фільтрувати interval.
   label.py: перемикач 1h/15m/5m (/api/data?tf=), межі — моменти; модель і помилки — лише на 1h.
 - label.py права панель: усі USDT-перпи Binance (/api/universe, кеш 10 хв), «Завантажити» → черга (/api/load, /api/jobs):
-  fetch.collect (1h Coinalyze) + fetch_exchange.collect (15m/5m). У tickers.txt — при першому збереженому інтервалі
-  або кнопкою «У навчання» (/api/training, fetch.set_ticker_in_file); просто завантаження в навчання НЕ додає.
+  fetch.collect (1h Coinalyze) + fetch_exchange.collect (15m/5m). У tickers.txt — ЛИШЕ кнопкою «У навчання»
+  (/api/training, fetch.set_ticker_in_file) = «тікер переглянуто повністю».
+- Навчальна вибірка (2026-09-30): features.py бере тікери з tickers.txt цілком (reviewed=true) + розмічені інтервали
+  БУДЬ-ЯКОГО іншого тікера (reviewed=false, лише години інтервалів). bundle['tickers'] — лише переглянуті;
+  інтервали інших — у bundle['in_sample_extra'] (скринер), journal вважає «без розмітки = не памп» лише для переглянутих.
+  Так розмітка сигналу з журналу не оголошує решту історії тікера «без пампів». event_metrics: днів = рядків/24.
 - Telegram-сповіщення — окремим кроком пізніше.
 - далі: більше розмічених тікерів; метрики ранньої фази пампу (ret_24h домінує — модель частково «бачить, що вже виросло»);
   Telegram; деплой на VPS (Docker Compose: база + screener --loop + dashboard).
