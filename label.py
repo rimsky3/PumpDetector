@@ -43,7 +43,7 @@ from dotenv import load_dotenv
 import fetch_exchange
 from exchanges import INTERVAL
 from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, aggregate, build, build_15m, load_pumps, load_raw
-from risk import TRAIL_NATR, atr, position_state
+from risk import TRAIL_NATR, atr, position_state, trade_stats as summarize_trades
 from tiers import tier_frame
 import train
 from fetch import TICKERS_FILE, Coinalyze, collect, collect_liquidations, read_tickers_file, set_ticker_in_file
@@ -148,12 +148,9 @@ def model15(conn, base: str) -> dict:
                        "entry": tr["entry"], "exit": tr.get("exit"), "result": tr.get("result_pct"),
                        "reason": "open" if tr.get("open") else tr.get("reason"),
                        "label": ("pump" if (own["pattern_type"] == "pump").any() else own["pattern_type"].iloc[0]) if len(own) else None})
-    closed = [x["result"] for x in trades if x["reason"] != "open" and x["result"] is not None]
-    wins, losses = [r for r in closed if r > 0], [r for r in closed if r <= 0]
     avg = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
-    trade_stats = {
-        "n": len(closed), "wins": len(wins), "avg_win": avg(wins), "avg_loss": avg(losses), "expectancy": avg(closed),
-        "stops": sum(1 for x in trades if x["reason"] == "stop"), "k": k, "exit_bars": exit_bars, "trail": TRAIL_NATR,
+    trade_stats = {   # спільний підсумок з дашбордом (risk.trade_stats) + розбивка за розміткою
+        **summarize_trades(pos.get("trades", [])), "k": k, "exit_bars": exit_bars, "trail": TRAIL_NATR,
         "in_pump": avg([x["result"] for x in trades if x["reason"] != "open" and x["label"] == "pump"]),
         "outside": avg([x["result"] for x in trades if x["reason"] != "open" and x["label"] != "pump"]),
     }

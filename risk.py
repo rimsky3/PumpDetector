@@ -106,6 +106,17 @@ def stop_multiplier(conn, interval: str = "1hour") -> dict:
     }
 
 
+def trade_stats(trades: list[dict]) -> dict:
+    """Підсумок закритих угод position_state (відкрита не рахується): кількість, прибуткові,
+    середній виграш і програш, очікування на угоду, скільки закрито по стопу."""
+    closed = [t for t in trades if not t.get("open") and t.get("result_pct") is not None]
+    res = [t["result_pct"] for t in closed]
+    wins, losses = [r for r in res if r > 0], [r for r in res if r <= 0]
+    avg = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
+    return {"n": len(res), "wins": len(wins), "avg_win": avg(wins), "avg_loss": avg(losses), "expectancy": avg(res),
+            "stops": sum(1 for t in closed if t.get("reason") == "stop")}
+
+
 def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float | None,
                    exit_bars: int = EXIT_BARS) -> dict:
     """Стан «угоди» за сигналами моделі на погодинному ряді тікера.

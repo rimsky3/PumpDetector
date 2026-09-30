@@ -9,7 +9,8 @@ options straight from the code. Run everything from the project folder with the 
 |---|---|
 | Add a ticker for training | in `python label.py`: find it under **Усі Binance** → **Завантажити** → label it → after reviewing the whole ticker press **У навчання** → `python features.py` → `python train.py` → restart `screener.py` and `dashboard.py` |
 | Confirm a journal signal | open the ticker in `label.py`, label the interval as `pump` or `false_start` → `python features.py` (only that interval enters training) |
-| Scan a coin live only | add it to `watchlist.txt`; the screener picks it up on its next cycle (7 days of history needed) |
+| Scan a coin live only | dashboard: type it in search → **＋ Додати … у watchlist** (or the field in the **Сканер** card); data and scores load at once. Or add a line to `watchlist.txt` — the screener re-reads it every cycle |
+| Let the market fill the list | the **Сканер** card in the dashboard: pick Суворо / Баланс / Широко / Свій → **Зберегти**; `python scanner.py --recall` refreshes the "on time on labeled pumps" numbers |
 | Fix a label | edit it in `python label.py` (or `pumps.csv` + `python load_pumps.py`) → `python features.py` → `python train.py` |
 | Weekly data refresh | `python fetch.py` (all tickers; extends history, which the provider keeps for ~2 months) |
 | Daily operation | `python screener.py --loop` and `python dashboard.py` in two terminals |
@@ -111,6 +112,19 @@ No options. 15m model on database data (exchange candles/OI + Coinalyze 15m liqu
 No options. Out-of-fold drawdowns from the 15m model's entries into labeled pumps and a stop-multiplier sweep →
 `reports/experiment_stop.md`.
 
+### `experiments/early_phase.py`
+
+Early-phase features for the 15m model: the current set versus the set without "already rose" features (ret_24h,
+ret_4h, oi_chg_24h, oi_minus_ret_24h) and with new early features (OI and volume acceleration, share of bars with OI
+rising, OI versus price over the last hour, volatility squeeze, buy-share shift). Main metric: the share of the pump's
+move already done at the first signal.
+
+### `experiments/hourly_from_15m.py`
+
+Hourly context (Alert confirmation) from our own 15m data (Binance + Bybit + Coinalyze 15m liquidations, rolled up to
+hours) versus Coinalyze hourly data: feature correlations, hourly-model P, agreement of the confirmation decision and
+Alert events on the 15m grid. `--days N` — compare the last N days (default 60).
+
 ### `experiments/timeframe.py`
 
 | Option | Default | Meaning |
@@ -129,9 +143,21 @@ the move already gone at the signal, and false alarms → `reports/experiment_ti
 |---|---|---|
 | `--loop` | off | run forever: every 15 minutes (HH:02/17/32/47 UTC) the 15m tier, once an hour also the hourly models |
 | `--no-fetch` | off | score data already in the database, no API calls (quick check, or re-score after retraining) |
+| `--no-scan` | off | skip the market scan (every 15 minutes); use `watchlist.txt` and the existing auto-list only |
 
-Writes the `signals` table and `reports/screener_status.json` (shown in the dashboard). Loads models at start:
+Each cycle scores `watchlist.txt` plus the scanner's live auto-list (`reports/auto_watchlist.json`); both are re-read
+every cycle, so new tickers need no restart. Writes the `signals` table and `reports/screener_status.json` (shown in the dashboard). Loads models at start:
 restart it after `train.py`.
+
+### `scanner.py` — market scan for the auto-list
+
+| Option | Meaning |
+|---|---|
+| (none) | scan all Binance USDT perps now and print who passes each preset; the auto-list is not changed |
+| `--apply` | also update `reports/auto_watchlist.json` (what `screener.py` does every 15 minutes) |
+| `--recall` | test every preset on the labeled pumps from the database; writes `reports/scan_recall.json`, shown in the dashboard |
+
+Thresholds live in `scan_config.json` (edited from the dashboard). See [screener.md](screener.md#market-scanner).
 
 ### `dashboard.py` — Forecast and Journal
 

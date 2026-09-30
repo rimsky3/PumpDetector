@@ -29,9 +29,9 @@ import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
-from features import INTERVAL_15M, aggregate, compute_features, load_raw, query_df
+from features import INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, compute_features, load_raw, query_df
 from fetch import Coinalyze, collect, read_tickers_file
-from risk import EXIT_BARS, TRAIL_NATR, atr, position_state
+from risk import EXIT_BARS, TRAIL_NATR, atr, position_state, trade_stats
 
 
 def last_atr(h: pd.DataFrame) -> float | None:
@@ -41,6 +41,7 @@ def last_atr(h: pd.DataFrame) -> float | None:
 from screener import (FETCH_DAYS, INTRADAY_DAYS, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
                       load_models, next_hourly, next_run, score_15m, score_bases, update_15m)
 import fetch_exchange
+import scanner
 import journal as J
 import tiers as T
 
@@ -144,7 +145,8 @@ def meta(conn) -> dict:
     now = datetime.now(timezone.utc)
     sig = query_df(conn, "SELECT max(scored_at) AS last FROM signals")
     exchanges = conn.execute("SELECT count(DISTINCT exchange_name) FROM markets").fetchone()[0]
-    watch = [t.upper() for t in read_tickers_file(os.path.join(ROOT, WATCHLIST_FILE))]
+    manual, auto = list_sources()
+    watch = manual + sorted(auto)
     scored = [r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM signals ORDER BY 1").fetchall()]
     hourly = [{
         "name": m["name"], "title": MODEL_NAMES.get(m["name"], m["name"]) + " 1h", "tf": "1h", "bar": 3600,
@@ -157,6 +159,7 @@ def meta(conn) -> dict:
         "models": virt[:1] + hourly,              # перемикач: 15m + 1h (основна), далі годинні
         "journal_models": virt + hourly,          # журнал: ще й «Кандидат» окремим рядком
         "tickers": sorted(set(watch) | set(scored)),
+        "auto": sorted(auto),
         "watchlist": watch,
         "exchanges": exchanges,
         "last_scored_at": sig["last"].iloc[0] if len(sig) else None,
@@ -219,7 +222,22 @@ def watch_list_15m(conn) -> dict:
 
 
 def watch_list(conn, model: str) -> dict:
-    """Права панель: тікери з ймовірністю, міні-графіком P за 24 год, Δ OI і зміною ціни за 24 год."""
+    """Права панель: лише тікери з watchlist.txt і живого авто-списку сканера (прострочені авто — геть),
+    з позначкою джерела: source manual / auto, причина і до коли тікер у списку."""
+    res = _watch_list(conn, model)
+    manual, auto = list_sources()
+    keep = set(manual) | set(auto)
+    res["rows"] = [r | {"source": "auto" if r["ticker"] in auto else "manual",
+                        "reason": auto.get(r["ticker"], {}).get("reason"), "expires": auto.get(r["ticker"], {}).get("expires"),
+                        "held": auto.get(r["ticker"], {}).get("held")}
+                   for r in res["rows"] if r["ticker"] in keep]
+    have = {r["ticker"] for r in res["rows"]}
+    res["pending"] = [{"ticker": b, "source": "auto" if b in auto else "manual", "reason": auto.get(b, {}).get("reason"),
+                       "job": ADD_JOBS.get(b)} for b in manual + sorted(auto) if b not in have]
+    return res
+
+
+def _watch_list(conn, model: str) -> dict:
     if model == T.TIER_MODEL:
         return watch_list_15m(conn)
     sig = latest_signals(conn)
@@ -283,8 +301,16 @@ def ticker_15m(conn, base: str, days: int) -> dict:
     code = {"alert": 2, "candidate": 1, "calm": 0}
     chg24 = (h["price"].iloc[-1] / h["price"].iloc[-97] - 1) if len(h) > 96 and h["price"].iloc[-97] else None
     thr = float(last["thr15"]) if last is not None else m15["threshold"]
+    trained = base in m15.get("tickers", []) or any(b == base for b, *_ in m15.get("in_sample_extra", []))
+    # угода на історії (оцінки дораховані заднім числом, напр. коли тікер щойно потрапив у список) чи live —
+    # на графіку історичні мітки бліді: такий сигнал ти б не отримав
+    live = t["live"].astype(bool) if "live" in t else pd.Series(False, index=t.index)
+    for tr in list(pos.get("trades", [])) + ([pos] if pos.get("open") else []):
+        tr["live"] = bool(live.get(tr["entry_ts"], False))
+    history = {**trade_stats(pos.get("trades", [])), "trained": trained,
+               "days": round((t.index.max() - t.index.min()) / pd.Timedelta(days=1), 1) if len(t) else 0}
     return {
-        "ticker": base, "model": T.TIER_MODEL, "tf": "15m", "bar": 900, "threshold": thr, "k": k,
+        "ticker": base, "model": T.TIER_MODEL, "tf": "15m", "bar": 900, "threshold": thr, "k": k, "history": history,
         "streak": streak, "streak_min": streak * 15, "chg_24h": chg24,
         "price": h["price"].iloc[-1] if len(h) else None,
         "ls_long_pct": h["ls_long_pct"].dropna().iloc[-1] if h["ls_long_pct"].notna().any() else None,
@@ -314,6 +340,46 @@ def ticker_15m(conn, base: str, days: int) -> dict:
         },
         "thresholds": {T.TIER_MODEL: thr},
     }
+
+
+_oi_share_cache: dict = {}
+
+
+def oi_share(conn, base: str) -> list[dict] | None:
+    """Частка OI тікера за біржами (середнє за 30 днів, годинні дані Coinalyze по всіх біржах) і чи бачить її модель:
+    15m-модель бере лише features.INTRADAY_EXCHANGES. Кеш на годину."""
+    hit = _oi_share_cache.get(base)
+    if hit and time.time() - hit[0] < 3600:
+        return hit[1]
+    # середнє по кожному контракту, потім сума контрактів біржі (USDT і USDC на одній біржі — разом)
+    rows = conn.execute("""SELECT e, sum(a) FROM (
+                               SELECT m.exchange_name AS e, o.symbol, avg(o.c) AS a FROM open_interest o JOIN markets m USING (symbol)
+                               WHERE m.base_asset = %s AND o.interval = '1hour' AND o.ts > now() - interval '30 days'
+                               GROUP BY 1, 2) x GROUP BY 1""", (base,)).fetchall()
+    total = sum(float(v or 0) for _, v in rows)
+    res = None
+    if total > 0:
+        res = sorted(({"exchange": e, "share": float(v or 0) / total, "seen": e in INTRADAY_EXCHANGES} for e, v in rows),
+                     key=lambda x: (not x["seen"], -x["share"]))
+        res = [x for x in res if x["share"] >= 0.005]
+    _oi_share_cache[base] = (time.time(), res)
+    return res
+
+
+def scanner_entries(conn, base: str, days: int) -> list:
+    """Для авто-тікерів: коли сканер з поточними порогами додав би тікер у список, якби працював увесь час
+    (15m-дані Binance з бази — як у живому скані). Для твоїх тікерів з watchlist.txt — нічого: вони в списку завжди."""
+    manual, _ = list_sources()
+    if base in manual:
+        return []
+    cfg = scanner.load_config()
+    since = datetime.now(timezone.utc) - timedelta(days=days + 8)        # +8 днів на 7-денну норму обсягу
+    h = aggregate(load_raw(conn, [base], INTERVAL_15M, since=since, exchanges=["Binance"]), base, "15min")
+    if h.empty:
+        return []
+    h = h[h.index <= last_closed_15m()]
+    cut = pd.Timestamp(datetime.now(timezone.utc) - timedelta(days=days))
+    return [t for t in scanner.entries_on_history(h, scanner.params(cfg), cfg["ttl_hours"]) if t >= cut]
 
 
 CHART_TF = {"5m": ("5min", "5min", 300), "15m": ("15min", "15min", 900), "1h": ("1hour", "h", 3600)}
@@ -424,6 +490,8 @@ def ticker(conn, base: str, model: str, days: int, tf: str | None = None) -> dic
     res = rebar(conn, res, base, tf, days) if tf else res
     res["live"] = live_symbols(conn, base)
     res["tail_refresh"] = refreshing
+    res["oi_share"] = oi_share(conn, base)
+    res["scanner_entries"] = scanner_entries(conn, base, days)
     return res
 
 
@@ -513,6 +581,75 @@ def refresh(conn, base: str) -> dict:
     if scored.empty and not n15:
         raise ValueError(f"для {base} ще замало історії: потрібно ≥ 7 днів")
     return {"ok": True, "fetched": fetched, "seconds": round(time.monotonic() - started, 1), "last_closed": last_closed}
+
+
+# ---------------------------------------------------------------- сканер ринку і додавання тікерів
+
+ADD_JOBS: dict = {}          # тікер → "loading" / "done" / текст помилки (дашборд показує прогрес)
+_universe_cache = {"at": 0.0, "bases": set()}
+
+
+def binance_bases() -> set[str]:
+    """Базові активи USDT-перпів Binance (кеш 10 хв) — щоб «＋ у watchlist» не приймав друкарських помилок."""
+    if time.time() - _universe_cache["at"] > 600 or not _universe_cache["bases"]:
+        _universe_cache.update(at=time.time(), bases={u["base"] for u in scanner.universe()})
+    return _universe_cache["bases"]
+
+
+def list_sources() -> tuple[list[str], dict]:
+    """Твій watchlist.txt і живий авто-список сканера."""
+    manual = [t.upper() for t in read_tickers_file(os.path.join(ROOT, WATCHLIST_FILE))]
+    auto = {b: r for b, r in scanner.active_auto().items() if b not in set(manual)}
+    return manual, auto
+
+
+def scan_view(q: dict) -> dict:
+    """Картка «Сканер»: налаштування, скільки пройшло б зараз, результат набору на розмічених пампах, авто-список.
+    Параметри запиту (preset або пороги «Свій») — попередній перегляд ДО збереження."""
+    cfg = scanner.load_config()
+    manual, auto = list_sources()
+    preset = q.get("preset", cfg["preset"])
+    if preset not in scanner.PRESET_NAMES:
+        preset = cfg["preset"]
+    p = dict(cfg["custom"] if preset == "custom" else scanner.PRESETS[preset])
+    for k in scanner.PRESETS["balance"]:
+        if k in q:
+            p[k] = scanner._clip(k, q[k])
+    p["max_oi"] = cfg["max_oi"]
+    return {"config": cfg, "preset": preset, "params": p,
+            "presets": {k: {"name": v, "params": scanner.PRESETS.get(k, cfg["custom"])} for k, v in scanner.PRESET_NAMES.items()},
+            "preview": scanner.preview(p, set(manual)), "recall": scanner.recall_for(p, cfg["ttl_hours"]),
+            "auto": [{"ticker": b, **r} for b, r in sorted(auto.items(), key=lambda x: x[1]["last_hit"], reverse=True)],
+            "manual": manual, "jobs": ADD_JOBS}
+
+
+def add_to_watchlist(base: str) -> dict:
+    """«＋ у watchlist»: дописати у watchlist.txt і одразу підтягнути дані й оцінку (у фоні, як Refresh)."""
+    from fetch import set_ticker_in_file
+    base = base.upper().removesuffix("USDT").strip()
+    if not base.isalnum():
+        raise ValueError("введи базовий актив, напр. BANK")
+    if base not in binance_bases():
+        raise ValueError(f"{base}: немає серед USDT-перпів Binance")
+    set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base, True, "додано з дашборду")
+    ADD_JOBS[base] = "loading"
+
+    def work():
+        try:
+            with psycopg.connect(State.db_url) as conn:
+                refresh(conn, base)
+            ADD_JOBS[base] = "done"
+        except Exception as e:
+            ADD_JOBS[base] = f"{type(e).__name__}: {e}"
+    threading.Thread(target=work, daemon=True).start()
+    return {"ok": True, "ticker": base}
+
+
+def remove_from_watchlist(base: str) -> dict:
+    from fetch import set_ticker_in_file
+    set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base.upper(), False)
+    ADD_JOBS.pop(base.upper(), None)
+    return {"ok": True}
 
 
 def rescore_on_start() -> None:
@@ -616,6 +753,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(lambda c: watch_list(c, model))
         if url.path == "/api/journal":
             return self._route(lambda c: journal_view(c, q))
+        if url.path == "/api/scan":
+            try:
+                return self._send(200, scan_view(q))
+            except ValueError as e:
+                return self._send(400, {"error": str(e)})
         if url.path == "/api/ticker":
             days = max(1, min(60, int(q.get("days", 30))))
             return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days, q.get("tf")))
@@ -623,10 +765,21 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
+        n = int(self.headers.get("Content-Length") or 0)
+        body = json.loads(self.rfile.read(n) or b"{}")
         if url.path == "/api/refresh":
-            n = int(self.headers.get("Content-Length") or 0)
-            body = json.loads(self.rfile.read(n) or b"{}")
             return self._route(lambda c: refresh(c, str(body.get("symbol", "")).upper()))
+        try:
+            if url.path == "/api/scan/config":
+                return self._send(200, {"ok": True, "config": scanner.save_config(body)})
+            if url.path == "/api/watchlist/add":
+                return self._send(200, add_to_watchlist(str(body.get("symbol", ""))))
+            if url.path == "/api/watchlist/remove":
+                return self._send(200, remove_from_watchlist(str(body.get("symbol", ""))))
+        except ValueError as e:
+            return self._send(400, {"error": str(e)})
+        except Exception as e:
+            return self._send(500, {"error": f"{type(e).__name__}: {e}"})
         return self._send(404, {"error": "не знайдено"})
 
 

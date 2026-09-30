@@ -47,6 +47,57 @@ The screener writes raw data for watchlist coins into the same tables. If unlabe
 training set, every hour on them would count as "no pump" and silently bias the model. That is why
 `features.py` builds the training table from `tickers.txt` only.
 
+## Market scanner
+
+`scanner.py` fills the list automatically. Every 15-minute screener cycle it takes all Binance USDT perps (one request)
+and, for those with at least 5 M$ of 24h turnover (~240 of ~530), fetches 7.5 days of closed 15m candles and 4 hours
+of open interest (Binance public API, no Coinalyze calls; ~50 s). A coin added mid-hour gets its hourly Coinalyze
+data in the same cycle, so Alert (which needs the hourly model) works right away. A coin enters the auto-list when
+
+- **liquidity**: 24h turnover ≥ `min_turnover` and open interest ≤ `max_oi` (large caps are out of scope), and
+- **waking up**: the last 4 hours of volume are ≥ `vol_x` × the 7-day median of 4-hour volume while price is not
+  falling, **or** open interest is up ≥ `oi_pct` % and price ≥ `price_pct` % over 4 hours.
+
+**Cycle order (latency).** Each 15-minute cycle first scores the list (15m data → 15m model), then onboards new
+tickers, then — once an hour — collects hourly Coinalyze data, starting with tickers whose 15m model is above its
+threshold so that their hourly confirmation (needed for Alert) is ready in ~1–2 minutes instead of after the whole
+list (~23 calls per ticker at 40 per minute). The market scan runs last; coins it adds are onboarded at once
+(hourly data, both models). A Candidate therefore appears ~3–5 minutes after the 15m bar closes.
+
+**Training tickers outside the list.** Every 3 hours the screener also refreshes 15m/5m exchange data (Binance, Bybit,
+OKX) and 15m liquidations for `tickers.txt` coins that are not in the list. They are not scored; the point is history
+that the sources do not keep for long (OKX open interest ~14 days, Coinalyze 15m liquidations 1–2 months), so that
+OKX can later be tested as a model input.
+
+The filter is deliberately looser than the model: its job is not to miss a pump; the model decides whether it is one.
+An auto coin stays `ttl_hours` (48) after its last trigger or model signal, at most `max_auto` (30) coins. Alerts,
+not list entries, trigger notifications.
+
+Presets on the 56 labeled pumps (`python scanner.py --recall`, hourly data from the database, same 4-hour windows; "on time" = the coin
+would have been in the list before the impulse started):
+
+| Preset | Turnover ≥ | Volume × / OI % / price % | On time | Only during | Never |
+|---|---|---|---|---|---|
+| Strict | 30 M$ | 4 / 15 / 3 | 24 | 20 | 12 |
+| Balance | 20 M$ | 3 / 10 / 2 | 30 | 17 | 9 |
+| Wide | 5 M$ | 2 / 6 / 1 | 47 | 9 | 0 |
+
+The turnover floor costs most: many targets are quiet small coins until the pump starts (10 M$ with the Balance
+triggers gives 37/56). At the first live scan the presets passed 3 / 5 / 9 coins.
+
+The dashboard's **Сканер** card previews any preset against the last scan before saving, lists the auto coins,
+and adds a coin by hand (**＋ у watchlist**: validated against Binance, written to `watchlist.txt`, data fetched at once).
+
+**Ticker context in the dashboard.** The metrics card shows which share of the ticker's open interest the model sees
+(30-day average over all exchanges from Coinalyze; the 15m model uses Binance and Bybit only) as a bar per exchange,
+amber below 70%. A card under the position summarises the model's closed trades on this ticker over everything it
+has scored (including the history scored when the ticker joined the list), flagged when the ticker is in training.
+
+**History versus live on the chart.** Trade marks from scores computed after the fact (history scored when a coin
+joins the list) are dimmed and tagged "іст."; live ones are bright. For auto coins a blue "сканер" mark shows when the
+scanner, with the current thresholds, would have added the coin had it been running all along
+(`scanner.entries_on_history`, the same rule vectorised over Binance 15m data).
+
 **Capacity.** Coinalyze allows 40 symbol-requests per minute. A ticker has about 3 exchange contracts and
 5 series, so roughly 15 calls. Around 100 tickers fit into an hourly cycle. A coin needs 7 days of
 history before it can be scored, because the baseline windows are 7 days.

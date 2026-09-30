@@ -30,6 +30,7 @@ import psycopg
 from dotenv import load_dotenv
 
 import fetch_exchange
+import scanner
 from features import build, build_15m
 from fetch import Coinalyze, collect, collect_liquidations, read_tickers_file
 from train import M15_NAME, PROBA_MODELS, load_model, model_path
@@ -45,6 +46,8 @@ BACKFILL_15M = 7 * 24 * 4       # скільки 15m-барів історії �
 INTRADAY_DAYS = 10              # новому тікеру — 10 днів 15m-історії (тижневі вікна ознак + запас)
 INTRADAY_TAIL_DAYS = 0.25       # мінімальний хвіст — 6 годин (upsert, дублікатів немає)
 MAX_GAP_DAYS = 29               # найдовший пропуск, який дозаповнюємо (історія OI Binance — 30 днів)
+BACKGROUND_HOURS = 3             # тікери навчання поза списком: історія бірж (з OKX) раз на 3 год
+NO_COINALYZE: set[str] = set()   # тікери, яких Coinalyze не має (годинних даних не буде)
 
 
 def load_models() -> list[dict]:
@@ -157,13 +160,42 @@ def write_status(**fields) -> None:
         json.dump({"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), **fields}, f, ensure_ascii=False)
 
 
+def onboard(conn, client: Coinalyze, bases: list[str], models: list[dict], m15: dict | None, all15: bool = False) -> list[str]:
+    """Нові тікери (сканер, «＋ у watchlist»): годинні дані Coinalyze (заодно заводять біржові контракти в markets —
+    без них 15m-дані з бірж не завантажаться), годинна оцінка, 15m-дані й 15m-оцінка — одразу, не чекаючи
+    годинної частини циклу, інакше до кінця години є лише «Кандидат» без Alert.
+    «Новий» = годинних даних немає або вони старші за 2 год (напр., тікер колись вантажили в розмітці)."""
+    cutoff = pd.Timestamp(datetime.now(timezone.utc)).floor("h") - pd.Timedelta(hours=2)
+    sql = """SELECT m.base_asset FROM ohlcv o JOIN markets m USING (symbol)
+             WHERE o.interval = '1hour' AND m.base_asset = ANY(%s) GROUP BY 1 HAVING max(o.ts) >= %s"""
+    have = {r[0] for r in conn.execute(sql, (bases, cutoff))}
+    fresh = [b for b in bases if b not in have and b not in NO_COINALYZE]
+    if all15 and m15 is not None and not fresh:      # від сканера: годинні дані свіжі, але 15m ще не рахували
+        update_15m(conn, client, bases)
+        score_15m(conn, bases, m15)
+    if not fresh:
+        return []
+    collect(client, conn, fresh, FETCH_DAYS, verbose=False)
+    got = {r[0] for r in conn.execute(sql, (fresh, cutoff))}
+    NO_COINALYZE.update(set(fresh) - got)     # не знайдено в Coinalyze — не питати щоциклу (до перезапуску)
+    fresh = [b for b in fresh if b in got]
+    if fresh:
+        score_bases(conn, fresh, models)
+        if m15 is not None:
+            b15 = bases if all15 else fresh
+            update_15m(conn, client, b15)
+            score_15m(conn, b15, m15)
+        print(f"  нові тікери: дані й оцінки — {', '.join(fresh)}")
+    return fresh
+
+
 def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: Coinalyze | None,
               m15: dict | None = None, hourly: bool = True) -> None:
     started = datetime.now(timezone.utc)
     calls0, limited0 = (client.calls_made, client.rate_limited) if client else (0, 0)
     print(f"\n[{started:%Y-%m-%d %H:%M} UTC] цикл: {len(bases)} тікерів" + ("" if hourly else " (15m)"))
 
-    info15 = {}
+    info15, hot = {}, []
     if m15 is not None:
         if fetch:
             update_15m(conn, client, bases)
@@ -172,8 +204,13 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
         info15 = {"last_closed_15m": last15.isoformat(), "scored_15m": int(latest15["base_asset"].nunique()),
                   "missing_15m": sorted(set(bases) - set(latest15["base_asset"])) if len(s15) else bases}
         hot = latest15[latest15["signal"]]["base_asset"].tolist() if len(latest15) else []
+        try:
+            scanner.touch(hot)            # авто-тікер із сигналом моделі не випадає зі списку
+        except Exception as e:
+            print(f"  ! авто-список: {e}")
         print(f"  15m: бар {last15:%H:%M} UTC, оцінено {info15['scored_15m']} тікерів"
               + (f"; вище порогу: {', '.join(hot)}" if hot else ""))
+    fresh = onboard(conn, client, bases, models, m15) if fetch and client is not None else []
     if not hourly:
         prev = screener_status_file()
         write_status(**{**prev, **info15, "ok": True, "cycle_15m_at": started.isoformat(timespec="seconds"),
@@ -185,7 +222,17 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
         last1h = conn.execute("""SELECT min(t) FROM (SELECT m.base_asset, max(o.ts) AS t FROM ohlcv o JOIN markets m USING (symbol)
                                  WHERE o.interval = '1hour' AND m.base_asset = ANY(%s) GROUP BY 1) x""", (bases,)).fetchone()[0]
         gap = (pd.Timestamp(started) - pd.Timestamp(last1h)) / pd.Timedelta(days=1) if last1h else 0
-        collect(client, conn, bases, int(min(60, max(FETCH_DAYS, np.ceil(gap) + 1))), verbose=False)
+        days = int(min(60, max(FETCH_DAYS, np.ceil(gap) + 1)))
+        # спершу тікери, де горить 15m-«Кандидат»: їм годинна оцінка потрібна для Alert — вона буде за ~1–2 хв
+        # після старту циклу, а не після збору всього списку (Coinalyze: ~23 виклики на тікер, 40 на хвилину)
+        first = [b for b in hot if b not in fresh]
+        if first:
+            collect(client, conn, first, days, verbose=False)
+            score_bases(conn, first, models)
+            print(f"  годинна оцінка першими для гарячих: {', '.join(first)}")
+        rest = [b for b in bases if b not in fresh and b not in first]     # нові вже зібрано в onboard()
+        if rest:
+            collect(client, conn, rest, days, verbose=False)
         print(f"  дані оновлено за {(datetime.now(timezone.utc) - started).seconds} с")
     scored, last_closed = score_bases(conn, bases, models)
     print(f"  остання закрита година: {last_closed:%m-%d %H:%M} UTC")
@@ -242,20 +289,30 @@ def next_hourly(now: datetime) -> datetime:
     return nxt if nxt > now else nxt + timedelta(hours=1)
 
 
+def watch_bases() -> list[str]:
+    return [t.upper() for t in read_tickers_file(WATCHLIST_FILE)]
+
+
+def cycle_bases() -> list[str]:
+    """Твій watchlist.txt + авто-список сканера (reports/auto_watchlist.json), без повторів."""
+    manual = watch_bases()
+    return manual + sorted(b for b in scanner.active_auto() if b not in set(manual))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Скринер пампів: 15m-цикл і годинний")
     parser.add_argument("--loop", action="store_true",
                         help="працювати безперервно: кожні 15 хв (HH:02/17/32/47 UTC), годинні моделі — раз на годину")
     parser.add_argument("--no-fetch", action="store_true", help="не збирати дані, оцінити наявні")
+    parser.add_argument("--no-scan", action="store_true", help="не запускати сканер ринку (лише watchlist.txt і вже наявний авто-список)")
     args = parser.parse_args()
 
     load_dotenv()
     api_key, db_url = os.getenv("COINALYZE_API_KEY"), os.getenv("DATABASE_URL")
     if not db_url or (not api_key and not args.no_fetch):
         sys.exit("Заповни COINALYZE_API_KEY і DATABASE_URL у файлі .env")
-    bases = [t.upper() for t in read_tickers_file(WATCHLIST_FILE)]
-    if not bases:
-        sys.exit(f"Додай тікери в {WATCHLIST_FILE} (один на рядок)")
+    if not watch_bases() and not scanner.load_config()["enabled"]:
+        sys.exit(f"Додай тікери в {WATCHLIST_FILE} (один на рядок) або ввімкни сканер ринку")
 
     models, m15 = load_models(), load_model_15m()
     for m in models + ([m15] if m15 else []):
@@ -265,15 +322,39 @@ def main() -> None:
         print("15m-моделі немає (python train.py) — працює лише годинний контур")
     client = None if args.no_fetch else Coinalyze(api_key)
 
-    last_hour = None
+    last_hour, last_bg = None, None
     while True:
         hour = pd.Timestamp(datetime.now(timezone.utc)).floor("h")
         hourly = hour != last_hour          # перший цикл нової години (або перший запуск) — ще й годинний
+        bases = cycle_bases()               # watchlist перечитується щоциклу: новий тікер — без перезапуску
         try:
             with psycopg.connect(db_url) as conn:
                 run_cycle(conn, bases, models, not args.no_fetch, client, m15, hourly)
-            if hourly:
-                last_hour = hour
+                if hourly:
+                    last_hour = hour
+                # сканер ринку — ПІСЛЯ оцінки (сигнали по списку не чекають ~50 с скану); нові тікери — одразу в роботу
+                if not args.no_fetch and not args.no_scan and m15 is not None:
+                    try:
+                        before = set(bases)
+                        scanner.apply(scanner.scan(), set(watch_bases()))
+                        new = [b for b in cycle_bases() if b not in before]
+                        if new:
+                            onboard(conn, client, new, models, m15, all15=True)
+                    except Exception as e:
+                        print(f"  ! сканер ринку: {e}")
+                # тікери навчання, яких немає в списку: 15m/5m з бірж (включно з OKX) і 15m-ліквідації — щоб
+                # історія накопичувалась (OKX тримає OI лише ~14 днів, Coinalyze 15m-ліквідації — 1–2 міс.)
+                # і згодом було на чому навчити модель з OKX. Моделлю не оцінюються.
+                now_bg = datetime.now(timezone.utc)
+                if not args.no_fetch and (last_bg is None or now_bg - last_bg >= timedelta(hours=BACKGROUND_HOURS)):
+                    bg = [t.upper() for t in read_tickers_file("tickers.txt") if t.upper() not in set(cycle_bases())]
+                    try:
+                        if bg:
+                            update_15m(conn, client, bg, log=lambda m: None)
+                            print(f"  історія бірж для тікерів навчання поза списком: {len(bg)}")
+                        last_bg = now_bg
+                    except Exception as e:
+                        print(f"  ! історія тікерів навчання: {e}")
         except Exception as e:  # у режимі --loop одна невдала година не має зупиняти скринер
             write_status(ok=False, error=f"{type(e).__name__}: {e}")
             if not args.loop:
