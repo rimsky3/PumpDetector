@@ -219,6 +219,49 @@ bars cannot earn more credit, and 5m is noisier. **15m is the sweet spot.** Cave
 move by a bar or two between runs (the two 1h reruns differ slightly), and there are no fees or slippage.
 Hour-level labels are a ceiling: labeling starts to the 15 minutes would let finer models show more.
 
+## Experiment: 15-minute model on impulse labels
+
+After relabeling on 5m (2026-09-30) a pump is the **impulse phase**: median length 4 hours instead of 13. The
+hourly model is too slow for that (F1 0.49, first signal ~95 minutes after the start). `python
+experiments/m15_model.py` → `reports/experiment_m15_model.md`: 14 tickers, 49 pumps, 15m bars from the database
+(exchange candles/OI + Coinalyze 15m liquidations, known on 99% of bars), leave-ticker-out, LightGBM:
+
+| Variant | Caught | Delay, min | Move gone | False starts hit | False alarms / 30 d | PR-AUC |
+|---|---|---|---|---|---|---|
+| 1h, current features | 45/49 | 95 | 42% | 4/19 | 4.1 | 0.45 |
+| 15m base (no liquidations) | 46/49 | 30 | 21% | 12/19 | 6.3 | 0.44 |
+| 15m + liquidations | 44/49 | 27.5 | 22% | 12/19 | 5.8 | 0.46 |
+| 15m + short features | 48/49 | 27.5 | 21% | 12/19 | 6.3 | 0.45 |
+| 15m + liquidations + short | 47/49 | 25 | 22% | 11/19 | 5.3 | 0.47 |
+
+On hourly bars 15m seems to cut the delay by ~70 minutes, but that overstates it (see the next section: measured on a
+common 15m grid the gap is ~15 minutes). Liquidations and short
+features help only a little (false alarms 6.3 → 5.3); the model still leans on day-scale features (`oi_chg_24h`
+~49% of gain, `ret_24h` ~12%). The cost of speed is false starts: 11–12 of 19 trigger a 15m signal against 4 on 1h.
+Detecting earlier means deciding with less information. Logistic regression is clearly worse on 15m.
+
+## Experiment: two-tier signal (15m candidate, hourly confirmation)
+
+`python experiments/two_tier.py` → `reports/experiment_two_tier.md`. Out-of-fold LightGBM scores of both models on
+a **common 15m grid**: each 15m bar gets the hourly score of the last hourly bar closed by its close.
+
+**Correction.** Earlier comparisons measured the hourly model's delay on hourly bars and ignored a signal from the
+hour *before* a mid-hour start, although a trader sees it during the pump. On the common grid the hourly model's
+median delay is 45 minutes, not 95, and 15m is ahead by ~15 minutes, not ~70.
+
+| Rule | Caught | Delay, min | Move gone | False starts hit | False alarms / 30 d |
+|---|---|---|---|---|---|
+| 1h only | 44/49 | 45 | 29% | 8/19 | 4.3 |
+| 15m only | 47/49 | 30 | 22% | 12/19 | 5.6 |
+| 15m and 1h ≥ 0.5 × threshold | 47/49 | 45 | 26% | 8/19 | 4.5 |
+| **15m and 1h ≥ 0.75 × threshold** | **47/49** | 50 | 26% | **8/19** | **3.8** |
+| 15m and 1h ≥ threshold within 4 h | 44/49 | 55 | 32% | 7/19 | 2.8 |
+
+The combination catches as many pumps as 15m, hits as few false starts as 1h and has the fewest false alarms among
+rules that catch 47. **Adopted design:** 15m alone = *Candidate* (earliest, noisy: the trader filters it in the order
+book), 15m confirmed by the hourly model at ≥ 0.75 of its threshold = *Alert*. With 49 pumps the exact thresholds are
+provisional; the forward test will tune them.
+
 ## Next steps
 
 - More labeled tickers, which is the main lever.

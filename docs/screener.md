@@ -1,15 +1,26 @@
 # Screener and dashboard
 
-A working skeleton of the live product: an hourly screener that scores a watchlist with the trained models,
-and a dashboard with two screens, Forecast and Screener, built from the "Pump Detector App" design mockup.
+The live product: a screener that scores a watchlist every 15 minutes and a dashboard with two screens, Forecast
+and Journal, built from the "Pump Detector App" design mockup.
+
+**Two signal tiers** (since 2026-09-30, see [modeling.md](modeling.md#experiment-two-tier-signal-15m-candidate-hourly-confirmation)):
+
+| Tier | Rule | Meaning |
+|---|---|---|
+| **Candidate** | 15m model ≥ its threshold | earliest (~30 min after the start), noisy: reacts to ~⅔ of false starts. Check the order book. |
+| **Alert** | Candidate and the hourly LightGBM ≥ 0.75 × its threshold (last closed hour) | same pumps caught, false starts and false alarms as low as the hourly model |
 
 ```
-train.py ──saves──▶ models/logreg.joblib, models/lightgbm.joblib   (model + threshold + feature list)
+train.py ──saves──▶ models/logreg.joblib, models/lightgbm.joblib        hourly models
+                    models/lightgbm_15m.joblib                          15m model + confirm rule + 15m stop
 
-screener.py, every hour at HH:05 UTC:
-    fetch the last 10 days for watchlist.txt  →  features.build()  →  both models  →  signals table
+screener.py, every 15 minutes (HH:02/17/32/47 UTC):
+    15m bars from Binance/Bybit + 15m liquidations from Coinalyze → features.build_15m() → 15m model → signals
+    once an hour, also: Coinalyze 1h for the last 10 days → features.build() → hourly models → signals
 
-dashboard.py + app/dashboard.html:  signals + raw series + risk  →  dashboard
+tiers.py (at read time): 15m score + last closed hourly score → Candidate / Alert
+
+dashboard.py + app/dashboard.html:  signals + raw series + tiers + risk  →  dashboard
 ```
 
 ## Running it
@@ -17,7 +28,7 @@ dashboard.py + app/dashboard.html:  signals + raw series + risk  →  dashboard
 ```bash
 python train.py                        # trains, validates and saves models/ (needed once, then after changes)
 python screener.py                     # one cycle
-python screener.py --loop              # keep running, one cycle per hour
+python screener.py --loop              # keep running: 15m cycle every 15 minutes, hourly models once an hour
 python screener.py --no-fetch          # score data already in the database, no API calls
 python dashboard.py                    # dashboard at http://127.0.0.1:8766
 ```
@@ -85,7 +96,7 @@ with a short explanation.
   Apache 2.0, local copy in `app/vendor/`): candles with signal zones, entry and exit markers of every
   simulated trade, stop and trailing lines, OI candles (in coins by default, USD on a toggle), volume and the
   hourly probability with the threshold;
-- *right*: the watchlist like a trading terminal — search, **Прогнозувати**, filters (all / Alert /
+- *right*: the watchlist like a trading terminal — search, **Refresh**, filters (all / Alert /
   candidates / ★ favourites), sorting by probability, OI change over 24 h or price change over 24 h, a 24-hour
   probability sparkline per ticker, and the latest signal episodes.
 
@@ -135,6 +146,24 @@ peak 18.8 ATR.
 
 A "trade" on the dashboard starts at the first hour with probability ≥ threshold and ends by the exit rule.
 It is a simulation to judge the model, not trading advice.
+
+## 15m tier details
+
+- **Data per 15m cycle:** a new watchlist coin gets 10 days of 15m history, the rest a 6-hour tail (upserts). Funding
+  is always fetched with 2 days of lookback so the last paid rate is known.
+- **Coinalyze budget:** hourly collection ~15 calls per ticker once an hour, 15m liquidations ~3 per ticker every
+  15 minutes: about 300 calls an hour for 13 tickers out of 2,400.
+- **Hourly context** for a 15m bar is the score of the last hour closed by the bar's close (13:30–13:45 → the 12:00
+  hour), so nothing from the future. Tiers are computed when read, so the order of the 15m and hourly parts
+  inside one cycle does not matter.
+- **Risk on 15m:** stop = entry − k·ATR(14 bars of 15m), k from 15m MAE of labeled pumps (~1.2); trailing 1.5 ATR;
+  exit when the Alert is gone for 4 bars (1 hour).
+- **Chart timeframe 5m / 15m / 1h** is independent of the model: on a coarser chart a bar shows the highest score
+  and tier inside it (an Alert within the hour is not lost), on a finer chart the last score known at the bar's
+  close. Positions are computed on the model's own bars; entry/exit marks go to the chart bar that closes with them.
+  The screener refreshes a 5m tail for this (no liquidations: the model does not use 5m).
+- **Journal:** `15m + 1h` rows are Alert trades, `15m кандидат` rows are Candidate trades, both on 15m bars.
+  Hourly LightGBM and logistic regression stay selectable for comparison.
 
 ## Next steps
 

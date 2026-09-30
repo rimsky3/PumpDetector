@@ -6,11 +6,14 @@ a marked interval becomes a positive example. Boundaries are moments in time, no
 
 ## What counts as a pump
 
-- **Start:** open interest begins to rise steadily above its normal level. A long preparatory phase is
-  not required.
-- **End:** the sharp drop in open interest after the price peak. The bar of the collapse is the last bar.
-- **Pump (`pump`):** the move develops, with strong growth in both OI and price (typically tens to
-  hundreds of percent).
+A pump is the **impulse phase**: the few hours when open interest and price accelerate together, up to the
+collapse of OI. Not the whole accumulation before it and not the drift after it. Since 2026-09-30 all tickers are
+labeled this way on 5m/15m charts (median pump length about 4 hours, before that about 13 hours of hourly bars).
+
+- **Start:** the bar where OI and price start accelerating together, set on 5m or 15m where it is visible.
+- **End:** the sharp drop in open interest after the price peak; the collapse bar is the last bar.
+- **Pump (`pump`):** the impulse develops, with strong growth in both OI and price (typically tens to
+  hundreds of percent). Two impulses separated by a pullback are two pumps.
 - **False start (`false_start`):** looks like the beginning of a pump (OI and/or price jump) but does not
   develop. These are valuable negative examples: they teach the model not to react to every spike.
 - **Other (`other`):** anything worth recording that fits neither type.

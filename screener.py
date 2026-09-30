@@ -1,17 +1,20 @@
 """
-screener.py — щогодинний скринер пампів.
+screener.py — скринер пампів для тікерів з watchlist.txt, цикл кожні 15 хвилин.
 
-Цикл:
-    1. збір свіжих даних Coinalyze для тікерів з watchlist.txt (останні 10 днів — вистачає на вікна ознак)
-    2. ознаки через features.build() — той самий код, що й для навчання
-    3. ймовірність пампу від кожної збереженої моделі (models/*.joblib, пише train.py)
-    4. запис у таблицю signals і короткий звіт у консоль
+Кожні 15 хв (о HH:02, :17, :32, :47 UTC — 15m-бар щойно закрився):
+    1. 15m-дані з Binance і Bybit (fetch_exchange.collect) і 15m-ліквідації з Coinalyze
+    2. ознаки features.build_15m() → 15m-модель (models/lightgbm_15m.joblib) → таблиця signals
+Раз на годину (перший цикл нової години) — як і раніше:
+    3. 1h-дані Coinalyze (останні 10 днів) → features.build() → годинні моделі → signals
 
-    python screener.py              # один цикл
-    python screener.py --loop       # щогодини о HH:05 UTC (бар щойно закрився і з'явився в Coinalyze)
+Рівні сигналу рахуються з цих оцінок при читанні (tiers.py): «Кандидат» — 15m-модель вище порогу,
+«Alert» — плюс годинний LightGBM ≥ 0.75 свого порогу.
+
+    python screener.py              # один цикл (і годинний, і 15m)
+    python screener.py --loop       # безперервно, кожні 15 хв
     python screener.py --no-fetch   # без збору даних: оцінити те, що вже є в базі
 
-Ліміт Coinalyze — 40 символів на хвилину, тож цикл по ~100 тікерах триває кілька хвилин.
+Ліміт Coinalyze — 40 символів на хвилину: годинний збір ~15 викликів на тікер, 15m-ліквідації ~3 на тікер.
 """
 
 import argparse
@@ -25,18 +28,25 @@ import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
-from features import build
-from fetch import Coinalyze, collect, read_tickers_file
-from train import PROBA_MODELS, load_model, model_path
+import fetch_exchange
+from features import build, build_15m
+from fetch import Coinalyze, collect, collect_liquidations, read_tickers_file
+from train import M15_NAME, PROBA_MODELS, load_model, model_path
 
 WATCHLIST_FILE = "watchlist.txt"
 STATUS_FILE = os.path.join("reports", "screener_status.json")   # читає дашборд, блок «Стан системи»
 FETCH_DAYS = 10          # 7 днів базового вікна + доба + запас
 BACKFILL_HOURS = 7 * 24  # скільки годин історії оцінювати, якщо їх ще немає в signals
-RUN_MINUTE = 5           # хвилина кожної години, коли запускати цикл
+RUN_MINUTE = 5           # (застаріле) хвилина годинного циклу — лишено для сумісності
+RUN_MINUTES = (2, 17, 32, 47)   # 15m-цикл: бар закрився ~2 хв тому, біржі й Coinalyze його вже віддають
+BAR_15M = pd.Timedelta(minutes=15)
+BACKFILL_15M = 7 * 24 * 4       # скільки 15m-барів історії оцінювати, якщо їх ще немає в signals
+INTRADAY_DAYS = 10              # новому тікеру — 10 днів 15m-історії (тижневі вікна ознак + запас)
+INTRADAY_TAIL_DAYS = 0.25       # решті — останні 6 годин (upsert, дублікатів немає)
 
 
 def load_models() -> list[dict]:
+    """Годинні моделі (logreg, lightgbm)."""
     models = []
     for name in PROBA_MODELS:
         if os.path.exists(model_path(name)):
@@ -44,6 +54,47 @@ def load_models() -> list[dict]:
     if not models:
         sys.exit("Немає збережених моделей у models/ — спершу python train.py")
     return models
+
+
+def load_model_15m() -> dict | None:
+    """15m-модель (None, якщо ще не навчена: тоді працює лише годинний контур)."""
+    return load_model(M15_NAME) if os.path.exists(model_path(M15_NAME)) else None
+
+
+def last_closed_15m(now: datetime | None = None) -> pd.Timestamp:
+    now = pd.Timestamp(now or datetime.now(timezone.utc))
+    return now.floor("15min") - BAR_15M
+
+
+def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print) -> None:
+    """Свіжі 15m/5m-дані з бірж і 15m-ліквідації з Coinalyze. Новому тікеру — 10 днів, решті — хвіст 6 год.
+    5m моделі не потрібен — лише перемикачу таймфрейму на графіку дашборда."""
+    have = dict(conn.execute("""
+        SELECT m.base_asset, max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
+        WHERE o.interval = '15min' AND m.base_asset = ANY(%s) GROUP BY 1""", (bases,)).fetchall())
+    stale = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=1)
+    full = [b for b in bases if b not in have or pd.Timestamp(have[b]) < stale]
+    tail = [b for b in bases if b not in full]
+    quiet = lambda m: log(m) if "помилка" in m else None  # noqa: E731
+    for group, days in ((full, INTRADAY_DAYS), (tail, INTRADAY_TAIL_DAYS)):
+        if not group:
+            continue
+        fetch_exchange.collect(conn, group, ["15m", "5m"], days, log=quiet)   # 5m — лише для графіка дашборда
+        if client is not None:
+            collect_liquidations(client, conn, group, ["15m"], days, log=lambda m: None)
+
+
+def score_15m(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, pd.Timestamp]:
+    """15m-ознаки → ймовірність 15m-моделі → signals. Спільне для скринера і кнопки «Прогнозувати»."""
+    last = last_closed_15m()
+    # тижневі вікна ознак «з'їдають» 7 днів історії: щоб оцінити BACKFILL_15M барів, беремо їх + 8 днів
+    df = build_15m(conn, bases, None, since=last - BACKFILL_15M * BAR_15M - pd.Timedelta(days=8))
+    if df.empty:
+        return pd.DataFrame(), last
+    df = df[(df["ts"] > last - BACKFILL_15M * BAR_15M) & (df["ts"] <= last)]
+    scored = score(df, [m15])
+    save_signals(conn, scored, last)
+    return scored, last
 
 
 def score(df: pd.DataFrame, models: list[dict]) -> pd.DataFrame:
@@ -97,10 +148,28 @@ def write_status(**fields) -> None:
         json.dump({"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), **fields}, f, ensure_ascii=False)
 
 
-def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: Coinalyze | None) -> None:
+def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: Coinalyze | None,
+              m15: dict | None = None, hourly: bool = True) -> None:
     started = datetime.now(timezone.utc)
     calls0, limited0 = (client.calls_made, client.rate_limited) if client else (0, 0)
-    print(f"\n[{started:%Y-%m-%d %H:%M} UTC] цикл: {len(bases)} тікерів")
+    print(f"\n[{started:%Y-%m-%d %H:%M} UTC] цикл: {len(bases)} тікерів" + ("" if hourly else " (15m)"))
+
+    info15 = {}
+    if m15 is not None:
+        if fetch:
+            update_15m(conn, client, bases)
+        s15, last15 = score_15m(conn, bases, m15)
+        latest15 = s15[s15["ts"] == last15] if len(s15) else s15
+        info15 = {"last_closed_15m": last15.isoformat(), "scored_15m": int(latest15["base_asset"].nunique()),
+                  "missing_15m": sorted(set(bases) - set(latest15["base_asset"])) if len(s15) else bases}
+        hot = latest15[latest15["signal"]]["base_asset"].tolist() if len(latest15) else []
+        print(f"  15m: бар {last15:%H:%M} UTC, оцінено {info15['scored_15m']} тікерів"
+              + (f"; вище порогу: {', '.join(hot)}" if hot else ""))
+    if not hourly:
+        prev = screener_status_file()
+        write_status(**{**prev, **info15, "ok": True, "cycle_15m_at": started.isoformat(timespec="seconds"),
+                        "api_calls_15m": (client.calls_made - calls0) if client else 0})
+        return
 
     if fetch:
         collect(client, conn, bases, FETCH_DAYS, verbose=False)
@@ -133,12 +202,37 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
                  seconds=int((datetime.now(timezone.utc) - started).total_seconds()),
                  tickers=len(bases), scored=len(table), stale=list(stale.index), missing=missing,
                  api_calls=(client.calls_made - calls0) if client else 0,
-                 api_429=(client.rate_limited - limited0) if client else 0, fetched=fetch)
+                 api_429=(client.rate_limited - limited0) if client else 0, fetched=fetch,
+                 cycle_15m_at=started.isoformat(timespec="seconds") if m15 is not None else None, **info15)
+
+
+def screener_status_file() -> dict:
+    try:
+        with open(STATUS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def next_run(now: datetime) -> datetime:
+    """Найближчий момент циклу: HH:02, :17, :32, :47."""
+    base = now.replace(second=0, microsecond=0)
+    for m in RUN_MINUTES:
+        t = base.replace(minute=m)
+        if t > now:
+            return t
+    return base.replace(minute=RUN_MINUTES[0]) + timedelta(hours=1)
+
+
+def next_hourly(now: datetime) -> datetime:
+    nxt = now.replace(minute=RUN_MINUTE, second=0, microsecond=0)
+    return nxt if nxt > now else nxt + timedelta(hours=1)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Щогодинний скринер пампів")
-    parser.add_argument("--loop", action="store_true", help=f"працювати безперервно, щогодини о HH:{RUN_MINUTE:02d} UTC")
+    parser = argparse.ArgumentParser(description="Скринер пампів: 15m-цикл і годинний")
+    parser.add_argument("--loop", action="store_true",
+                        help="працювати безперервно: кожні 15 хв (HH:02/17/32/47 UTC), годинні моделі — раз на годину")
     parser.add_argument("--no-fetch", action="store_true", help="не збирати дані, оцінити наявні")
     args = parser.parse_args()
 
@@ -150,16 +244,23 @@ def main() -> None:
     if not bases:
         sys.exit(f"Додай тікери в {WATCHLIST_FILE} (один на рядок)")
 
-    models = load_models()
-    for m in models:
+    models, m15 = load_models(), load_model_15m()
+    for m in models + ([m15] if m15 else []):
         print(f"Модель {m['name']}: навчена {m['trained_at']}, поріг {m['threshold']:.3f}, "
               f"{m['pump_intervals']} пампів на {len(m['tickers'])} тікерах")
+    if m15 is None:
+        print("15m-моделі немає (python train.py) — працює лише годинний контур")
     client = None if args.no_fetch else Coinalyze(api_key)
 
+    last_hour = None
     while True:
+        hour = pd.Timestamp(datetime.now(timezone.utc)).floor("h")
+        hourly = hour != last_hour          # перший цикл нової години (або перший запуск) — ще й годинний
         try:
             with psycopg.connect(db_url) as conn:
-                run_cycle(conn, bases, models, not args.no_fetch, client)
+                run_cycle(conn, bases, models, not args.no_fetch, client, m15, hourly)
+            if hourly:
+                last_hour = hour
         except Exception as e:  # у режимі --loop одна невдала година не має зупиняти скринер
             write_status(ok=False, error=f"{type(e).__name__}: {e}")
             if not args.loop:
@@ -168,9 +269,7 @@ def main() -> None:
         if not args.loop:
             break
         now = datetime.now(timezone.utc)
-        nxt = now.replace(minute=RUN_MINUTE, second=0, microsecond=0)
-        if nxt <= now:
-            nxt += timedelta(hours=1)
+        nxt = next_run(now) if m15 is not None else next_hourly(now)
         print(f"  наступний цикл о {nxt:%H:%M} UTC")
         time.sleep((nxt - now).total_seconds())
 

@@ -61,6 +61,13 @@ CREATE TABLE IF NOT EXISTS long_short_ratio (
     PRIMARY KEY (symbol, interval, ts)
 );
 
+-- З якого моменту внутрішньогодинні ліквідації (15min / 5min) повні: раніше — «невідомо», а не 0.
+-- Coinalyze тримає обмежену кількість непорожніх точок, тож covered_from = перша віддана точка (fetch.collect_liquidations).
+CREATE TABLE IF NOT EXISTS liquidation_coverage (
+    symbol TEXT REFERENCES markets(symbol), interval TEXT NOT NULL, covered_from TIMESTAMPTZ NOT NULL,
+    PRIMARY KEY (symbol, interval)
+);
+
 -- Ручна розмітка пампів (завантажується з pumps.csv). Усі часи в UTC.
 CREATE TABLE IF NOT EXISTS pumps (
     id           SERIAL PRIMARY KEY,

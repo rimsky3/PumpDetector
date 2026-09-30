@@ -61,6 +61,12 @@ FEATURES = [
 OI_COIN_FEATURES = ["oi_coin_chg_1h", "oi_coin_chg_4h", "oi_coin_chg_24h", "oi_coin_z_24h", "oi_coin_z_7d"]
 ALL_FEATURES = FEATURES + [f for f in OI_COIN_FEATURES if f not in FEATURES]
 
+# 15m-модель: ті самі FEATURES (вікна за часом — «24h» = доба) + короткі ознаки бару (experiments/m15_model.py)
+INTERVAL_15M = "15min"
+SHORT_FEATURES = ["ret_bar", "ret_2bar", "oi_chg_bar", "oi_chg_2bar", "oi_accel_1h", "ret_accel_1h",
+                  "vol_burst", "buy_ratio_bar", "range_bar", "liq_long_1h_oi", "liq_short_1h_oi"]
+FEATURES_15M = FEATURES + SHORT_FEATURES
+
 
 # ---------------------------------------------------------------- завантаження
 
@@ -72,25 +78,33 @@ def query_df(conn, sql: str, params=()) -> pd.DataFrame:
     return df
 
 
-def load_raw(conn, bases: list[str] | None = None) -> dict[str, pd.DataFrame]:
-    """Сирі ряди з назвою тікера і біржі в кожному рядку."""
+def load_raw(conn, bases: list[str] | None = None, interval: str = INTERVAL, since=None) -> dict[str, pd.DataFrame]:
+    """Сирі ряди з назвою тікера і біржі в кожному рядку. interval: '1hour' (Coinalyze) або '15min' / '5min'
+    (біржі напряму + ліквідації Coinalyze; тоді ще й liq_coverage — з якого моменту ліквідації ринку повні)."""
     cond = "t.interval = %s" + (" AND m.base_asset = ANY(%s)" if bases else "")
-    params = (INTERVAL, bases) if bases else (INTERVAL,)
+    params = (interval, bases) if bases else (interval,)
+    tcond, tparams = (cond + " AND t.ts >= %s", params + (since,)) if since is not None else (cond, params)
 
     def q(table: str, cols: str) -> pd.DataFrame:
         # market — конкретний контракт (на одній біржі їх буває кілька: USDT і USDC)
         return query_df(conn, f"""
             SELECT m.base_asset, t.symbol AS market, m.exchange_name AS exchange, m.quote_asset, t.ts, {cols}
             FROM {table} t JOIN markets m USING (symbol)
-            WHERE {cond}""", params)
+            WHERE {tcond}""", tparams)
 
-    return {
+    raw = {
         "ohlcv": q("ohlcv", "t.o, t.h, t.l, t.c, t.v, t.bv, m.volume_denominated"),
         "oi": q("open_interest", "t.o, t.h, t.l, t.c"),
         "funding": q("funding_rate", "t.c"),
         "liq": q("liquidations", "t.long_liq, t.short_liq"),
         "ls": q("long_short_ratio", "t.long_pct"),
     }
+    if interval != INTERVAL:
+        # внутрішньогодинні ліквідації Coinalyze тримає обмежено: до covered_from «рядка немає» ≠ «0 ліквідацій»
+        raw["liq_coverage"] = query_df(conn, f"""
+            SELECT m.base_asset, t.symbol AS market, t.covered_from FROM liquidation_coverage t JOIN markets m USING (symbol)
+            WHERE {cond}""", params).assign(covered_from=lambda d: pd.to_datetime(d["covered_from"], utc=True))
+    return raw
 
 
 def load_pumps(conn) -> pd.DataFrame:
@@ -121,7 +135,7 @@ def chained_log_index(w: pd.DataFrame) -> pd.Series:
 
 def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h") -> pd.DataFrame:
     """Усі біржі тікера → один ряд на регулярній сітці (freq: "h" — години; "15min" — для експериментів)."""
-    part = {k: v[v["base_asset"] == base] for k, v in raw.items()}
+    part = {k: v[v["base_asset"] == base] for k, v in raw.items() if k != "liq_coverage"}
     ohlcv = part["ohlcv"].copy()
     if ohlcv.empty:
         return pd.DataFrame()
@@ -160,6 +174,8 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h") -> pd.Da
     h["low"] = px["l"]
     h["volume"] = wide(ohlcv, "v_usd").sum(axis=1, min_count=1)
     h["buy_volume"] = wide(ohlcv, "bv_usd").sum(axis=1, min_count=1)
+    # частка покупок — лише по ринках, де buy volume є (у 15m/5m-свічок Bybit його немає; на 1h є скрізь)
+    h["volume_bv"] = wide(ohlcv.assign(v_bv=ohlcv["v_usd"].where(ohlcv["bv"].notna())), "v_bv").sum(axis=1, min_count=1)
     h["oi"] = oi_w.sum(axis=1, min_count=1)
     h["oi_log_idx"] = chained_log_index(oi_w)
     for k in ("o", "h", "l", "c"):           # свічки OI (у монетах і в USD) для графіків
@@ -170,8 +186,16 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h") -> pd.Da
 
     h["funding"] = weighted_mean(wide(part["funding"], "c"), oi_w)
     # години без ліквідацій відсутні в таблиці — це нуль, а не пропуск
-    h["liq_long"] = wide(part["liq"], "long_liq").sum(axis=1).fillna(0)
-    h["liq_short"] = wide(part["liq"], "short_liq").sum(axis=1).fillna(0)
+    cov = raw.get("liq_coverage")
+    if cov is None:                  # 1h: історія Coinalyze повна на всі 60 днів
+        h["liq_long"] = wide(part["liq"], "long_liq").sum(axis=1).fillna(0)
+        h["liq_short"] = wide(part["liq"], "short_liq").sum(axis=1).fillna(0)
+    else:                            # 15m/5m: до covered_from ринку — невідомо (NaN), після — нуль, якщо рядка немає
+        own = cov[cov["base_asset"] == base].set_index("market")["covered_from"]
+        known = pd.DataFrame({m: grid >= t0 for m, t0 in own.items()}, index=grid)
+        for k, col in (("liq_long", "long_liq"), ("liq_short", "short_liq")):
+            w = wide(part["liq"], col).reindex(columns=own.index).fillna(0).where(known)
+            h[k] = w.sum(axis=1, min_count=1)
     h["ls_long_pct"] = weighted_mean(wide(part["ls"], "long_pct"), oi_w)
     return h
 
@@ -213,8 +237,8 @@ def compute_features(h: pd.DataFrame, bars_per_hour: int = 1) -> pd.DataFrame:
     f["volume_z_7d"] = zscore(np.log1p(h["volume"]), base)
     day_vol = h["volume"].rolling(short).sum()
     f["volume_ratio_24h"] = day_vol / (h["volume"].shift(short).rolling(base).sum() / 7)
-    f["buy_ratio_1h"] = h["buy_volume"].rolling(b).sum() / h["volume"].rolling(b).sum()
-    f["buy_ratio_4h"] = h["buy_volume"].rolling(4 * b).sum() / h["volume"].rolling(4 * b).sum()
+    f["buy_ratio_1h"] = h["buy_volume"].rolling(b).sum() / h["volume_bv"].rolling(b).sum()
+    f["buy_ratio_4h"] = h["buy_volume"].rolling(4 * b).sum() / h["volume_bv"].rolling(4 * b).sum()
 
     f["funding"] = h["funding"]
     f["funding_z_7d"] = zscore(h["funding"], base)
@@ -225,7 +249,7 @@ def compute_features(h: pd.DataFrame, bars_per_hour: int = 1) -> pd.DataFrame:
     f["liq_long_4h_oi"] = long4 / h["oi"]
     f["liq_short_4h_oi"] = short4 / h["oi"]
     total4 = long4 + short4
-    f["liq_imbalance_4h"] = ((short4 - long4) / total4).where(total4 > 0, 0.0)
+    f["liq_imbalance_4h"] = ((short4 - long4) / total4).where(total4 != 0, 0.0)   # NaN (немає даних) лишається NaN
 
     f["ls_long_pct"] = h["ls_long_pct"]
     f["ls_chg_24h"] = h["ls_long_pct"].diff(short)
@@ -262,6 +286,28 @@ def add_labels(df: pd.DataFrame, pumps: pd.DataFrame, base: str, bar: pd.Timedel
 
 # ---------------------------------------------------------------- збірка
 
+def short_features(h: pd.DataFrame, b: int) -> pd.DataFrame:
+    """Короткі ознаки 15m-бару (SHORT_FEATURES): лише дані до бару включно, відносні величини."""
+    f = pd.DataFrame(index=h.index)
+    lp, oi = np.log(h["price"]), h["oi_log_idx"]
+    f["ret_bar"], f["ret_2bar"] = lp.diff(1), lp.diff(2)
+    f["oi_chg_bar"], f["oi_chg_2bar"] = oi.diff(1), oi.diff(2)
+    f["oi_accel_1h"] = oi.diff(b) - oi.diff(b).shift(b)          # остання година проти попередньої
+    f["ret_accel_1h"] = lp.diff(b) - lp.diff(b).shift(b)
+    f["vol_burst"] = h["volume"] / h["volume"].shift(1).rolling(24 * b).mean()   # бар проти середнього бару доби
+    f["buy_ratio_bar"] = h["buy_volume"] / h["volume_bv"]
+    f["range_bar"] = (h["high"] - h["low"]) / h["price"]
+    f["liq_long_1h_oi"] = h["liq_long"].rolling(b).sum() / h["oi"]
+    f["liq_short_1h_oi"] = h["liq_short"].rolling(b).sum() / h["oi"]
+    return f.replace([np.inf, -np.inf], np.nan)
+
+
+def build_15m(conn, bases: list[str], pumps: pd.DataFrame | None = None, since=None) -> pd.DataFrame:
+    """Ознаки 15m-моделі з бази (interval '15min': біржі напряму + ліквідації Coinalyze з покриттям).
+    since — з якого моменту брати сирі ряди (для скринера: ~10 днів вистачає на тижневі вікна)."""
+    return build_from_raw(load_raw(conn, bases, INTERVAL_15M, since), pumps, bars_per_hour=4, extra=short_features)
+
+
 def build(conn, bases: list[str] | None = None, labels: bool = True) -> pd.DataFrame:
     """Таблиця ознак: рядок = тікер × година. Лише години з повною історією для вікон
     і лише закриті бари (поточна незакрита година відкидається)."""
@@ -269,10 +315,11 @@ def build(conn, bases: list[str] | None = None, labels: bool = True) -> pd.DataF
 
 
 def build_from_raw(raw: dict[str, pd.DataFrame], pumps: pd.DataFrame | None = None,
-                   bars_per_hour: int = 1) -> pd.DataFrame:
+                   bars_per_hour: int = 1, extra=None) -> pd.DataFrame:
     """Те саме, що build(), але з уже завантажених сирих рядів у форматі load_raw()
     (так експерименти проганяють дані з інших джерел через той самий код ознак). pumps=None — без міток.
-    bars_per_hour — таймфрейм сирих рядів (1 = 1h, 4 = 15 хв)."""
+    bars_per_hour — таймфрейм сирих рядів (1 = 1h, 4 = 15 хв).
+    extra(h, bars_per_hour) → DataFrame — додаткові ознаки з того самого зведеного ряду (для експериментів)."""
     labels = pumps is not None
     last_closed = pd.Timestamp(datetime.now(timezone.utc) - timedelta(hours=1) / bars_per_hour)
     frames = []
@@ -281,6 +328,8 @@ def build_from_raw(raw: dict[str, pd.DataFrame], pumps: pd.DataFrame | None = No
         if h.empty:
             continue
         f = compute_features(h, bars_per_hour)
+        if extra is not None:
+            f = f.join(extra(h, bars_per_hour))
         f = f[f["oi_z_7d"].notna() & (f.index <= last_closed)]
         f.insert(0, "price", h["price"])          # контекст для аналізу, не ознаки
         f.insert(1, "oi", h["oi"])

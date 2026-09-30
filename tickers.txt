@@ -2,7 +2,6 @@
 # Запуск без аргументів: python fetch.py
 AKE
 LSK
-MYX
 QNT
 AIN
 NMR
@@ -12,3 +11,6 @@ TRUMP
 G    # фальстарт без OI — негативний приклад
 ARK    # переглянуто повністю в label.py
 MOVR    # переглянуто повністю в label.py
+NIGHT    # переглянуто повністю в label.py
+PHA    # переглянуто повністю в label.py
+AGT    # переглянуто повністю в label.py

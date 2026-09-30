@@ -19,6 +19,7 @@ import requests
 
 BINANCE_HIST_DAYS = 29.5          # /futures/data/* віддає лише останні 30 днів
 H = pd.Timedelta(hours=1)
+FUNDING_LOOKBACK = 2 * 24 * 3_600_000   # funding платиться раз на 1–8 год: беремо з запасом, щоб у вікні була остання ставка
 MS_H = 3_600_000
 # таймфрейм → мілісекунди бару і назви інтервалу в API бірж (використовує і experiments/timeframe.py)
 TF = {
@@ -151,13 +152,13 @@ def download(exchange: str, sym: str, start: int, end: int, tf: str = "1h") -> d
             "klines": binance_klines(sym, start, end, tf),
             "oi": binance_hist("/futures/data/openInterestHist", sym, start, end, "sumOpenInterest", tf),   # у монетах
             "ls": binance_hist("/futures/data/globalLongShortAccountRatio", sym, start, end, "longAccount", tf),
-            "funding": binance_funding(sym, start, end),
+            "funding": binance_funding(sym, start - FUNDING_LOOKBACK, end),
         }
     return {
         "klines": bybit_klines(sym, start, end, tf),
         "oi": bybit_cursor("/v5/market/open-interest", sym, start, end, {"intervalTime": TF[tf]["bybit"]}, "openInterest", 200),
         "ls": bybit_cursor("/v5/market/account-ratio", sym, start, end, {"period": TF[tf]["bybit"]}, "buyRatio", 500),
-        "funding": bybit_funding(sym, start, end),
+        "funding": bybit_funding(sym, start - FUNDING_LOOKBACK, end),
     }
 
 
@@ -172,6 +173,9 @@ def normalize(data: dict[str, pd.DataFrame], tf: str) -> dict[str, pd.DataFrame]
     - funding: остання виплачена ставка на початок бару (виплата о T входить у бар T), у відсотках;
     - long/short: частка лонг-акаунтів у відсотках, знімок на момент T."""
     bar = pd.Timedelta(milliseconds=TF[tf]["ms"])
+    # порожня відповідь біржі (напр. без виплат funding у вікні) дає колонку ts без типу — приводимо до часу UTC
+    data = {k: v.assign(ts=pd.to_datetime(v["ts"], utc=True).astype("datetime64[us, UTC]")) if "ts" in v else v
+            for k, v in data.items()}
     k = data["klines"].copy()
     if "bv" not in k:
         k["bv"] = np.nan

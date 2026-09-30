@@ -70,6 +70,12 @@ see [modeling.md](modeling.md#experiment-exchange-apis-instead-of-coinalyze)):
 `15min` / `5min`, same market symbols as Coinalyze), for labeling and a future 15m model. Everything that reads
 raw tables filters by `interval`; hourly data stays Coinalyze.
 
+**Intraday liquidations** do exist in Coinalyze (`liquidation-history` with `15min` / `5min`), but it keeps a
+limited number of non-empty points per symbol (~2,000–2,900): for small coins that is 1–2 months, for active ones
+3–5 weeks. Bars without liquidations are simply absent, so "no row" means zero only after the provider's first
+point. `fetch.collect_liquidations` stores that first point per market in `liquidation_coverage`; `features.aggregate`
+treats earlier bars as unknown (NaN), not zero. Regular collection extends the history forward.
+
 The values match Coinalyze exactly once aligned in time: an exchange OI snapshot at T+1h is the close of
 bar T. Binance's `/futures/data/*` endpoints return the **latest** 500 points when the requested range is
 longer, so page through them in windows of 500 hours.

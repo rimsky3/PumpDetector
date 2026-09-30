@@ -10,7 +10,8 @@ fetch_exchange.py — 15m і 5m дані напряму з Binance і Bybit у �
     open_interest      USD; свічка зі знімків: open = знімок на початку бару, close — на кінці, high/low — з них
     funding_rate       остання виплачена ставка, %
     long_short_ratio   частка лонг-акаунтів
-Ліквідацій немає — історії в бірж немає. OI і long/short Binance — лише за останні 30 днів, Bybit — повні 60.
+Ліквідацій біржі не зберігають — їх 15m/5m беремо з Coinalyze (fetch.collect_liquidations, потрібен ключ; --no-liq —
+пропустити). OI і long/short Binance — лише за останні 30 днів, Bybit — повні 60.
 Годинні дані (1hour) не чіпаємо: їх, як і раніше, збирає fetch.py.
 
 Ринки беруться з таблиці markets, тож спершу тікер має пройти через fetch.py.
@@ -31,7 +32,7 @@ import psycopg
 from dotenv import load_dotenv
 
 from exchanges import INTERVAL, MS_H, TF, download, normalize, stats
-from fetch import TICKERS_FILE, read_tickers_file
+from fetch import TICKERS_FILE, Coinalyze, collect_liquidations, read_tickers_file
 
 EXCHANGES = ["Binance", "Bybit"]
 WORKERS = 6        # ринки завантажуються паралельно: запит займає ~1 с, ліміти бірж це дозволяють
@@ -100,6 +101,7 @@ def main() -> None:
     ap.add_argument("tickers", nargs="*", help=f"базові активи (без аргументів — з {TICKERS_FILE})")
     ap.add_argument("--tf", nargs="+", choices=["15m", "5m"], default=["15m", "5m"], help="таймфрейми (за замовчуванням обидва)")
     ap.add_argument("--days", type=float, default=60, help="скільки днів історії (за замовчуванням 60)")
+    ap.add_argument("--no-liq", action="store_true", help="не брати ліквідації 15m/5m з Coinalyze")
     args = ap.parse_args()
 
     load_dotenv()
@@ -110,6 +112,11 @@ def main() -> None:
     t0 = time.time()
     with psycopg.connect(db_url) as conn:
         collect(conn, bases, args.tf, args.days)
+        api_key = os.getenv("COINALYZE_API_KEY")
+        if not args.no_liq and api_key:
+            collect_liquidations(Coinalyze(api_key), conn, bases, args.tf, args.days)
+        elif not args.no_liq:
+            print("Немає COINALYZE_API_KEY — ліквідації пропущено")
     print(f"Готово: {stats['requests']} запитів до бірж, {time.time() - t0:.0f} с")
 
 

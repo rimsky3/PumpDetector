@@ -13,6 +13,12 @@ train.py — навчання і чесне порівняння моделей 
     python train.py              # усі моделі, звіт у reports/train_report.md, моделі для скринера в models/
     python train.py --models logreg lightgbm
     python train.py --no-save    # лише оцінка, без збереження моделей
+    python train.py --no-15m     # без 15m-моделі (швидше: лише годинні моделі)
+
+Крім годинних моделей навчається 15m-LightGBM (models/lightgbm_15m.joblib) для двох рівнів сигналу:
+    «Кандидат» — 15m-модель вище свого порогу (найраніше, шумніше);
+    «Alert»    — 15m-сигнал, підтверджений годинним LightGBM ≥ CONFIRM_SHARE його порогу
+                 (оцінка останньої закритої години; experiments/two_tier.py).
 
 Для скринера зберігається модель, навчена на всіх розмічених тікерах. Її поріг — найкращий F1
 на out-of-fold передбаченнях (кожен тікер оцінений моделлю, що його не бачила).
@@ -36,13 +42,18 @@ from sklearn.metrics import average_precision_score, f1_score, precision_recall_
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from features import FEATURES, in_pump, load_pumps, query_df
-from risk import stop_multiplier
+from features import FEATURES, FEATURES_15M, build_15m, in_pump, load_pumps, query_df
+from risk import EXIT_BARS_15M, stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
 FRESH_HOURS = 48   # останні години без розмітки не йдуть у навчання (ще не підтверджені)
 PREDICTIONS_FILE = os.path.join("reports", "oof_predictions.csv")
 MODELS_DIR = "models"
+
+
+M15_NAME = "lightgbm_15m"
+BAR_15M = pd.Timedelta(minutes=15)
+CONFIRM_SHARE = 0.75      # «Alert»: годинна оцінка ≥ 0.75 × її порогу (experiments/two_tier.py)
 
 
 def model_path(name: str) -> str:
@@ -140,26 +151,27 @@ def leave_ticker_out(name: str, X: pd.DataFrame, y: pd.Series, groups: pd.Series
 
 # ---------------------------------------------------------------- метрики
 
-def signal_episodes(df: pd.DataFrame, signal: pd.Series) -> pd.DataFrame:
-    """Сусідні години з сигналом одного тікера → один епізод (одна «угода»)."""
+def signal_episodes(df: pd.DataFrame, signal: pd.Series, bar: pd.Timedelta = H) -> pd.DataFrame:
+    """Сигнальні бари одного тікера з проміжками не більше години → один епізод (одна «угода»).
+    На 1h це сусідні години; на 15m сигнал, що згас на 15–45 хв і повернувся, — та сама ситуація, не новий епізод."""
     rows = []
-    for base, g in df[signal.to_numpy()].groupby("base_asset"):
+    for base, g in df[np.asarray(signal)].groupby("base_asset"):
         ts = g["ts"].sort_values()
-        run_id = (ts.diff() != H).cumsum()
+        run_id = (ts.diff() > max(bar, H)).cumsum()
         for _, run in ts.groupby(run_id):
-            rows.append((base, run.iloc[0], run.iloc[-1] + H))
+            rows.append((base, run.iloc[0], run.iloc[-1] + bar))
     return pd.DataFrame(rows, columns=["base_asset", "start", "end"])
 
 
-def event_metrics(df: pd.DataFrame, signal: pd.Series, pumps: pd.DataFrame) -> dict:
-    """Метрики з погляду трейдера: спіймані пампи, затримка, хибні епізоди."""
+def event_metrics(df: pd.DataFrame, signal: pd.Series, pumps: pd.DataFrame, bar: pd.Timedelta = H) -> dict:
+    """Метрики з погляду трейдера: спіймані пампи, затримка, хибні епізоди. bar — довжина бару рядків df."""
     covered = pumps[pumps["base_asset"].isin(df["base_asset"].unique())]
-    sig_ts = df.loc[signal.to_numpy(), ["base_asset", "ts"]]
+    sig_ts = df.loc[np.asarray(signal), ["base_asset", "ts"]]
 
     delays, caught_fs = [], 0
     n_pump = n_fs = 0
     for p in covered.itertuples():
-        inside = sig_ts[(sig_ts["base_asset"] == p.base_asset) & in_pump(sig_ts["ts"], p.start_ts, p.end_ts)]
+        inside = sig_ts[(sig_ts["base_asset"] == p.base_asset) & in_pump(sig_ts["ts"], p.start_ts, p.end_ts, bar)]
         if p.pattern_type == "pump":
             n_pump += 1
             if len(inside):
@@ -168,14 +180,14 @@ def event_metrics(df: pd.DataFrame, signal: pd.Series, pumps: pd.DataFrame) -> d
             n_fs += 1
             caught_fs += bool(len(inside))
 
-    eps = signal_episodes(df, signal)
+    eps = signal_episodes(df, signal, bar)
     labeled = covered.rename(columns={"start_ts": "ps", "end_ts": "pe"})
     false_eps = 0
     for e in eps.itertuples():
         own = labeled[labeled["base_asset"] == e.base_asset]
         if not ((own["ps"] < e.end) & (own["pe"] > e.start)).any():
             false_eps += 1
-    days = len(df) / 24          # оцінених годин (у тікерів лише з інтервалами між інтервалами є розриви)
+    days = len(df) * (bar / H) / 24    # оцінених барів у днях (у тікерів лише з інтервалами між інтервалами є розриви)
 
     return {
         "pumps_caught": f"{len(delays)}/{n_pump}",
@@ -230,6 +242,7 @@ def main() -> None:
     parser.add_argument("--no-save", action="store_true", help="не зберігати моделі для скринера")
     parser.add_argument("--fresh-hours", type=int, default=FRESH_HOURS,
                         help="скільки останніх годин без розмітки не брати в навчання (0 — брати все)")
+    parser.add_argument("--no-15m", action="store_true", help="не навчати 15m-модель (лише годинні)")
     args = parser.parse_args()
 
     load_dotenv()
@@ -328,6 +341,11 @@ def main() -> None:
                   "Models fitted on all data. Logistic regression coefficients are on standardised features "
                   "(sign = direction of effect). LightGBM gain is the share of total split gain.", "",
                   md_table(imp)]
+    m15 = None
+    if not args.no_15m:
+        m15 = train_15m(db_url, df, pumps, cutoff if args.fresh_hours else None, set(reviewed), extra,
+                        oof.get("lightgbm"), preds, now, args)
+        parts += m15["report"]
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
         f.write("\n".join(parts) + "\n")
     # out-of-fold передбачення: для аналізу помилок (кожен рядок передбачила модель, що не бачила тікер)
@@ -359,10 +377,70 @@ def main() -> None:
             print(f"Стоп: {risk_info['k']:.2f} NATR (75-й перцентиль MAE, {risk_info['n']} пампів)")
 
 
+def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, reviewed: set, extra: list,
+              oof_1h, preds_1h: pd.DataFrame, now: str, args) -> dict:
+    """15m-LightGBM: leave-ticker-out як для годинних, валідація обох рівнів сигналу, бандл для скринера.
+    Тікери й правила ті самі: переглянуті — усі бари, інші — лише розмічені інтервали; свіжі нерозмічені — ні."""
+    print("\n15m-модель: ознаки…")
+    bases = sorted(df1h["base_asset"].unique())
+    with psycopg.connect(db_url) as conn:
+        d = build_15m(conn, bases, pumps)
+        risk15 = stop_multiplier(conn, "15min")
+    d["reviewed"] = d["base_asset"].isin(reviewed)
+    d = d[d["reviewed"] | d["pattern_type"].notna()]
+    if cutoff is not None:
+        d = d[(d["ts"] <= cutoff) | d["pattern_type"].notna()]
+    d = d.reset_index(drop=True)
+    X, y, groups = d[FEATURES_15M], d["label"].astype(int), d["base_asset"]
+    print(f"  {len(d)} барів 15m, {groups.nunique()} тікерів")
+    res = leave_ticker_out("lightgbm", X, y, groups)
+    s15 = (res["score"] / res["threshold"]).to_numpy()
+    rows = {"15m candidate": {**hour_metrics(y, res, True), **event_metrics(d, s15 >= 1, pumps, BAR_15M)}}
+    if oof_1h is not None:
+        # «Alert»: 15m-сигнал і годинна оцінка останньої ЗАКРИТОЇ години ≥ CONFIRM_SHARE її порогу
+        hour = preds_1h[["base_asset", "ts"]].assign(s1h=oof_1h / preds_1h["lightgbm_threshold"].to_numpy())
+        key = (d["ts"] + BAR_15M - H).dt.floor("h")
+        s1h = d[["base_asset"]].assign(ts=key).merge(hour, on=["base_asset", "ts"], how="left")["s1h"].fillna(0).to_numpy()
+        alert = (s15 >= 1) & (s1h >= CONFIRM_SHARE)
+        rows[f"15m + 1h ≥ {CONFIRM_SHARE:g} (alert)"] = {
+            **hour_metrics(y, pd.DataFrame({"score": s15, "signal": alert}), False),
+            **event_metrics(d, alert, pumps, BAR_15M)}
+    summary = pd.DataFrame(rows).T
+    summary.index.name = "tier"
+    print(summary.to_string())
+    report = ["", "## 15m model and signal tiers", "",
+              f"LightGBM on {len(d)} 15-minute bars ({len(FEATURES_15M)} features: the hourly set with the same wall-clock "
+              "windows plus short bar features), leave-ticker-out with nested threshold. *Candidate* = 15m model alone; "
+              f"*alert* = 15m signal confirmed by the hourly LightGBM at ≥ {CONFIRM_SHARE:g} of its threshold "
+              "(score of the last closed hour). Event delays are in hours from the labeled start; "
+              f"stop multiplier on 15m bars: k = {risk15.get('k') or float('nan'):.2f} ATR.", "",
+              md_table(summary)]
+    if not args.no_save:
+        bundle = {
+            "name": M15_NAME, "tf": "15m", "bar_minutes": 15,
+            "model": make_lightgbm().fit(X, y), "features": FEATURES_15M,
+            "threshold": best_f1_threshold(y.to_numpy(), res["score"].to_numpy()),
+            "trained_at": now, "tickers": sorted(reviewed & set(bases)),
+            "data_end": min(d["ts"].max(), cutoff) if cutoff is not None else d["ts"].max(),
+            "in_sample_extra": extra,
+            "pump_intervals": int((pumps["pattern_type"] == "pump").sum()),
+            "validation": {k: (v if isinstance(v, str) else float(v)) for k, v in summary.iloc[0].items()},
+            "tier_validation": {k: (v if isinstance(v, str) else float(v)) for k, v in summary.iloc[-1].items()},
+            "risk": risk15, "exit_bars": EXIT_BARS_15M,
+            "confirm": {"model": "lightgbm", "share": CONFIRM_SHARE},
+            "settings": {"fresh_hours": args.fresh_hours, "bars": int(len(d)), "tickers": int(groups.nunique()),
+                         "n_features": len(FEATURES_15M)},
+        }
+        joblib.dump(bundle, model_path(M15_NAME))
+        print(f"Збережено {model_path(M15_NAME)}: поріг {bundle['threshold']:.3f}, стоп {risk15.get('k')} ATR (15m)")
+    return {"report": report, "summary": summary}
+
+
 def load_model(name: str) -> dict:
     """Збережена модель з метаданими: model, features, threshold, trained_at, validation."""
     bundle = joblib.load(model_path(name))
-    if bundle["features"] != FEATURES:
+    expected = FEATURES_15M if bundle.get("tf") == "15m" else FEATURES
+    if bundle["features"] != expected:
         raise ValueError(f"{name}: модель навчена на іншому наборі ознак — перезапусти python train.py")
     return bundle
 

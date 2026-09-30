@@ -129,7 +129,8 @@ def upsert_markets(conn, markets: list[dict]) -> None:
     conn.commit()
 
 
-def fetch_endpoint(client, conn, markets, endpoint, table, columns, extra, flag, ts_from, ts_to) -> int:
+def fetch_endpoint(client, conn, markets, endpoint, table, columns, extra, flag, ts_from, ts_to,
+                   interval: str = INTERVAL) -> list:
     symbols = [m["symbol"] for m in markets if flag is None or m.get(flag)]
     if not symbols:
         return 0
@@ -142,20 +143,58 @@ def fetch_endpoint(client, conn, markets, endpoint, table, columns, extra, flag,
         + ", ".join(f"{c} = EXCLUDED.{c}" for c in db_cols)
     )
 
-    total = 0
+    total = []
     for i in range(0, len(symbols), MAX_SYMBOLS_PER_REQUEST):
         chunk = symbols[i:i + MAX_SYMBOLS_PER_REQUEST]
-        params = {"symbols": ",".join(chunk), "interval": INTERVAL,
+        params = {"symbols": ",".join(chunk), "interval": interval,
                   "from": ts_from, "to": ts_to, **extra}
         rows = []
         for item in client.get(endpoint, params, cost=len(chunk)):
             for p in item.get("history", []):
                 ts = datetime.fromtimestamp(p["t"], tz=timezone.utc)
-                rows.append((item["symbol"], INTERVAL, ts, *[p.get(k) for _, k in columns]))
+                rows.append((item["symbol"], interval, ts, *[p.get(k) for _, k in columns]))
         if rows:
             conn.cursor().executemany(sql, rows)
             conn.commit()
+        total += rows
+    return total
+
+
+LIQ_INTERVALS = {"15m": "15min", "5m": "5min"}
+
+
+def collect_liquidations(client: Coinalyze, conn, bases: list[str], tfs: list[str], days: float, log=print) -> int:
+    """Ліквідації 15m/5m з Coinalyze для ринків тікерів, що вже є в markets.
+
+    Coinalyze тримає внутрішньогодинні ліквідації за кількістю НЕпорожніх точок (~2000–2900 на символ): у дрібних
+    монет це 1–2 місяці, в активних — 3–5 тижнів. Бари без ліквідацій у відповіді відсутні, тож «рядка немає» означає
+    «0 ліквідацій» лише там, де дані повні. Тому для кожного ринку запам'ятовуємо covered_from — першу точку, яку
+    віддав провайдер (раніше неї — «невідомо», а не нуль). Регулярний збір продовжує історію вперед."""
+    conn.execute("""CREATE TABLE IF NOT EXISTS liquidation_coverage (
+        symbol TEXT REFERENCES markets(symbol), interval TEXT NOT NULL, covered_from TIMESTAMPTZ NOT NULL,
+        PRIMARY KEY (symbol, interval))""")
+    markets = [{"symbol": r[0]} for r in conn.execute(
+        "SELECT symbol FROM markets WHERE base_asset = ANY(%s) AND exchange_name <> 'Aster'", (bases,))]  # Aster без ліквідацій
+    if not markets:
+        return 0
+    now = datetime.now(timezone.utc)
+    ts_from, ts_to = int((now - timedelta(days=days)).timestamp()), int(now.timestamp())
+    endpoint, table, columns, extra, _ = next(e for e in ENDPOINTS if e[1] == "liquidations")
+    total = 0
+    for tf in tfs:
+        rows = fetch_endpoint(client, conn, markets, endpoint, table, columns, extra, None, ts_from, ts_to,
+                              interval=LIQ_INTERVALS[tf])
+        first = {}
+        for sym, _, ts, *_ in rows:
+            first[sym] = min(first.get(sym, ts), ts)
+        conn.cursor().executemany("""
+            INSERT INTO liquidation_coverage (symbol, interval, covered_from) VALUES (%s, %s, %s)
+            ON CONFLICT (symbol, interval) DO UPDATE SET covered_from = least(liquidation_coverage.covered_from,
+                                                                               EXCLUDED.covered_from)""",
+            [(sym, LIQ_INTERVALS[tf], ts) for sym, ts in first.items()])
+        conn.commit()
         total += len(rows)
+        log(f"  ліквідації {tf}: {len(rows)} точок, {len(first)} ринків з даними")
     return total
 
 
@@ -242,8 +281,8 @@ def collect(client: Coinalyze, conn, bases: list[str], days: int, verbose: bool 
 
     upsert_markets(conn, markets)
     for endpoint, table, columns, extra, flag in ENDPOINTS:
-        n = fetch_endpoint(client, conn, markets, endpoint, table, columns,
-                           extra, flag, ts_from, ts_to)
+        n = len(fetch_endpoint(client, conn, markets, endpoint, table, columns,
+                               extra, flag, ts_from, ts_to))
         if verbose:
             print(f"  {table:<24} рядків: {n}")
     return markets

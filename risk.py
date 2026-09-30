@@ -19,7 +19,8 @@ from features import aggregate, in_pump, load_pumps, load_raw
 ATR_PERIOD = 14         # годин; згладжування Уайлдера
 STOP_PERCENTILE = 75
 TRAIL_NATR = 1.5
-EXIT_BARS = 2           # стільки барів поспіль нижче порогу = вихід
+EXIT_BARS = 2           # стільки барів поспіль нижче порогу = вихід (1h)
+EXIT_BARS_15M = 4       # 15m: година нижче порогу (імпульси короткі, 2 години лагу — половина руху)
 H = pd.Timedelta(hours=1)
 
 
@@ -30,21 +31,22 @@ def atr(h: pd.DataFrame) -> pd.Series:
     return tr.ewm(alpha=1 / ATR_PERIOD, adjust=False, min_periods=ATR_PERIOD).mean()
 
 
-def pump_mae(conn) -> pd.DataFrame:
-    """MAE кожного розміченого пампу в одиницях NATR."""
+def pump_mae(conn, interval: str = "1hour") -> pd.DataFrame:
+    """MAE кожного розміченого пампу в одиницях NATR таймфрейму interval ('1hour' або '15min')."""
     pumps = load_pumps(conn)
     pumps = pumps[pumps["pattern_type"] == "pump"]
     if pumps.empty:
         return pd.DataFrame(columns=["base_asset", "start_ts", "mae_natr", "peak_gain_natr"])
-    raw = load_raw(conn, sorted(pumps["base_asset"].unique()))
+    raw = load_raw(conn, sorted(pumps["base_asset"].unique()), interval)
+    freq, bar = ("h", H) if interval == "1hour" else ("15min", pd.Timedelta(minutes=15))
     rows = []
     for base, group in pumps.groupby("base_asset"):
-        h = aggregate(raw, base)
+        h = aggregate(raw, base, freq)
         if h.empty:
             continue
         a = atr(h)
         for p in group.itertuples():
-            window = h[in_pump(h.index, p.start_ts, p.end_ts)]
+            window = h[in_pump(h.index, p.start_ts, p.end_ts, bar)]
             if len(window) < 2 or pd.isna(a.get(window.index[0])) or pd.isna(window["price"].iloc[0]):
                 continue
             entry, atr0 = window["price"].iloc[0], a[window.index[0]]
@@ -59,9 +61,9 @@ def pump_mae(conn) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def stop_multiplier(conn) -> dict:
+def stop_multiplier(conn, interval: str = "1hour") -> dict:
     """k для стопу: 75-й перцентиль MAE. Повертає також вибірку, щоб було видно, на чому він порахований."""
-    mae = pump_mae(conn)
+    mae = pump_mae(conn, interval)
     if mae.empty:
         return {"k": None, "n": 0}
     return {
@@ -72,7 +74,8 @@ def stop_multiplier(conn) -> dict:
     }
 
 
-def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float | None) -> dict:
+def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float | None,
+                   exit_bars: int = EXIT_BARS) -> dict:
     """Стан «угоди» за сигналами моделі на погодинному ряді тікера.
 
     Угода починається з першого бару з ймовірністю ≥ порогу і закінчується,
@@ -99,7 +102,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
         trade["high"] = max(trade["high"], float(h.at[ts, "high"]))
         below = below + 1 if p < threshold else 0
         stop_hit = trade["stop"] is not None and h.at[ts, "low"] <= trade["stop"]
-        if below >= EXIT_BARS or stop_hit:
+        if below >= exit_bars or stop_hit:
             exit_price = trade["stop"] if stop_hit else float(h.at[ts, "price"])
             trade.update({"exit_ts": ts, "exit": exit_price, "reason": "stop" if stop_hit else "model",
                           "result_pct": exit_price / trade["entry"] - 1})
@@ -113,7 +116,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
         trade.update({
             "open": True, "below_bars": below,
             "trailing": float(trade["high"] - TRAIL_NATR * atr_now) if not pd.isna(atr_now) else None,
-            "hours": int((last_ts - trade["entry_ts"]) / H) + 1,
+            "hours": round((last_ts - trade["entry_ts"]) / H + (h.index[1] - h.index[0]) / H, 2) if len(h) > 1 else 1,
             "result_pct": float(h.at[last_ts, "price"] / trade["entry"] - 1),
         })
         return {**trade, "trades": closed}

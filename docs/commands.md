@@ -36,9 +36,11 @@ cheaper; `--new` does.
 | `tickers …` | all of `tickers.txt` | base assets to collect |
 | `--tf 15m 5m` | both | timeframes |
 | `--days N` | 60 | days of history |
+| `--no-liq` | off | skip 15m/5m liquidations from Coinalyze |
 
 Writes the same raw tables as `fetch.py` with `interval` = `15min` / `5min`: candles (buy volume on Binance only),
-open interest, funding, long/short. No liquidations (exchanges keep no history). Binance OI and long/short go back
+open interest, funding, long/short from the exchanges, and liquidations from Coinalyze (exchanges keep no
+liquidation history), with their coverage start in `liquidation_coverage`. Binance OI and long/short go back
 30 days, Bybit the full 60. Public endpoints, no key; ~2,000 requests for 10 tickers, markets in parallel.
 Hourly data is untouched. Markets come from the `markets` table, so run `fetch.py` for a ticker first.
 
@@ -64,6 +66,7 @@ with labels contributes only the hours inside its labeled intervals (column `rev
 |---|---|---|
 | `--models …` | `rule logreg lightgbm` | which models to validate |
 | `--no-save` | off | report only; do not overwrite `models/*.joblib` |
+| `--no-15m` | off | skip the 15m model (faster: hourly models only) |
 | `--fresh-hours N` | 48 | unlabeled hours from the last N hours are left out of training; `0` uses everything |
 
 **Why `--fresh-hours`.** Tickers in `tickers.txt` are treated as fully labeled, so an unlabeled hour counts as
@@ -71,8 +74,9 @@ with labels contributes only the hours inside its labeled intervals (column `rev
 it. Hours inside labeled intervals are always kept. The value used is saved in the model file, shown in the
 training report ("Training settings") and in the dashboard's system status.
 
-Outputs: `reports/train_report.md`, `reports/oof_predictions.csv` (used by the labeling tool's error review),
-`models/logreg.joblib`, `models/lightgbm.joblib`.
+Outputs: `reports/train_report.md` (with a "15m model and signal tiers" section), `reports/oof_predictions.csv`
+(used by the labeling tool's error review), `models/logreg.joblib`, `models/lightgbm.joblib`,
+`models/lightgbm_15m.joblib` (15m model, confirm rule, 15m stop multiplier).
 
 ### `experiments/oi_coins.py`
 
@@ -95,6 +99,11 @@ Compares Binance/Bybit public APIs with Coinalyze: raw series, features, and mod
 
 Tests perp and spot volume delta features against the current set → `reports/experiment_volume_delta.md`.
 
+### `experiments/m15_model.py`
+
+No options. 15m model on database data (exchange candles/OI + Coinalyze 15m liquidations): base features vs
++liquidations vs +short features vs both, with the current hourly model as reference → `reports/experiment_m15_model.md`.
+
 ### `experiments/timeframe.py`
 
 | Option | Default | Meaning |
@@ -111,7 +120,7 @@ the move already gone at the signal, and false alarms → `reports/experiment_ti
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--loop` | off | run forever, one cycle every hour at HH:05 UTC |
+| `--loop` | off | run forever: every 15 minutes (HH:02/17/32/47 UTC) the 15m tier, once an hour also the hourly models |
 | `--no-fetch` | off | score data already in the database, no API calls (quick check, or re-score after retraining) |
 
 Writes the `signals` table and `reports/screener_status.json` (shown in the dashboard). Loads models at start:

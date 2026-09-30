@@ -37,7 +37,7 @@ from dotenv import load_dotenv
 
 import fetch_exchange
 from exchanges import INTERVAL
-from fetch import TICKERS_FILE, Coinalyze, collect, read_tickers_file, set_ticker_in_file
+from fetch import TICKERS_FILE, Coinalyze, collect, collect_liquidations, read_tickers_file, set_ticker_in_file
 from load_pumps import (check_overlaps, parse_row, parse_ts, read_pumps,
                         sync_db, write_pumps, TS_FORMAT)
 
@@ -94,6 +94,8 @@ def load_worker(db_url: str, api_key: str, days: int) -> None:
                     raise ValueError("не знайдено в Coinalyze (буває інша назва: 1000… чи k…)")
                 job.update(msg="15m/5m з Binance і Bybit…")
                 n = fetch_exchange.collect(conn, [base], ["15m", "5m"], days, log=lambda m: job.update(msg=m.strip()))
+                job.update(msg="ліквідації 15m/5m з Coinalyze…")
+                collect_liquidations(client, conn, [base], ["15m", "5m"], days, log=lambda m: job.update(msg=m.strip()))
             job.update(state="done", msg="готово" if n else "готово (лише 1h: на Binance/Bybit немає)")
         except Exception as e:
             job.update(state="error", msg=str(e))
