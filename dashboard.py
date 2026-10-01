@@ -123,10 +123,13 @@ def share() -> float:
     return (State.m15 or {}).get("confirm", {}).get("share", 0.75)
 
 
-def tier_rows(conn, base: str | None = None) -> pd.DataFrame:
-    """Рівні сигналу (tiers.py) з оцінок найсвіжіших версій 15m- і годинного LightGBM."""
+def tier_rows(conn, base: str | None = None, rolling: bool = False) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+    """Рівні сигналу (tiers.py) з оцінок найсвіжіших версій 15m- і годинного LightGBM.
+    rolling=True — ще й рівні на ковзних 15m-барах (5-хв цикл скринера): (звичайні, ковзні)."""
     sig = latest_signals(conn, base)
-    return T.tier_frame(sig[sig["model"] == J.M15], sig[sig["model"] == J.CONFIRM_MODEL], share())
+    s1h = sig[sig["model"] == J.CONFIRM_MODEL]
+    t = T.tier_frame(sig[sig["model"] == J.M15], s1h, share())
+    return (t, T.tier_frame(sig[sig["model"] == T.ROLL_MODEL], s1h, share())) if rolling else t
 
 
 def virtual_models() -> list[dict]:
@@ -175,7 +178,8 @@ def episodes(sig: pd.DataFrame, bar: pd.Timedelta = pd.Timedelta(hours=1)) -> li
     for base, g in sig.sort_values("ts").groupby("base_asset"):
         prev_ts, prev_sig = None, False
         for r in g.itertuples():
-            if r.signal and not (prev_sig and prev_ts is not None and r.ts - prev_ts == bar):
+            # сусідні = не далі за bar (ковзні 15m-оцінки йдуть щільніше — кожні 5 хв — і теж продовжують епізод)
+            if r.signal and not (prev_sig and prev_ts is not None and r.ts - prev_ts <= bar):
                 kind = "live" if r.live else ("in-sample" if r.in_sample else "history")
                 out.append({"ticker": base, "ts": r.ts, "probability": r.probability, "kind": kind})
             prev_ts, prev_sig = r.ts, r.signal
@@ -184,23 +188,28 @@ def episodes(sig: pd.DataFrame, bar: pd.Timedelta = pd.Timedelta(hours=1)) -> li
 
 def watch_list_15m(conn) -> dict:
     """Права панель для 15m + 1h: P 15m-моделі, рівень сигналу, міні-графік P за 24 год (96 барів)."""
-    t = tier_rows(conn)
+    t, troll = tier_rows(conn, rolling=True)
     if t.empty:
         return {"rows": [], "recent": [], "alerts": []}
     now = datetime.now(timezone.utc)
     raw = load_raw(conn, sorted(t["base_asset"].unique()), INTERVAL_15M, since=now - timedelta(days=2))
+    newest = troll.sort_values("ts").groupby("base_asset").tail(1).set_index("base_asset") if len(troll) else None
     rows = []
     for base, g in t.groupby("base_asset"):
         g = g.sort_values("ts")
         last = g.iloc[-1]
+        # статус і P — з найсвіжішої оцінки: ковзний бар 5-хв циклу новіший за останній звичайний 15m-бар
+        if newest is not None and base in newest.index and newest.at[base, "ts"] > last["ts"]:
+            last = newest.loc[base]
         streak = 0
         for x in reversed(g["tier"].tolist()):
             if x != last["tier"] or x == "calm":
                 break
             streak += 1
         h = aggregate(raw, base, "15min")
-        h = h[h.index <= last["ts"]] if not h.empty else h
-        spark = g.set_index("ts")["p15"].reindex(pd.date_range(last["ts"] - 95 * BAR_15M, last["ts"], freq="15min"))
+        lt = g["ts"].iloc[-1]                     # спарклайн і зміни за 24 год — на звичайних 15m-барах
+        h = h[h.index <= lt] if not h.empty else h
+        spark = g.set_index("ts")["p15"].reindex(pd.date_range(lt - 95 * BAR_15M, lt, freq="15min"))
         chg = oi24 = None
         if len(h) > 96:
             p0, p1 = h["price"].iloc[-97], h["price"].iloc[-1]
@@ -214,6 +223,7 @@ def watch_list_15m(conn) -> dict:
         })
     order = {"alert": 0, "candidate": 1, "calm": 2}
     rows.sort(key=lambda r: (order.get(r["status"], 3), -(r["probability"] or 0)))
+    t = pd.concat([t, troll], ignore_index=True) if len(troll) else t     # епізоди — з ковзними: старт на ~5 хв раніше
     al = t.assign(signal=t["tier"] == "alert", probability=t["p15"])
     ep = episodes(al, BAR_15M)
     recent_cut = pd.Timestamp(now - timedelta(hours=6))

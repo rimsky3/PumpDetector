@@ -134,6 +134,15 @@ entry minus the entry price, applied once the move is 1–2 ATR), optionally OI 
 current "Alert gone for 4 bars", or only together with it (`and`, and `and_small`: while the move is small, exit as now).
 Out-of-fold Alert entries, k·ATR stop, 0.1% fee. Writes `reports/exit_giveback.csv`.
 
+### `experiments/early_5m.py`
+
+Earlier signals: the same 15m model on rolling 15m bars every 5 minutes (from 5m exchange data and 5m liquidations)
+versus the aligned :00/:15/:30/:45 bars, Candidate on both, and an early "Підготовка" tier (15m score ≥ 0.93 twice with
+price and OI rising): caught impulses, delay to the close of the first signal bar, share of the move done, failed
+impulses with a signal, false alarms per 30 days. Result: rolling bars are now live in `screener.py --loop` (Alert
+−5 min, no extra false alarms); the early tier was rejected (7.8 false alarms per 30 days). `experiments/backtest_slices.py` splits a backtest run by scanner
+filter and turnover band.
+
 ### `experiments/flush_risk.py`
 
 Long flush after a stall: in the 12 hours after an Alert, how often price drops 3+ ATR(15m) within 4 hours when it
@@ -186,7 +195,7 @@ the move already gone at the signal, and false alarms → `reports/experiment_ti
 
 | Option | Default | Meaning |
 |---|---|---|
-| `--loop` | off | run forever: every 15 minutes (HH:02/17/32/47 UTC) the 15m tier, once an hour also the hourly models |
+| `--loop` | off | run forever: every 15 minutes (HH:02/17/32/47 UTC) the 15m tier, every 5 minutes in between the "hot" coins on rolling 15m bars, once an hour also the hourly models |
 | `--no-fetch` | off | score data already in the database, no API calls (quick check, or re-score after retraining) |
 | `--no-scan` | off | skip the market scan (every 15 minutes); use `watchlist.txt` and the existing auto-list only |
 

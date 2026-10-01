@@ -1,6 +1,6 @@
 # Screener and dashboard
 
-The live product: a screener that scores a watchlist every 15 minutes and a dashboard with two screens, Forecast
+The live product: a screener that scores a watchlist every 15 minutes (the "hot" coins every 5) and a dashboard with two screens, Forecast
 and Journal, built from the "Pump Detector App" design mockup.
 
 **Two signal tiers** (since 2026-09-30, see [modeling.md](modeling.md#experiment-two-tier-signal-15m-candidate-hourly-confirmation)):
@@ -17,6 +17,9 @@ train.py ──saves──▶ models/logreg.joblib, models/lightgbm.joblib      
 screener.py, every 15 minutes (HH:02/17/32/47 UTC):
     15m bars from Binance/Bybit + 15m liquidations from Coinalyze → features.build_15m() → 15m model → signals
     once an hour, also: Coinalyze 1h for the last 10 days → features.build() → hourly models → signals
+    in between, every 5 minutes (:07, :12, :22, …): "hot" coins only (15m score ≥ 0.8 × threshold in the last 2 h)
+    5m bars + 5m liquidations → rolling 15m bar that just closed (offset 5 or 10 min) → same 15m model
+    → signals as model lightgbm_15m_roll
 
 tiers.py (at read time): 15m score + last closed hourly score → Candidate / Alert
 
@@ -28,10 +31,29 @@ dashboard.py + app/dashboard.html:  signals + raw series + tiers + risk  →  da
 ```bash
 python train.py                        # trains, validates and saves models/ (needed once, then after changes)
 python screener.py                     # one cycle
-python screener.py --loop              # keep running: 15m cycle every 15 minutes, hourly models once an hour
+python screener.py --loop              # keep running: 15m cycle every 15 minutes, hot coins every 5, hourly once an hour
 python screener.py --no-fetch          # score data already in the database, no API calls
 python dashboard.py                    # dashboard at http://127.0.0.1:8766
 ```
+
+## Rolling 15m bars (every 5 minutes)
+
+The 15m model only sees a bar after it closes, so a move that starts at :01 waits until :15 (+2 min for the
+exchanges). Between the regular cycles the screener rescores the coins that are close to a signal on a **rolling**
+15m bar: 5m bars and 5m liquidations are rolled into the 15 minutes that just ended (e.g. 16:25–16:40). The model is
+unchanged. On the training tickers this gave Alerts 5 minutes earlier (median 35 → 30 min after the labeled start)
+and Candidates 3 minutes earlier, with no extra false alarms (4.2 → 4.1 per 30 days, `experiments/early_5m.py`).
+
+- **Hot coin**: the 15m score was ≥ 0.8 × threshold at some point in the last 2 hours. A quick cycle covers only these
+  coins and takes about 15–25 s. Coins with too little 5m history get 9 days of it once, because the features need a
+  week of data.
+- A coin is scored only when **every** market already has the last 5m bar for both candles and OI. Exchanges publish
+  the OI for a 5m bar after it closes, and a half-built bar looks like an OI crash to the model.
+- Rolling scores are stored as a separate model, `lightgbm_15m_roll`. The **watchlist** shows the newest score
+  (status and P), and **notifications** start an episode from it. The journal, the position card, chart marks and the
+  backtest stay on the regular 15m bars, the same bars the model was trained and validated on.
+- 5m liquidations for hot coins are always fetched for 10 days. Coinalyze counts calls per symbol, not per day, so this
+  costs the same as a short tail and fills any gap from the time the coin was "cold".
 
 ## Watchlist
 

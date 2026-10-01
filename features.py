@@ -323,15 +323,21 @@ def hourly_from_intraday(raw: dict[str, pd.DataFrame], offset_min: int = 0) -> d
     """15m-ряди контрактів (load_raw з INTERVAL_15M) → години, що починаються на :offset_min; лише повні години
     (4 бари). Так годинні ознаки рахуються з наших біржових даних без годинного збору Coinalyze:
     experiments/hourly_from_15m.py — рішення годинної моделі збігаються з Coinalyze на 98.6% годин."""
+    return roll_intraday(raw, "h", offset_min, 4)
+
+
+def roll_intraday(raw: dict[str, pd.DataFrame], freq: str, offset_min: int, need: int) -> dict[str, pd.DataFrame]:
+    """Ряди контрактів дрібного ТФ → бари freq ("h", "15min"), що починаються зі зсувом offset_min хвилин; лише повні
+    бари (need дрібних). Годинні з 15m (need=4) і ковзні 15m з 5m (need=3, зсув 5/10 хв — скринер кожні 5 хв)."""
     keys = ["base_asset", "market", "exchange", "quote_asset"]
     off = pd.Timedelta(minutes=offset_min)
 
     def roll(df, agg, extra=()):
         if df.empty:
             return df
-        d = df.assign(ts=(df["ts"] - off).dt.floor("h") + off)
+        d = df.assign(ts=(df["ts"] - off).dt.floor(freq) + off)
         r = d.groupby(keys + list(extra) + ["ts"], dropna=False).agg(**agg, n=("ts", "size")).reset_index()
-        return r[r["n"] == 4].drop(columns="n")
+        return r[r["n"] == need].drop(columns="n")
 
     out = {
         "ohlcv": roll(raw["ohlcv"], dict(o=("o", "first"), h=("h", "max"), l=("l", "min"), c=("c", "last"), v=("v", "sum"),
