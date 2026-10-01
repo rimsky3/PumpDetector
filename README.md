@@ -92,7 +92,7 @@ reports/            generated training report
 screener.py         hourly scoring of watchlist.txt with the saved models
 watchlist.txt       coins to scan live (never used for training)
 dashboard.py        dashboard server; page in app/dashboard.html
-risk.py             stop (75th percentile MAE in NATR), trailing stop, exit signal
+risk.py             stop (percentile of drawdown in ATR), exit signal
 journal.py          forward-test journal: trades from first real-time scores, outcomes from labels or an auto rule
 schema.sql          database schema
 docker-compose.yml  local PostgreSQL

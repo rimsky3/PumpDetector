@@ -71,15 +71,40 @@ def last_closed_15m(now: datetime | None = None) -> pd.Timestamp:
     return now.floor("15min") - BAR_15M
 
 
+def first_gap_15m(conn, bases: list[str]) -> dict:
+    """Для кожного тікера — з якого моменту дозавантажувати 15m: перший ПРОПУЩЕНИЙ бар свічок моделі (Binance, Bybit)
+    за останні INTRADAY_DAYS днів, а якщо пропусків немає — останній бар. Саме «останній бар у базі» не годиться:
+    дашборд при відкритті тікера дотягує лише короткий свіжий хвіст, і дірка між ним і старими даними лишалась
+    назавжди — ознакам бракує барів, і модель на тікері замовкає (так було з NIGHT 2026-09-30 14:30–15:30).
+    Тікера без даних у словнику немає — він новий."""
+    from features import INTRADAY_EXCHANGES
+    since = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=INTRADAY_DAYS)
+    rows = conn.execute("""
+        SELECT m.base_asset, m.exchange_name, o.ts FROM ohlcv o JOIN markets m USING (symbol)
+        WHERE o.interval = '15min' AND m.base_asset = ANY(%s) AND m.exchange_name = ANY(%s) AND o.ts >= %s""",
+        (bases, list(INTRADAY_EXCHANGES), since)).fetchall()
+    df = pd.DataFrame(rows, columns=["base", "ex", "ts"])
+    out = {}
+    last_closed = last_closed_15m()
+    for b, g in df.groupby("base"):
+        first = None
+        for _, ge in g.groupby("ex"):
+            ts = pd.DatetimeIndex(pd.to_datetime(ge["ts"], utc=True)).unique().sort_values()
+            grid = pd.date_range(ts[0], last_closed, freq="15min")
+            miss = grid.difference(ts)
+            cand = miss[0] if len(miss) else ts[-1]
+            first = cand if first is None else min(first, cand)
+        out[b] = first
+    return out
+
+
 def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print) -> None:
     """Свіжі 15m/5m-дані з бірж і 15m-ліквідації з Coinalyze. 5m моделі не потрібен — лише графіку дашборда.
 
     Скільки брати — за фактичним пропуском: від останнього бару в базі до зараз плюс запас (не менше 6 год),
     новому тікеру — 10 днів. Так нічний простій ноутбука дозаповнюється повністю, без дірок посередині.
     Стеля — 29 днів: далі історія OI на Binance недоступна (на OKX — ~14 днів, на Bybit — рік+)."""
-    have = dict(conn.execute("""
-        SELECT m.base_asset, max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
-        WHERE o.interval = '15min' AND m.base_asset = ANY(%s) GROUP BY 1""", (bases,)).fetchall())
+    have = first_gap_15m(conn, bases)
     now = pd.Timestamp(datetime.now(timezone.utc))
     groups: dict[float, list[str]] = {}
     for b in bases:

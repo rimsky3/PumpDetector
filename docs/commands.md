@@ -119,6 +119,13 @@ ret_4h, oi_chg_24h, oi_minus_ret_24h) and with new early features (OI and volume
 rising, OI versus price over the last hour, volatility squeeze, buy-share shift). Main metric: the share of the pump's
 move already done at the first signal.
 
+### `experiments/exit_vwap.py`
+
+Exit rule for the model's position on out-of-fold entries of the 15m tier (same entries and stop for every variant):
+the current "Alert gone for 4 bars" against exits on VWAP (anchored at entry, rolling 1 h or 4 h; 1–3 confirming
+closes; 0 or 0.5 ATR buffer; checked on 15m or 5m closes), alone, whichever comes first, or only when both agree.
+0.1% fee per trade. Writes `reports/exit_vwap.csv`.
+
 ### `experiments/hourly_from_15m.py`
 
 Hourly context (Alert confirmation) from our own 15m data (Binance + Bybit + Coinalyze 15m liquidations, rolled up to

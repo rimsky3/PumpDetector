@@ -1,8 +1,8 @@
 """
-risk.py — вихід з позиції: стоп, trailing stop і сигнал виходу (план з CLAUDE.md).
+risk.py — вихід з позиції: стоп і сигнал виходу (план з CLAUDE.md; trailing прибрано 2026-10-01 — власник
+виходить за стаканом, а на симульовані угоди trailing і так не впливав).
 
     Стоп        entry − k·ATR, де k — 75-й перцентиль MAE розмічених пампів в одиницях NATR
-    Trailing    найвищий high від входу − 1.5·ATR (страховка)
     Вихід       ймовірність моделі нижче порогу EXIT_BARS барів поспіль
 
 MAE (max adverse excursion) пампу — наскільки ціна просідала нижче ціни входу, перш ніж дійти до піку.
@@ -18,7 +18,6 @@ from features import aggregate, in_pump, load_pumps, load_raw
 
 ATR_PERIOD = 14         # годин; згладжування Уайлдера
 STOP_PERCENTILE = 75
-TRAIL_NATR = 1.5
 EXIT_BARS = 2           # стільки барів поспіль нижче порогу = вихід (1h)
 EXIT_BARS_15M = 4       # 15m: година нижче порогу (імпульси короткі, 2 години лагу — половина руху)
 H = pd.Timedelta(hours=1)
@@ -155,10 +154,8 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
 
     last_ts = prob.dropna().index.max() if prob.notna().any() else None
     if trade is not None:
-        atr_now = a.get(last_ts, np.nan)
         trade.update({
             "open": True, "below_bars": below,
-            "trailing": float(trade["high"] - TRAIL_NATR * atr_now) if not pd.isna(atr_now) else None,
             "hours": round((last_ts - trade["entry_ts"]) / H + (h.index[1] - h.index[0]) / H, 2) if len(h) > 1 else 1,
             "result_pct": float(h.at[last_ts, "price"] / trade["entry"] - 1),
         })

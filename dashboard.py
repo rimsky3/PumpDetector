@@ -31,11 +31,11 @@ from dotenv import load_dotenv
 
 from features import INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, compute_features, load_raw, query_df
 from fetch import Coinalyze, collect, read_tickers_file
-from risk import EXIT_BARS, TRAIL_NATR, atr, position_state, trade_stats
+from risk import EXIT_BARS, atr, position_state, trade_stats
 
 
 def last_atr(h: pd.DataFrame) -> float | None:
-    """Поточний ATR(14) на барах h — для стопу й trailing «якщо вхід зараз»."""
+    """Поточний ATR(14) на барах h — для стопу «якщо вхід зараз»."""
     a = atr(h).dropna()
     return float(a.iloc[-1]) if len(a) else None
 from screener import (FETCH_DAYS, INTRADAY_DAYS, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
@@ -314,7 +314,7 @@ def ticker_15m(conn, base: str, days: int) -> dict:
         "streak": streak, "streak_min": streak * 15, "chg_24h": chg24,
         "price": h["price"].iloc[-1] if len(h) else None,
         "ls_long_pct": h["ls_long_pct"].dropna().iloc[-1] if h["ls_long_pct"].notna().any() else None,
-        "trail_natr": TRAIL_NATR, "exit_bars": exit_bars, "atr": last_atr(h),
+        "exit_bars": exit_bars, "atr": last_atr(h),
         "last_bar": view.index.max(),
         "in_sample": bool(last["in_sample"]) if last is not None else None,
         "ctx": {"p1h": last["p1h"] if last is not None else None, "thr1h": last["thr1h"] if last is not None else None,
@@ -528,7 +528,7 @@ def ticker_1h(conn, base: str, model: str, days: int) -> dict:
         "streak_min": streak * 60, "chg_24h": chg24,
         "price": h["price"].iloc[-1] if len(h) else None,
         "ls_long_pct": h["ls_long_pct"].dropna().iloc[-1] if h["ls_long_pct"].notna().any() else None,
-        "trail_natr": TRAIL_NATR, "exit_bars": EXIT_BARS, "atr": last_atr(h),
+        "exit_bars": EXIT_BARS, "atr": last_atr(h),
         "last_bar": view.index.max(),
         "in_sample": bool(last["in_sample"]) if last is not None else None,
         "cards": {

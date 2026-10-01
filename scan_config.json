@@ -1,0 +1,13 @@
+{
+ "enabled": true,
+ "preset": "balance",
+ "custom": {
+  "min_turnover": 20000000.0,
+  "vol_x": 3.0,
+  "oi_pct": 10.0,
+  "price_pct": 2.0
+ },
+ "max_oi": 500000000.0,
+ "max_auto": 30.0,
+ "ttl_hours": 48.0
+}

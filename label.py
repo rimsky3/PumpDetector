@@ -43,7 +43,7 @@ from dotenv import load_dotenv
 import fetch_exchange
 from exchanges import INTERVAL
 from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, aggregate, build, build_15m, load_pumps, load_raw
-from risk import TRAIL_NATR, atr, position_state, trade_stats as summarize_trades
+from risk import atr, position_state, trade_stats as summarize_trades
 from tiers import tier_frame
 import train
 from fetch import TICKERS_FILE, Coinalyze, collect, collect_liquidations, read_tickers_file, set_ticker_in_file
@@ -135,7 +135,7 @@ def model15(conn, base: str) -> dict:
             eps.append({"kind": kind, "start": e.start, "end": e.end, "p_max": float(span["p15"].max()),
                         "label": ("pump" if (own["pattern_type"] == "pump").any() else own["pattern_type"].iloc[0]) if len(own) else None})
     eps.sort(key=lambda e: e["start"])
-    # угоди за правилами дашборду: вхід на Alert, стоп k·ATR(15m), trailing, вихід — Alert згас exit_bars барів
+    # угоди за правилами дашборду: вхід на Alert, стоп k·ATR(15m), вихід — Alert згас exit_bars барів
     k, exit_bars = m15.get("risk", {}).get("k"), m15.get("exit_bars", 4)
     h = aggregate(load_raw(conn, [base], INTERVAL_15M), base, "15min")
     pos = position_state(h, t.set_index("ts")["alert_score"], 1.0, k, exit_bars) if not h.empty else {"trades": []}
@@ -150,7 +150,7 @@ def model15(conn, base: str) -> dict:
                        "label": ("pump" if (own["pattern_type"] == "pump").any() else own["pattern_type"].iloc[0]) if len(own) else None})
     avg = lambda xs: sum(xs) / len(xs) if xs else None  # noqa: E731
     trade_stats = {   # спільний підсумок з дашбордом (risk.trade_stats) + розбивка за розміткою
-        **summarize_trades(pos.get("trades", [])), "k": k, "exit_bars": exit_bars, "trail": TRAIL_NATR,
+        **summarize_trades(pos.get("trades", [])), "k": k, "exit_bars": exit_bars,
         "in_pump": avg([x["result"] for x in trades if x["reason"] != "open" and x["label"] == "pump"]),
         "outside": avg([x["result"] for x in trades if x["reason"] != "open" and x["label"] != "pump"]),
     }

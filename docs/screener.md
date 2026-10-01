@@ -141,11 +141,11 @@ with a short explanation.
 **Forecast** — three columns:
 
 - *left*: model switch; pump probability with a threshold bar and the signal's age in hours; OI change over
-  4 h, volume z-score, share of long accounts; the model's simulated position with stop, trailing stop and exit
+  4 h, volume z-score, share of long accounts; the model's simulated position with stop and exit
   state;
 - *centre*: chart ([TradingView Lightweight Charts](https://github.com/tradingview/lightweight-charts),
   Apache 2.0, local copy in `app/vendor/`): candles with signal zones, entry and exit markers of every
-  simulated trade, stop and trailing lines, OI candles (in coins by default, USD on a toggle), volume and the
+  simulated trade, the stop line, OI candles (in coins by default, USD on a toggle), volume and the
   hourly probability with the threshold;
 - *right*: the watchlist like a trading terminal — search, **Refresh**, filters (all / Alert /
   candidates / ★ favourites), sorting by probability, OI change over 24 h or price change over 24 h, a 24-hour
@@ -187,7 +187,6 @@ live signal episode starts while the page is open, a sound, a browser notificati
 |---|---|
 | NATR | ATR(14), Wilder smoothing, on hourly bars |
 | Stop | entry − k·ATR at entry; k = 75th percentile of MAE of labeled pumps, in ATR units |
-| Trailing stop | highest high since entry − 1.5·ATR now |
 | Exit | probability below the threshold for 2 bars in a row, or the stop is hit |
 
 **MAE** (maximum adverse excursion) of a pump is how far the price fell below the entry before reaching the
@@ -211,7 +210,7 @@ It is a simulation to judge the model, not trading advice.
 - **Hourly context** for a 15m bar is the score of the last hour closed by the bar's close (13:30–13:45 → the 12:00
   hour), so nothing from the future. Tiers are computed when read, so the order of the 15m and hourly parts
   inside one cycle does not matter.
-- **Risk on 15m:** stop = entry − k·ATR(14 bars of 15m), k from 15m MAE of labeled pumps (~1.2); trailing 1.5 ATR;
+- **Risk on 15m:** stop = entry − k·ATR(14 bars of 15m), k from 15m MAE of labeled pumps (~1.2); no trailing stop (removed 2026-10-01: the owner exits by the order book);
   exit when the Alert is gone for 4 bars (1 hour).
 - **Chart timeframe 5m / 15m / 1h** is independent of the model: on a coarser chart a bar shows the highest score
   and tier inside it (an Alert within the hour is not lost), on a finer chart the last score known at the bar's

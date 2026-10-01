@@ -240,9 +240,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       <div class="card">
         <div class="t"><span>Позиція моделі <button class="help" data-help="position" aria-label="Що це?">?</button></span><b id="posRes" style="font-size:13px;font-weight:500">—</b></div>
         <div class="small" id="posLine">—</div>
-        <div class="tiles">
+        <div class="tiles" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
           <div class="tile" style="border-color:var(--alert-bg)" title="Стоп: ціна і відстань від ціни входу"><div class="k">Стоп</div><div class="v warm" id="tStop">—</div><div class="s" id="tStopS"></div></div>
-          <div class="tile" title="Trailing: ціна і відстань від поточної ціни"><div class="k">Trailing</div><div class="v" id="tTrail">—</div><div class="s" id="tTrailS"></div></div>
           <div class="tile" style="border-color:var(--ok-bg)"><div class="k">Вихід</div><div class="v" id="tExit">—</div><div class="s" id="tExitS"></div></div>
         </div>
         <div class="small" id="posRule">—</div>
@@ -484,12 +483,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     model: "«15m + 1h» — основна: 15-хвилинна модель дає ранній сигнал («Кандидат»), годинна його підтверджує («Alert»). LightGBM 1h і Регресія 1h — старі годинні моделі для порівняння. Перемикач змінює всі цифри на обох екранах.",
     prob: "Для «15m + 1h»: P — оцінка 15-хвилинної моделі, що зараз триває памп-імпульс. Вище порогу — «Кандидат» (рано, частіше хибно: перевір стакан). Якщо ще й годинна модель ≥ ¾ свого порогу (рядок «1h» нижче) — «Alert». Число поруч зі статусом — скільки часу поспіль тримається рівень.",
     metrics: "Ключові ознаки, на які дивиться модель: зміна open interest за 4 год (у USD, як бачить модель, без стрибків від лістингів), обсяг відносно звичайного за 7 днів (у σ), частка акаунтів у лонг.",
-    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert, вихід — Alert згас 4 бари поспіль (1 год), стоп — під входом на k ATR 15m-барів (75-й перцентиль просідання на розмічених пампах), trailing — 1.5 ATR під максимумом. Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
+    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert, вихід — Alert згас 4 бари поспіль (1 год), стоп — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених пампах). Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
     insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
     oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
     tf: "Таймфрейм графіка. Модель від цього не змінюється: «15m + 1h» рахує на 15m, годинні — на 1h. На крупнішому ТФ бар показує найвищу оцінку й рівень сигналу за свій час (Alert усередині години не загубиться), на дрібнішому — останню оцінку, відому на момент закриття бару. 5m — для точного входу; оновлюється скринером.",
     ruler: "Лінійка, як у TradingView: Shift + клік на графіку (або кнопка) — початок, рух миші — кінець, клік — зафіксувати, ще клік або Esc — прибрати. Показує зміну ціни, кількість барів і час, обсяг, зміну OI у USD і в монетах, максимальну ймовірність і скільки годин сигнал був вище порогу.",
-    chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом, пунктири на ціні — стоп і trailing.",
+    chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
     filters: "Фільтр списку: усі тікери, лише Alert, Alert і кандидати, або обрані ★ (зірочка в рядку або клавіша F). Для годинних моделей «Кандидат» — P вище половини порогу.",
     notify: "Коли на новому live-барі починається Alert — звук і системне сповіщення браузера, навіть якщо вкладка у фоні. Старі й in-sample оцінки мовчать. Дашборд має бути відкритим.",
@@ -639,28 +638,26 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const exitMin = d.exit_bars * d.bar / 60;
     $("posRule").textContent = (is15() ? `вихід: Alert згас ${d.exit_bars} бари поспіль (${fmtMin(exitMin)})`
       : `вихід: P нижче ${fmtP(thr)} ${d.exit_bars} години поспіль`) +
-      `; стоп ${kTxt} ATR (% від входу), trailing ${d.trail_natr} ATR (% від ціни)`;
-    // плитки: ціна крупно, під нею — відсоток (стоп — від ціни входу, trailing — від поточної ціни)
+      `; стоп ${kTxt} ATR (% від входу)`;
+    // плитки: ціна крупно, під нею — відсоток (стоп — від ціни входу)
     const tile = (id, v, sub) => { $(id).textContent = v; $(id + "S").textContent = sub || ""; };
     const px = d.price, a = d.atr;
     if (p.open) {
       $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
       $("posLine").textContent = `Вхід ${fmtTs(p.entry_ts)} · ${fmtPx(p.entry)} · ${fmtMin(p.hours * 60)}`;
       tile("tStop", fmtPx(p.stop), p.stop != null && p.entry ? fmtPct(p.stop / p.entry - 1) : "");
-      tile("tTrail", fmtPx(p.trailing), p.trailing != null && px ? fmtPct(p.trailing / px - 1) : "");
       tile("tExit", p.below_bars > 0 ? `${p.below_bars} бар ↓` : "ні", p.below_bars > 0 ? `з ${d.exit_bars}` : "тримати");
       $("tExit").className = "v " + (p.below_bars > 0 ? "amber" : "ok");
     } else if (p.exit_ts) {
       $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
       $("posLine").textContent = `Остання: ${fmtTs(p.entry_ts)} → ${fmtTs(p.exit_ts)} (${p.reason === "stop" ? "стоп" : "модель"})`;
-      tile("tStop", "—"); tile("tTrail", "—"); tile("tExit", "закрита", p.exit != null ? fmtPx(p.exit) : ""); $("tExit").className = "v dim";
+      tile("tStop", "—"); tile("tExit", "закрита", p.exit != null ? fmtPx(p.exit) : ""); $("tExit").className = "v dim";
     } else {
       // позиції немає: рівні «якщо вхід зараз» — від поточної ціни і поточного ATR
       $("posRes").textContent = "немає"; $("posRes").className = "dim";
       $("posLine").textContent = (is15() ? "вхід на першому барі з Alert" : `вхід, коли P ≥ ${fmtP(thr)}`) + (px && a ? ` · рівні — якщо вхід зараз (${fmtPx(px)})` : "");
-      const stopPx = px && a && d.k != null ? px - d.k * a : null, trailPx = px && a ? px - d.trail_natr * a : null;
+      const stopPx = px && a && d.k != null ? px - d.k * a : null;
       tile("tStop", stopPx != null ? fmtPx(stopPx) : `−${kTxt} ATR`, stopPx != null ? fmtPct(stopPx / px - 1) : "");
-      tile("tTrail", trailPx != null ? fmtPx(trailPx) : `${d.trail_natr} ATR`, trailPx != null ? fmtPct(trailPx / px - 1) : "");
       tile("tExit", "—"); $("tExit").className = "v dim";
     }
   };
@@ -808,7 +805,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     markersApi.setMarkers(marks.filter((m) => idx.has(m.time)).sort((a, b) => a.time - b.time));
     priceLines.forEach(([ser, l]) => ser.removePriceLine(l)); priceLines = [];
     const line = (ser, price, color, title) => { if (price != null) priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]); };
-    if (pos.open) { line(S.candles, pos.stop, warm, "Стоп"); line(S.candles, pos.trailing, fg2, "Trailing"); }
+    if (pos.open) line(S.candles, pos.stop, warm, "Стоп");
     line(S.prob, thr, fg2, is15() ? "поріг 15m" : "поріг");
     if (is15() && d.ctx && d.ctx.thr1h != null) line(S.ctx, d.ctx.share * d.ctx.thr1h, cssVar("--fg3"), "1h ≥");
     const key = `${d.ticker}|${st.model}|${d.tf}`;

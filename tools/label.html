@@ -1000,7 +1000,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       $("m15TradeSum").replaceChildren(); $("m15Trades").replaceChildren();
       return;
     }
-    $("m15TradeRule").textContent = `Вхід — перший бар Alert; стоп ${T.k == null ? "—" : T.k.toFixed(2)} ATR(15m); trailing ${T.trail} ATR; вихід — Alert згас ${T.exit_bars} бари. Без комісій і прослизання.`;
+    $("m15TradeRule").textContent = `Вхід — перший бар Alert; стоп ${T.k == null ? "—" : T.k.toFixed(2)} ATR(15m); вихід — Alert згас ${T.exit_bars} бари. Без комісій і прослизання.`;
     const ts = $("m15TradeSum"); ts.replaceChildren();
     const row = (label, value, cls) => { const p = document.createElement("span"); p.append(label + " "); const b = document.createElement("b"); b.textContent = value; if (cls) b.className = cls; p.appendChild(b); ts.appendChild(p); };
     if (!T.n) row("Закритих угод:", "0");
@@ -1283,7 +1283,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     tile("Сер. виграш / програш", T.n ? `${pct(T.avg_win)} / ${pct(T.avg_loss)}` : "—", "", true);
     
     qGrid($("qMore"), [["У пампах / поза ними", `${pct(T.in_pump)} / ${pct(T.outside)}`]]);
-    $("qRule").textContent = `Вхід — перший бар Alert; стоп ${T.k == null ? "—" : T.k.toFixed(2)} ATR(15m); trailing ${T.trail} ATR; вихід — Alert згас ${T.exit_bars} бари. Без комісій.`;
+    $("qRule").textContent = `Вхід — перший бар Alert; стоп ${T.k == null ? "—" : T.k.toFixed(2)} ATR(15m); вихід — Alert згас ${T.exit_bars} бари. Без комісій.`;
   }
   function renderQuickStops() {
     $("qStopsN").textContent = STOPS.n ? String(STOPS.n) : "";
