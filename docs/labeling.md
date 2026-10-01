@@ -6,14 +6,24 @@ a marked interval becomes a positive example. Boundaries are moments in time, no
 
 ## What counts as a pump
 
-A pump is the **impulse phase**: the few hours when open interest and price accelerate together, up to the
-collapse of OI. Not the whole accumulation before it and not the drift after it. Since 2026-09-30 all tickers are
-labeled this way on 5m/15m charts (median pump length about 4 hours, before that about 13 hours of hourly bars).
+A pump (an *Impulse* in the interface) is the **whole move the owner would hold as one trade**: from the moment
+open interest and price start accelerating together to the collapse of open interest. Not the accumulation before it
+and not the drift after it. Its length is whatever the market gives: one to three hours for a short impulse, ten
+hours for a long one that pauses on the way. Labeled on 5m/15m charts since 2026-09-30; the end rule was made
+explicit on 2026-10-01.
 
 - **Start:** the bar where OI and price start accelerating together, set on 5m or 15m where it is visible.
-- **End:** the sharp drop in open interest after the price peak; the collapse bar is the last bar.
+- **End:** the reversal from the peak has become clear — a 15m close below *peak − ⅓ of the move* (move = peak
+  minus the start price; the peak is the highest high so far) **and no new high within about 3 hours after it**,
+  **or** open interest down 10%+ from its peak, whichever comes first. The rule applies once the move is ≥ 5% (a third of a tiny move is
+  noise). Use closes, not wicks. It is a guide: a clear reversal earlier (OI collapse, a flush) ends it earlier.
+- **Pause, not an end:** a pullback after which the move makes a new high (even a deep one) does not split the
+  impulse — it stays one interval. Checked on the owner's 64 impulses: the rule's end is a median 35 minutes from the
+  labeled end (95 minutes without the 3-hour pause check).
+- **Why a third:** on 63 labeled impulses, at the labeled end price had given back a median 32% of the move
+  (22–42%) while open interest was only 6% below its peak — the owner exits on price; OI collapses later.
 - **Pump (`pump`):** the impulse develops, with strong growth in both OI and price (typically tens to
-  hundreds of percent). Two impulses separated by a pullback are two pumps.
+  hundreds of percent).
 - **False start (`false_start`):** looks like the beginning of a pump (OI and/or price jump) but does not
   develop. These are valuable negative examples: they teach the model not to react to every spike.
 - **Other (`other`):** anything worth recording that fits neither type.
@@ -183,3 +193,40 @@ Things to look for:
   mean the boundary could move, not that the model is wrong.
 - **Missed pumps with low probability.** Look at which features were unusual. The pump may be a
   different pattern that needs more examples.
+
+**Terminology in the interface.** The tools call a labeled `pump` an *Impulse* and a `false_start` a *Failed
+impulse*: the model detects OI-driven impulse moves, of which pump-and-dumps are one kind. The values stored in
+`pumps.csv` and the database are unchanged.
+
+**Setup (optional, since 2026-10-01).** Each impulse can carry a `setup` column in `pumps.csv`:
+`breakout` — the move leaves a range (price sideways for hours, OI flat, then price and OI accelerate together);
+`pullback` — a new impulse after an earlier move has ended (it gave back a third, or OI reset by 10%+) while price kept
+at least half of that move's gain and then accelerated again (a pause with OI holding is part of the same impulse, not a new interval); `other` — anything else or unsure. The model
+does not train on it — the target is the same impulse — it only lets metrics be split by setup. In `label.py`: the
+*Сетап* select in the new-interval form, the edit bar and the table; keys **B / P / O** on a selected interval;
+**Підказати сетапи** suggests a setup for impulses without one (a move of ≥ 8% in the 24 h before the start or a
+labeled impulse that ended ≤ 24 h earlier, a pullback from that high, and price still holding ≥ 50% of that gain →
+pullback; otherwise breakout), with the reason on hover; you accept each one or all at once.
+
+**Model-assisted labeling (since 2026-10-01).** The model never labels on its own — only what you confirm reaches
+training (self-labeling would teach the model its own mistakes). Two helpers in `label.py`:
+- **Чернетки імпульсів** (toolbar): for the open ticker, drafts from Alert episodes that are not labeled yet. Start =
+  the price low in the 6 h before the first signal; end = the labeling rule (a close below peak − ⅓ of the move, or OI −10%; if
+  neither has happened yet, the move is still running and the end is the last bar). *Показати* puts a draft as the selection to
+  adjust and add; *Прийняти* adds it as is; *Відкинути* hides it (remembered in the browser). All drafts are shaded blue on
+  the chart with a "чернетка N" mark; a bar right under the chart steps through them (**N** next, **Shift+N** previous)
+  with *Прийняти* (takes the current, possibly adjusted, bounds) and *Відкинути*. Pressing the button again hides them. Open drafts only after
+  you have looked at the chart yourself, to avoid anchoring.
+- **Черга** (right panel tab): where labels help most (active learning) — screener tickers with unlabeled signals,
+  scored Alert ×3, Candidate without hourly confirmation ×2, near-miss (15m at 0.85–1 of its threshold) ×1, +2 for
+  tickers outside training; for tickers in `tickers.txt` only the last 7 days count. Important there: unlabeled hours
+  of a ticker in `tickers.txt` train as "no impulse".
+
+**Out of scope.** A coin that cannot be traded profitably however clean its setups look (jerky price, manipulative
+flushes both ways, thin order book) is excluded with **Виключити** in `label.py`. It goes to `excluded.txt` with the
+reason and is dropped from training (even its labeled intervals), from `tickers.txt`, the market scanner, the screener
+and the dashboard list. First one: US.
+
+**Dragging bounds.** Any selection — a new one or a draft put up with *Показати* / **N** — and any saved interval picked
+on the chart has two orange edge handles: drag them like a window edge (↔ cursor) to move the start or the end. A
+selection is saved with *Додати в список* or *Прийняти*; a saved interval is saved on release.

@@ -58,6 +58,14 @@ data in the same cycle, so Alert (which needs the hourly model) works right away
 - **waking up**: the last 4 hours of volume are ≥ `vol_x` × the 7-day median of 4-hour volume while price is not
   falling, **or** open interest is up ≥ `oi_pct` % and price ≥ `price_pct` % over 4 hours.
 
+**Hourly confirmation from our own data.** Since 2026-10-01 the hourly model is scored from our 15m exchange data rolled
+up to hours (`features.build_hourly_own`) for every coin where Binance and Bybit hold at least 70% of open interest
+(30-day average from Coinalyze) or that Coinalyze does not cover: the confirmation for the hour that just closed is
+ready in the first seconds of the cycle instead of after the hourly Coinalyze collection. `experiments/hourly_from_15m.py`
+and `rolling_confirm.py` showed the same decisions (98.6% of hours, same Alert events). Coins with more open interest
+elsewhere (Hyperliquid, OKX) keep the Coinalyze path; hourly Coinalyze data for the others is refreshed every 6 hours
+(1h chart, history).
+
 **Cycle order (latency).** Each 15-minute cycle first scores the list (15m data → 15m model), then onboards new
 tickers, then — once an hour — collects hourly Coinalyze data, starting with tickers whose 15m model is above its
 threshold so that their hourly confirmation (needed for Alert) is ready in ~1–2 minutes instead of after the whole
@@ -97,6 +105,18 @@ has scored (including the history scored when the ticker joined the list), flagg
 joins the list) are dimmed and tagged "іст."; live ones are bright. For auto coins a blue "сканер" mark shows when the
 scanner, with the current thresholds, would have added the coin had it been running all along
 (`scanner.entries_on_history`, the same rule vectorised over Binance 15m data).
+
+**Loading indicator.** A thin bar runs along the top of the dashboard and the labeling tool while any request waits for
+the server (background polls excluded); a block that is being refreshed (journal, chart, a backtest run) dims and shows
+"Оновлюю…". A running backtest shows its steps (coins → data → model → summary) with a progress bar.
+
+**Backtest tab.** Runs of `backtest.py`: launch with a turnover band (from / to), window, model and entry level; KPI cards,
+the cumulative result by day, trades and per-coin results. *Порівняти з* puts a second run next to the open one: metrics
+side by side with the difference, the second curve dashed, and per-coin differences — fair only on the same coin band.
+
+**Candidate notifications.** Under the notification toggle, a second one also announces Candidates (the 15m model
+crossed its threshold, the hourly model has not confirmed yet): one lower tone instead of two, and a toast that says to
+check the order book. Candidates come about 15 minutes earlier than Alerts with roughly 1.5× the false alarms.
 
 **Capacity.** Coinalyze allows 40 symbol-requests per minute. A ticker has about 3 exchange contracts and
 5 series, so roughly 15 calls. Around 100 tickers fit into an hourly cycle. A coin needs 7 days of

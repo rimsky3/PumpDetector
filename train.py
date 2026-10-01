@@ -390,7 +390,7 @@ def main() -> None:
             }
             bundle["labels_fp"] = labels_fp
             joblib.dump(bundle, model_path(name, out_dir))
-            print(f"Модель для скринера: {model_path(name)} (поріг {bundle['threshold']:.3f})")
+            print(f"Модель для скринера: {model_path(name, out_dir)} (поріг {bundle['threshold']:.3f})")
         if risk_info.get("k") is not None:
             print(f"Стоп: {risk_info['k']:.2f} NATR (75-й перцентиль MAE, {risk_info['n']} пампів)")
 

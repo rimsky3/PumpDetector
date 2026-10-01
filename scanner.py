@@ -115,7 +115,8 @@ def load_auto() -> dict:
 def active_auto(now: datetime | None = None) -> dict:
     """Авто-тікери, чий термін ще не минув: {base: {added, last_hit, expires, reason, ...}}."""
     now = now or datetime.now(timezone.utc)
-    return {b: r for b, r in load_auto().items() if pd.Timestamp(r["expires"]) > pd.Timestamp(now)}
+    excluded = _excluded()
+    return {b: r for b, r in load_auto().items() if pd.Timestamp(r["expires"]) > pd.Timestamp(now) and b not in excluded}
 
 
 def touch(bases: list[str], reason: str = "сигнал моделі") -> None:
@@ -176,15 +177,7 @@ def entries_on_history(h: pd.DataFrame, p: dict, ttl_hours: float, bph: int = 4)
     повторний вхід — лише після того, як тікер випав би зі списку (ttl_hours без спрацювань)."""
     if h.empty:
         return []
-    w = 4 * bph
-    vol, px, oi = h["volume"], h["price"], h["oi"]
-    v4 = vol.rolling(w).sum()
-    norm = v4.shift(w).rolling(7 * 24 * bph, min_periods=3 * 24 * bph - w).median()
-    turnover = vol.rolling(24 * bph).sum()
-    price_pct = (px / px.shift(w) - 1) * 100
-    oi_pct = (oi / oi.shift(w) - 1) * 100
-    ok = (turnover >= p["min_turnover"]) & ~(oi > p["max_oi"]) & (
-        ((v4 / norm >= p["vol_x"]) & (price_pct >= 0)) | ((oi_pct >= p["oi_pct"]) & (price_pct >= p["price_pct"])))
+    ok = passes_series(h, p, bph)
     bar = pd.Timedelta(hours=1) / bph
     out, expires = [], None
     for ts in ok[ok.fillna(False)].index:
@@ -193,6 +186,20 @@ def entries_on_history(h: pd.DataFrame, p: dict, ttl_hours: float, bph: int = 4)
             out.append(t)
         expires = t + pd.Timedelta(hours=ttl_hours)
     return out
+
+
+def passes_series(h: pd.DataFrame, p: dict, bph: int = 4) -> pd.Series:
+    """Правило фільтра (metrics_from_bars + passes) векторно по всьому ряду: True на барах, де сканер з порогами p
+    пропустив би тікер (на закритті бару). Для міток на графіку і бектесту з фільтром сканера."""
+    w = 4 * bph
+    vol, px, oi = h["volume"], h["price"], h["oi"]
+    v4 = vol.rolling(w).sum()
+    norm = v4.shift(w).rolling(7 * 24 * bph, min_periods=3 * 24 * bph - w).median()
+    turnover = vol.rolling(24 * bph).sum()
+    price_pct = (px / px.shift(w) - 1) * 100
+    oi_pct = (oi / oi.shift(w) - 1) * 100
+    return (turnover >= p["min_turnover"]) & ~(oi > p["max_oi"]) & (
+        ((v4 / norm >= p["vol_x"]) & (price_pct >= 0)) | ((oi_pct >= p["oi_pct"]) & (price_pct >= p["price_pct"])))
 
 
 def passes(m: dict, p: dict) -> tuple[bool, str]:
@@ -260,17 +267,23 @@ def hits(last: dict, p: dict, exclude: set[str] = frozenset()) -> list[dict]:
     return sorted(out, key=lambda m: -(m.get("vol_x") or 0))
 
 
+def _excluded() -> set[str]:
+    from fetch import excluded_tickers
+    return excluded_tickers(ROOT)
+
+
 def apply(last: dict, manual: set[str], log=print) -> dict:
     """Оновити авто-список: нові спрацювання, продовження, прострочені — геть, не більше max_auto."""
     cfg = load_config()
     now = datetime.now(timezone.utc)
-    auto = {b: r for b, r in load_auto().items() if pd.Timestamp(r["expires"]) > pd.Timestamp(now)}
+    excluded = _excluded()
+    auto = {b: r for b, r in load_auto().items() if pd.Timestamp(r["expires"]) > pd.Timestamp(now) and b not in excluded}
     if not cfg["enabled"]:
         _write_json(AUTO_FILE, auto)
         return auto
     ttl = timedelta(hours=cfg["ttl_hours"])
     new = []
-    for m in hits(last, params(cfg), exclude=manual):
+    for m in hits(last, params(cfg), exclude=set(manual) | excluded):
         b = m["base"]
         if b not in auto:
             new.append(b)
@@ -289,7 +302,7 @@ def apply(last: dict, manual: set[str], log=print) -> dict:
 def preview(p: dict, manual: set[str]) -> dict:
     """Для дашборду: скільки пройшло б за останнім сканом з такими порогами."""
     last = _read_json(LAST_FILE, {})
-    h = hits(last, p, exclude=manual)
+    h = hits(last, p, exclude=set(manual) | _excluded())
     return {"at": last.get("at"), "checked": last.get("checked", 0), "universe": last.get("universe", 0),
             "count": len(h), "top": [{"base": m["base"], "reason": m["reason"]} for m in h[:8]]}
 

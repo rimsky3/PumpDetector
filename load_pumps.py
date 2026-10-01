@@ -4,13 +4,16 @@ load_pumps.py — завантаження ручної розмітки з pump
 pumps.csv — джерело істини: таблиця щоразу повністю перезаписується з файлу,
 тож виправлення робляться у CSV (або через label.py), а не в базі.
 
-Формат: base_asset,start_ts,end_ts,pattern_type,notes[,entry_ts,entry_price,stop_price]
+Формат: base_asset,start_ts,end_ts,pattern_type,notes[,entry_ts,entry_price,stop_price,setup]
 Часи — UTC, "YYYY-MM-DD HH:MM", з точністю до хвилини: start_ts — момент початку пампу, end_ts — момент кінця
 (виключна межа). Межі не прив'язані до таймфрейму: можна ставити на 5m, 15m чи 1h. Який бар якого таймфрейму
 вважається пампом, вирішує features.in_pump (памп триває на момент закриття бару).
 До 2026-09-29 end_ts був «останнім баром включно» на 1h; тодішні рядки перераховано (+1 год).
 Необов'язково (з 2026-09-30): entry_ts, entry_price, stop_price — де власник зайшов би в памп і де поставив би стоп.
 З них рахується «k власника» = (вхід − стоп) / ATR(15m) на момент входу — порівнюється зі стопом моделі.
+Необов'язково (з 2026-10-01): setup — який це сетап імпульсу: breakout (вихід з рейнджу), pullback (підбір після
+відкату, OI під час відкату не обвалився), other. Модель на ньому не вчиться (ціль та сама), він потрібен, щоб
+рахувати метрики окремо для кожного сетапу.
 
     python load_pumps.py
 """
@@ -26,7 +29,8 @@ from dotenv import load_dotenv
 
 PUMPS_FILE = "pumps.csv"
 PATTERN_TYPES = {"pump", "false_start", "other"}
-COLUMNS = ["base_asset", "start_ts", "end_ts", "pattern_type", "notes", "entry_ts", "entry_price", "stop_price"]
+SETUPS = {"breakout", "pullback", "other"}
+COLUMNS = ["base_asset", "start_ts", "end_ts", "pattern_type", "notes", "entry_ts", "entry_price", "stop_price", "setup"]
 TS_FORMAT = "%Y-%m-%d %H:%M"
 
 
@@ -40,8 +44,8 @@ def _opt_float(v):
 
 
 def parse_row(r: dict) -> tuple:
-    """Рядок CSV/JSON → (base, start, end, type, notes, entry_ts, entry_price, stop_price). ValueError, якщо щось не так.
-    Вхід і стоп — необов'язкові (None)."""
+    """Рядок CSV/JSON → (base, start, end, type, notes, entry_ts, entry_price, stop_price, setup). ValueError, якщо щось
+    не так. Вхід, стоп і сетап — необов'язкові (None)."""
     try:
         base = r["base_asset"].strip().upper()
         start, end = parse_ts(r["start_ts"]), parse_ts(r["end_ts"])
@@ -65,7 +69,10 @@ def parse_row(r: dict) -> tuple:
         raise ValueError("вхід має бути в межах пампу")
     if stop_px is not None and stop_px >= entry_px:
         raise ValueError("стоп для лонгу має бути нижче ціни входу")
-    return base, start, end, ptype, (r.get("notes") or "").strip() or None, entry_ts, entry_px, stop_px
+    setup = (r.get("setup") or "").strip() or None
+    if setup is not None and setup not in SETUPS:
+        raise ValueError(f"невідомий setup '{setup}' (breakout / pullback / other)")
+    return base, start, end, ptype, (r.get("notes") or "").strip() or None, entry_ts, entry_px, stop_px, setup
 
 
 def check_overlaps(rows: list[tuple]) -> list[str]:
@@ -104,21 +111,23 @@ def write_pumps(rows: list[tuple], path: str = PUMPS_FILE) -> None:
     with open(tmp, "w", encoding="utf-8", newline="") as f:
         w = csv.writer(f, lineterminator="\n")
         w.writerow(COLUMNS)
-        for base, start, end, ptype, notes, entry_ts, entry_px, stop_px in rows:
+        for base, start, end, ptype, notes, entry_ts, entry_px, stop_px, setup in rows:
             w.writerow([base, start.strftime(TS_FORMAT), end.strftime(TS_FORMAT), ptype, notes or "",
                         entry_ts.strftime(TS_FORMAT) if entry_ts else "",
-                        repr(entry_px) if entry_px is not None else "", repr(stop_px) if stop_px is not None else ""])
+                        repr(entry_px) if entry_px is not None else "", repr(stop_px) if stop_px is not None else "",
+                        setup or ""])
     os.replace(tmp, path)  # атомарна заміна: файл не лишиться напівзаписаним
 
 
 def sync_db(conn, rows: list[tuple]) -> None:
     # і в CSV, і в таблиці end_ts — виключна межа (момент кінця пампу)
-    for col, typ in (("entry_ts", "TIMESTAMPTZ"), ("entry_price", "DOUBLE PRECISION"), ("stop_price", "DOUBLE PRECISION")):
+    for col, typ in (("entry_ts", "TIMESTAMPTZ"), ("entry_price", "DOUBLE PRECISION"), ("stop_price", "DOUBLE PRECISION"),
+                     ("setup", "TEXT")):
         conn.execute(f"ALTER TABLE pumps ADD COLUMN IF NOT EXISTS {col} {typ}")   # база, створена до 2026-09-30
     conn.execute("TRUNCATE pumps RESTART IDENTITY")
     conn.cursor().executemany(
-        "INSERT INTO pumps (base_asset, start_ts, end_ts, pattern_type, notes, entry_ts, entry_price, stop_price) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+        "INSERT INTO pumps (base_asset, start_ts, end_ts, pattern_type, notes, entry_ts, entry_price, stop_price, setup) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
         rows,
     )
     conn.commit()

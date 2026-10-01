@@ -79,6 +79,7 @@ CREATE TABLE IF NOT EXISTS pumps (
     entry_ts     TIMESTAMPTZ,          -- необов'язково: де власник зайшов би
     entry_price  DOUBLE PRECISION,
     stop_price   DOUBLE PRECISION,     -- і де поставив би стоп
+    setup        TEXT,                 -- breakout / pullback / other (лише для аналізу, модель на ньому не вчиться)
     CHECK (end_ts > start_ts)
 );
 

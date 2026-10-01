@@ -206,6 +206,15 @@ def read_tickers_file(path: str) -> list[str]:
         return [t for line in f if (t := line.split("#")[0].strip())]
 
 
+EXCLUDED_FILE = "excluded.txt"   # тікери поза скоупом (смикана ціна, проливи, тонкий стакан): не навчання, не скан, не скринер
+
+
+def excluded_tickers(root: str | None = None) -> set[str]:
+    """Тікери з excluded.txt (рядок: тікер # причина)."""
+    path = os.path.join(root, EXCLUDED_FILE) if root else EXCLUDED_FILE
+    return {t.upper() for t in read_tickers_file(path)}
+
+
 def set_ticker_in_file(path: str, base: str, on: bool, comment: str = "") -> bool:
     """Додати тікер у файл (on=True) або прибрати його рядок (on=False); решта рядків і коментарі лишаються.
     Повертає True, якщо файл змінився."""

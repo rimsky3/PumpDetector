@@ -10,6 +10,7 @@ options straight from the code. Run everything from the project folder with the 
 | Add a ticker for training | in `python label.py`: find it under **Усі Binance** → **Завантажити** → label it → after reviewing the whole ticker press **У навчання** → `python features.py` → `python train.py` → restart `screener.py` and `dashboard.py` |
 | Confirm a journal signal | open the ticker in `label.py`, label the interval as `pump` or `false_start` → `python features.py` (only that interval enters training) |
 | Scan a coin live only | dashboard: type it in search → **＋ Додати … у watchlist** (or the field in the **Сканер** card); data and scores load at once. Or add a line to `watchlist.txt` — the screener re-reads it every cycle |
+| Drop a coin from scope | `label.py`: open it → **Виключити** (with a reason) — written to `excluded.txt`; it leaves training, the scanner, the screener and the dashboard list |
 | Let the market fill the list | the **Сканер** card in the dashboard: pick Суворо / Баланс / Широко / Свій → **Зберегти**; `python scanner.py --recall` refreshes the "on time on labeled pumps" numbers |
 | Fix a label | edit it in `python label.py` (or `pumps.csv` + `python load_pumps.py`) → `python features.py` → `python train.py` |
 | Weekly data refresh | `python fetch.py` (all tickers; extends history, which the provider keeps for ~2 months) |
@@ -126,6 +127,43 @@ the current "Alert gone for 4 bars" against exits on VWAP (anchored at entry, ro
 closes; 0 or 0.5 ATR buffer; checked on 15m or 5m closes), alone, whichever comes first, or only when both agree.
 0.1% fee per trade. Writes `reports/exit_vwap.csv`.
 
+### `experiments/exit_giveback.py`
+
+Exit by the labeling logic: the price gave back a share (¼, ⅓, ½) of the move since entry (move = highest high since
+entry minus the entry price, applied once the move is 1–2 ATR), optionally OI −10%, alone, whichever comes first with the
+current "Alert gone for 4 bars", or only together with it (`and`, and `and_small`: while the move is small, exit as now).
+Out-of-fold Alert entries, k·ATR stop, 0.1% fee. Writes `reports/exit_giveback.csv`.
+
+### `experiments/flush_risk.py`
+
+Long flush after a stall: in the 12 hours after an Alert, how often price drops 3+ ATR(15m) within 4 hours when it
+stalls near the 24-hour high, with open interest at its high, the 15m score fading, a high long share or positive funding
+(one situation per 4 hours per ticker).
+
+### `experiments/in_position.py`
+
+Signals inside the model's open position: what price does 1/2/4 hours after a bar where the Alert keeps burning, flares
+up again after a 1–3-bar gap, or the 15m score falls three bars in a row with no new high for four bars ("fading"),
+compared with the first entry and other bars; plus trades with an extra "fading" exit (medians, and the sum without the
+two largest trades).
+
+### `experiments/exit_examples.py`
+
+Visual check of the giveback exit: an SVG page `reports/exit_rule_examples.html` with the trades where the current and
+the new exit differ (candles, Alert strip, entry, both exits, stop, the half-of-the-move level).
+
+### `experiments/scale_in.py`
+
+Entering in parts: a fraction of the position on the Candidate, the rest added on the Alert, against all-in on the Alert
+and all-in on the Candidate. One stop for the whole position from the first entry, 0.1% fee per part, results in units
+of a full position; split by trades inside labeled impulses and outside them.
+
+### `experiments/rolling_confirm.py`
+
+Faster Alert? The hourly confirmation on a rolling hour (updated every 15 minutes from our 15m data) against the closed
+calendar hour, from Coinalyze or our data, at confirm share 0.75 or 0.6, and Candidate alone: caught impulses, delay,
+share of the move done at the first signal, failed impulses with a signal, false alarms per 30 days.
+
 ### `experiments/hourly_from_15m.py`
 
 Hourly context (Alert confirmation) from our own 15m data (Binance + Bybit + Coinalyze 15m liquidations, rolled up to
@@ -165,6 +203,24 @@ restart it after `train.py`.
 | `--recall` | test every preset on the labeled pumps from the database; writes `reports/scan_recall.json`, shown in the dashboard |
 
 Thresholds live in `scan_config.json` (edited from the dashboard). See [screener.md](screener.md#market-scanner).
+
+### `backtest.py` — wide backtest on coins outside training
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--min-turnover` | 20e6 | average daily turnover over the window, $ |
+| `--max-oi` | scanner's `max_oi` (500 M$) | open interest cap — same scope as the scanner (no BTC/ETH) |
+| `--days` | 30 | window (Binance keeps open interest history for 30 days) |
+| `--model` | current | `current` or `candidate` (models/candidate/) |
+| `--entry` | alert | `alert` or `candidate` (15m model alone) |
+| `--no-fetch` | off | use only data already in the database |
+| `--limit` | 0 | only the first N coins (a quick check) |
+
+The coin list is fixed by rule before the run: Binance USDT perps by turnover and open interest, minus `tickers.txt`,
+labeled coins and `excluded.txt`. Data: 15m from Binance and Bybit plus Coinalyze 15m liquidations (~3 calls per coin;
+contracts for all coins in one call); the hourly confirmation comes from our own 15m data. Trades follow the position
+rules (`risk.position_state`), 0.1% fee. Writes `reports/backtests/<time>_<model>_<entry>.json`; the dashboard tab
+**Бектест** shows and launches runs. The first run on ~100 coins takes 30–60 minutes (data), later ones only top up.
 
 ### `dashboard.py` — Forecast and Journal
 

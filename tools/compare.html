@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
-/* Порівняння поточної моделі і кандидата: зведення → чесне порівняння → по тікерах (графік + таблиця) → по пампах */
+/* Порівняння поточної моделі і кандидата: зведення → чесне порівняння → по тікерах (графік + таблиця) → по імпульсах */
 :root {
   --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3ea; --grid: #edf0f4;
   --fg: #111418; --fg2: #515966; --fg3: #808895; --accent: #2a78d6; --accent-fg: #fff;
@@ -116,17 +116,17 @@ td.m { font-family: var(--mono); font-size: 12px; }
       <h2 id="tkH">По тікерах</h2>
       <label class="group note">Показник
         <select id="metricSel">
-          <option value="caught">Спіймано пампів, %</option>
+          <option value="caught">Спіймано імпульсів, %</option>
           <option value="fa">Хибних епізодів на 30 днів</option>
-          <option value="fs">Фальстартів із сигналом, %</option>
+          <option value="fs">Невдалих імпульсів із сигналом, %</option>
           <option value="delay">Затримка, хв</option>
         </select>
       </label>
     </div>
     <div class="chart" id="chart"></div>
     <div class="tbl"><table>
-      <thead><tr><th class="sort" data-k="ticker">Тікер</th><th>Порівняння</th><th class="sort" data-k="pumps">Пампів</th>
-        <th class="sort" data-k="caught">Спіймано</th><th class="sort" data-k="fs">Фальстартів із сигналом</th>
+      <thead><tr><th class="sort" data-k="ticker">Тікер</th><th>Порівняння</th><th class="sort" data-k="pumps">Імпульсів</th>
+        <th class="sort" data-k="caught">Спіймано</th><th class="sort" data-k="fs">Невдалих імпульсів із сигналом</th>
         <th class="sort" data-k="fa">Хибних / 30 д</th><th class="sort" data-k="delay">Затримка</th><th></th></tr></thead>
       <tbody id="tkRows"></tbody>
     </table></div>
@@ -136,9 +136,9 @@ td.m { font-family: var(--mono); font-size: 12px; }
     <div class="bar">
       <h2 id="pH">По кожному розміченому інтервалу</h2>
       <div class="group" role="group" aria-label="Фільтр">
-        <button data-f="all" aria-pressed="true">Усі пампи</button><button data-f="onlynew" aria-pressed="false">Ловить лише нова</button>
+        <button data-f="all" aria-pressed="true">Усі імпульси</button><button data-f="onlynew" aria-pressed="false">Ловить лише нова</button>
         <button data-f="onlycur" aria-pressed="false">Лише поточна</button><button data-f="both" aria-pressed="false">Обидві</button>
-        <button data-f="none" aria-pressed="false">Жодна</button><button data-f="fs" aria-pressed="false">Фальстарти</button>
+        <button data-f="none" aria-pressed="false">Жодна</button><button data-f="fs" aria-pressed="false">Failed impulses</button>
       </div>
     </div>
     <div class="tbl"><table>
@@ -207,16 +207,16 @@ td.m { font-family: var(--mono); font-size: 12px; }
     const fb = $("fairKpis"); fb.replaceChildren();
     if (fair.length) {
       const c = pool(fair, "cur"), n = pool(fair, "new");
-      kpi(fb, "Спіймано пампів", c.caught, n.caught, pct, true, c.caughtTxt, n.caughtTxt);
-      kpi(fb, "Фальстартів із сигналом", c.fs, n.fs, pct, false, c.fsTxt, n.fsTxt);
+      kpi(fb, "Спіймано імпульсів", c.caught, n.caught, pct, true, c.caughtTxt, n.caughtTxt);
+      kpi(fb, "Невдалих імпульсів із сигналом", c.fs, n.fs, pct, false, c.fsTxt, n.fsTxt);
       kpi(fb, "Хибних епізодів на 30 днів", c.fa, n.fa, num1, false);
       kpi(fb, "Затримка (медіана)", c.delay, n.delay, fmtMin, false);
     }
     const vb = $("valKpis"); vb.replaceChildren();
     const vc = D.current?.[TIER] || {}, vn = D.candidate?.[TIER] || {};
     const cc = frac(vc.pumps_caught), nc = frac(vn.pumps_caught), cf = frac(vc.false_starts_triggered), nf = frac(vn.false_starts_triggered);
-    kpi(vb, "Спіймано пампів", cc && cc.v * 100, nc && nc.v * 100, pct, true, vc.pumps_caught, vn.pumps_caught);
-    kpi(vb, "Фальстартів із сигналом", cf && cf.v * 100, nf && nf.v * 100, pct, false, vc.false_starts_triggered, vn.false_starts_triggered);
+    kpi(vb, "Спіймано імпульсів", cc && cc.v * 100, nc && nc.v * 100, pct, true, vc.pumps_caught, vn.pumps_caught);
+    kpi(vb, "Невдалих імпульсів із сигналом", cf && cf.v * 100, nf && nf.v * 100, pct, false, vc.false_starts_triggered, vn.false_starts_triggered);
     kpi(vb, "Хибних епізодів на 30 днів", vc.false_alarms_per_30d, vn.false_alarms_per_30d, num1, false);
     kpi(vb, "F1 (по барах)", vc.f1, vn.f1, num2, true);
     const dc = D.current_delay?.[TIER], dn = D.candidate_delay?.[TIER];
@@ -225,8 +225,8 @@ td.m { font-family: var(--mono); font-size: 12px; }
   };
 
   // ---------- графік по тікерах: горизонтальні пари стовпчиків (поточна / нова) ----------
-  const METRIC_INFO = { caught: ["Спіймано пампів, %", true, (v) => `${v.toFixed(0)}%`], fa: ["Хибних епізодів на 30 днів", false, (v) => v.toFixed(1)],
-                        fs: ["Фальстартів із сигналом, %", false, (v) => `${v.toFixed(0)}%`], delay: ["Затримка, хв", false, (v) => `${Math.round(v)} хв`] };
+  const METRIC_INFO = { caught: ["Спіймано імпульсів, %", true, (v) => `${v.toFixed(0)}%`], fa: ["Хибних епізодів на 30 днів", false, (v) => v.toFixed(1)],
+                        fs: ["Невдалих імпульсів із сигналом, %", false, (v) => `${v.toFixed(0)}%`], delay: ["Затримка, хв", false, (v) => `${Math.round(v)} хв`] };
   const renderChart = () => {
     const box = $("chart"); box.replaceChildren();
     const [title, , fmt] = METRIC_INFO[METRIC];
@@ -333,7 +333,7 @@ td.m { font-family: var(--mono); font-size: 12px; }
     status("Рахую порівняння… (перший раз — до хвилини: поточна модель оцінює тікери)");
     try { D = await api("GET", "/api/compare"); status(""); }
     catch (e) { status(e.message, true); return; }
-    $("dates").textContent = `Поточна — від ${D.current?.trained_at?.slice(5, 16) ?? "—"} (${D.current?.tickers} тікерів, ${D.current?.pumps} пампів) · нова — від ${D.candidate.trained_at.slice(5, 16)} (${D.candidate.tickers} тікерів, ${D.candidate.pumps} пампів)`;
+    $("dates").textContent = `Поточна — від ${D.current?.trained_at?.slice(5, 16) ?? "—"} (${D.current?.tickers} тікерів, ${D.current?.pumps} імпульсів) · нова — від ${D.candidate.trained_at.slice(5, 16)} (${D.candidate.tickers} тікерів, ${D.candidate.pumps} імпульсів)`;
     render();
   })();
 })();

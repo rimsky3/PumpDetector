@@ -319,6 +319,50 @@ def build_15m(conn, bases: list[str], pumps: pd.DataFrame | None = None, since=N
     return build_from_raw(load_raw(conn, bases, INTERVAL_15M, since), pumps, bars_per_hour=4, extra=short_features)
 
 
+def hourly_from_intraday(raw: dict[str, pd.DataFrame], offset_min: int = 0) -> dict[str, pd.DataFrame]:
+    """15m-ряди контрактів (load_raw з INTERVAL_15M) → години, що починаються на :offset_min; лише повні години
+    (4 бари). Так годинні ознаки рахуються з наших біржових даних без годинного збору Coinalyze:
+    experiments/hourly_from_15m.py — рішення годинної моделі збігаються з Coinalyze на 98.6% годин."""
+    keys = ["base_asset", "market", "exchange", "quote_asset"]
+    off = pd.Timedelta(minutes=offset_min)
+
+    def roll(df, agg, extra=()):
+        if df.empty:
+            return df
+        d = df.assign(ts=(df["ts"] - off).dt.floor("h") + off)
+        r = d.groupby(keys + list(extra) + ["ts"], dropna=False).agg(**agg, n=("ts", "size")).reset_index()
+        return r[r["n"] == 4].drop(columns="n")
+
+    out = {
+        "ohlcv": roll(raw["ohlcv"], dict(o=("o", "first"), h=("h", "max"), l=("l", "min"), c=("c", "last"), v=("v", "sum"),
+                                         bv=("bv", lambda x: x.sum(min_count=1))), ["volume_denominated"]),
+        "oi": roll(raw["oi"], dict(o=("o", "first"), h=("h", "max"), l=("l", "min"), c=("c", "last"))),
+        "funding": roll(raw["funding"], dict(c=("c", "last"))),
+        "ls": roll(raw["ls"], dict(long_pct=("long_pct", "last"))),
+        "liq": roll(raw["liq"], dict(long_liq=("long_liq", "sum"), short_liq=("short_liq", "sum"))),
+    }
+    if "liq_coverage" in raw:
+        out["liq_coverage"] = raw["liq_coverage"]
+    return out
+
+
+def build_hourly_own(conn, bases: list[str], since=None) -> pd.DataFrame:
+    """Годинні ознаки (FEATURES) з наших 15m-даних (Binance+Bybit + 15m-ліквідації Coinalyze), без міток."""
+    return build_from_raw(hourly_from_intraday(load_raw(conn, bases, INTERVAL_15M, since)))
+
+
+def oi_seen_share(conn, bases: list[str], days: int = 30) -> dict[str, float]:
+    """Частка OI тікера (середнє за days днів, годинні дані Coinalyze по всіх біржах), яку тримають біржі
+    INTRADAY_EXCHANGES. Тікера без годинних даних Coinalyze у словнику немає."""
+    rows = conn.execute("""
+        SELECT base, sum(a) FILTER (WHERE ex = ANY(%s)) / NULLIF(sum(a), 0) FROM (
+            SELECT m.base_asset AS base, m.exchange_name AS ex, o.symbol, avg(o.c) AS a
+            FROM open_interest o JOIN markets m USING (symbol)
+            WHERE m.base_asset = ANY(%s) AND o.interval = '1hour' AND o.ts > now() - make_interval(days => %s)
+            GROUP BY 1, 2, 3) x GROUP BY 1""", (list(INTRADAY_EXCHANGES), bases, days)).fetchall()
+    return {b: float(s) for b, s in rows if s is not None}
+
+
 def build(conn, bases: list[str] | None = None, labels: bool = True) -> pd.DataFrame:
     """Таблиця ознак: рядок = тікер × година. Лише години з повною історією для вікон
     і лише закриті бари (поточна незакрита година відкидається)."""
@@ -388,6 +432,9 @@ def main() -> None:
     with psycopg.connect(db_url) as conn:
         labeled = {r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM pumps")}
         # без аргументів — переглянуті тікери і всі тікери з розміткою
+        from fetch import excluded_tickers
+        excluded = excluded_tickers()        # поза скоупом — навіть якщо розмічені
+        reviewed, labeled = reviewed - excluded, labeled - excluded
         bases = [t.upper() for t in args.tickers] if args.tickers else sorted(reviewed | labeled)
         if not bases:
             sys.exit(f"Немає тікерів: передай їх аргументами або додай у {TICKERS_FILE}")

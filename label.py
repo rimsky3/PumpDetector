@@ -1,9 +1,9 @@
 """
-label.py — локальний інструмент розмітки пампів.
+label.py — локальний інструмент розмітки імпульсів.
 
 Піднімає вебсервер на 127.0.0.1 (доступний лише з цього комп'ютера) і відкриває
 сторінку з графіками ціни, open interest і обсягу по кожному тікеру з бази.
-Таймфрейми: 1h (Coinalyze, усі біржі) і 15m / 5m (Binance + Bybit, python fetch_exchange.py) — межі пампу
+Таймфрейми: 1h (Coinalyze, усі біржі) і 15m / 5m (Binance + Bybit, python fetch_exchange.py) — межі імпульсу
 можна ставити на будь-якому, це моменти часу.
 
 Права панель — усі USDT-перпи Binance. «Завантажити» ставить тікер у чергу: 1h з Coinalyze (fetch.collect),
@@ -13,7 +13,7 @@ label.py — локальний інструмент розмітки пампі
 розмітки — train.event_metrics. Тікер, якого модель не бачила, — чесний тест; розмітка його помилок — нові приклади.
 
 Розмічені інтервали будь-якого тікера йдуть у навчання (features.py). Решта годин тікера — лише коли він у
-tickers.txt: кнопка «У навчання» = «переглянув увесь тікер, де пампу не розмічено — його не було».
+tickers.txt: кнопка «У навчання» = «переглянув увесь тікер, де імпульсу не розмічено — його не було».
 Виділені інтервали одразу записуються в pumps.csv і синхронізуються з таблицею pumps.
 Якщо є reports/oof_predictions.csv (python train.py), показує сигнали моделей і їхні помилки.
 
@@ -42,12 +42,13 @@ from dotenv import load_dotenv
 
 import fetch_exchange
 from exchanges import INTERVAL
-from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, aggregate, build, build_15m, load_pumps, load_raw
+from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, aggregate, build, build_15m, load_pumps, load_raw, query_df
 from risk import atr, position_state, trade_stats as summarize_trades
 from tiers import tier_frame
 import train
-from fetch import TICKERS_FILE, Coinalyze, collect, collect_liquidations, read_tickers_file, set_ticker_in_file
-from load_pumps import (check_overlaps, parse_row, parse_ts, read_pumps,
+from fetch import (EXCLUDED_FILE, TICKERS_FILE, Coinalyze, collect, collect_liquidations, excluded_tickers,
+                   read_tickers_file, set_ticker_in_file)
+from load_pumps import (SETUPS, check_overlaps, parse_row, parse_ts, read_pumps,
                         sync_db, write_pumps, TS_FORMAT)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -195,9 +196,10 @@ def _summary(b15: dict | None, b1: dict | None) -> dict | None:
 def model_status(conn) -> dict:
     """Які тікери вже в поточній моделі, які змінились після навчання, які чекають перенавчання; кандидат, якщо є."""
     cur15, cur1 = _bundle(train.model_path(train.M15_NAME)), _bundle(train.model_path("lightgbm"))
-    reviewed = {t.upper() for t in read_tickers_file(TICKERS_PATH)}
+    excluded = excluded_tickers(ROOT)
+    reviewed = {t.upper() for t in read_tickers_file(TICKERS_PATH)} - excluded
     pumps = load_pumps(conn)
-    fp_now = train.label_fingerprint(pumps)
+    fp_now = {b: v for b, v in train.label_fingerprint(pumps).items() if b not in excluded}
     tickers = {}
     if cur15:
         in_full = set(cur15.get("tickers", []))
@@ -521,14 +523,213 @@ def _json_safe(o):
 def rows_to_json(rows: list[tuple]) -> list[dict]:
     return [{"base_asset": b, "start_ts": s.strftime(TS_FORMAT), "end_ts": e.strftime(TS_FORMAT),
              "pattern_type": p, "notes": n or "", "entry_ts": et.strftime(TS_FORMAT) if et else None,
-             "entry_price": ep, "stop_price": sp} for b, s, e, p, n, et, ep, sp in rows]
+             "entry_price": ep, "stop_price": sp, "setup": su} for b, s, e, p, n, et, ep, sp, su in rows]
+
+
+def suggest_setups(conn) -> list[dict]:
+    """Підказка сетапу для розмічених імпульсів без setup (власник підтверджує або виправляє).
+    За правилом розмітки (2026-10-01) відкат, на якому OI тримався, — частина того самого імпульсу, тож сетап описує,
+    з чого ПОЧАВСЯ імпульс: pullback — за 24 год до старту вже був рух ≥ 8% (або розмічений імпульс закінчився
+    ≤ 24 год тому), ціна відкотилась, але втримала ≥ 50% того росту; інакше breakout (старт з рейнджу)."""
+    rows = [r for r in read_pumps() if r[3] == "pump" and r[8] is None]
+    out = []
+    by_base: dict = {}
+    for r in rows:
+        by_base.setdefault(r[0], []).append(r)
+    all_rows = read_pumps()
+    for base, items in by_base.items():
+        since = min(r[1] for r in items) - pd.Timedelta(days=2)
+        h = aggregate(load_raw(conn, [base], INTERVAL_15M, since=since), base, "15min")
+        if h.empty:
+            continue
+        for r in items:
+            start = pd.Timestamp(r[1])
+            w = h[(h.index >= start - pd.Timedelta(hours=24)) & (h.index + pd.Timedelta(minutes=15) <= start)]
+            if len(w) < 16:
+                continue
+            p_start, p_first = w["price"].iloc[-1], w["price"].iloc[0]
+            i_hi = w["high"].idxmax()
+            hi = w.at[i_hi, "high"]
+            oi_hi, oi_start = w.at[i_hi, "oi"], w["oi"].iloc[-1]
+            prior = [x for x in all_rows if x[0] == base and x[3] == "pump" and x[2] <= r[1] and r[1] - x[2] <= pd.Timedelta(hours=24)]
+            run = hi / p_first - 1
+            pulled = p_start < hi * 0.98
+            kept = (p_start - p_first) / (hi - p_first) if hi > p_first else 0      # частка росту, яку втримала ціна
+            if (prior or run >= 0.08) and pulled and kept >= 0.5:
+                setup = "pullback"
+                why = (f"розмічений імпульс закінчився {(r[1] - prior[-1][2]) / pd.Timedelta(hours=1):.0f} год тому · " if prior
+                       else f"рух +{run:.0%} за добу · ") + f"відкат {p_start / hi - 1:.0%} від максимуму · ціна втримала {kept:.0%} росту"
+            else:
+                setup = "breakout"
+                why = (f"ціна віддала більшу частину росту (втримала {kept:.0%}) — старт знову з рейнджу" if (prior or run >= 0.08) and pulled
+                       else f"за добу до старту максимум лише {run:+.0%} від її початку — попереднього руху не було")
+            out.append({"base_asset": base, "start_ts": r[1].strftime(TS_FORMAT), "setup": setup, "reason": why})
+    return out
+
+
+# ---------------------------------------------------------------- чернетки імпульсів і черга розмітки
+# Модель НЕ розмічає сама: до навчання потрапляє лише те, що власник підтвердив. Чернетка — підказка меж,
+# черга — де розмітка дасть моделі найбільше (active learning).
+
+OI_END_DROP = 0.10          # кінець імпульсу: OI −10% від піку …
+END_GIVEBACK = 1 / 3        # … або закриття нижче «пік − ⅓ руху» (правило розмітки 2026-10-01)
+END_MIN_MOVE = 0.05         # правило ⅓ діє, коли рух від старту ≥ 5%
+PAUSE_LOOK = pd.Timedelta(hours=3)   # відкат на ⅓, після якого за 3 год є новий максимум, — пауза (розмітка бачить майбутнє)
+
+
+def impulse_end(fw: pd.DataFrame, after: pd.Timestamp) -> pd.Timestamp | None:
+    """Кінець імпульсу за правилом розмітки на 15m-барах fw (з бару старту): перше закриття нижче «пік − ⅓ руху»
+    (рух ≥ 5%), після якого ціна НЕ оновила максимум протягом PAUSE_LOOK, або OI −10% від свого піку — що раніше;
+    не раніше бару after (перший сигнал). Повертає час кінця (закриття бару) або None — рух ще триває.
+    Перевірено на 64 імпульсах власника: медіана |різниці| з його кінцем 35 хв (без погляду вперед — 95 хв)."""
+    import numpy as np
+    B = train.BAR_15M
+    p0 = fw["low"].iloc[0]
+    hi, cl, oi, idx = fw["high"].to_numpy(), fw["price"].to_numpy(), fw["oi"].to_numpy(), fw.index
+    pk, oimax, i = hi[0], 0.0, 0
+    while i < len(fw):
+        pk = max(pk, hi[i])
+        if not np.isnan(oi[i]):
+            oimax = max(oimax, oi[i])
+        if idx[i] >= after:
+            if not np.isnan(oi[i]) and oimax and oi[i] <= (1 - OI_END_DROP) * oimax:
+                return idx[i] + B
+            mv = pk - p0
+            if mv >= END_MIN_MOVE * p0 and cl[i] < pk - END_GIVEBACK * mv:
+                j, new_high = i + 1, False
+                while j < len(fw) and idx[j] <= idx[i] + PAUSE_LOOK:
+                    if hi[j] > pk:
+                        new_high = True
+                        break
+                    j += 1
+                if not new_high:
+                    return idx[i] + B
+                i = j
+                continue
+        i += 1
+    return None
+
+
+def draft_intervals(conn, base: str) -> list[dict]:
+    """Чернетки імпульсів на тікері з епізодів Alert, які ще не розмічено.
+    Правило розмітки (CLAUDE.md, impulse_end): кінець — закриття 15m нижче «пік − ⅓ руху» (рух ≥ 5%), після якого за
+    3 год немає нового максимуму, або OI −10% від піку. Старт — мінімум ціни за ≤ 6 год до першого сигналу.
+    Якщо кінця ще немає — рух триває, кінець = останній бар («кінець приблизний»).
+    Епізоди Alert усередині чернетки — той самий рух. Межі не заходять на розмічене."""
+    model15(conn, base)                          # оцінки тікера (кеш)
+    t = next(iter(_score_cache.values()))
+    h = aggregate(load_raw(conn, [base], INTERVAL_15M), base, "15min").dropna(subset=["price", "high", "low"])
+    if t.empty or h.empty:
+        return []
+    labeled = [(r[1], r[2]) for r in read_pumps() if r[0] == base]
+    B = train.BAR_15M
+    alert = (t["tier"] == "alert").to_numpy()
+    out = []
+    for e in train.signal_episodes(t[["base_asset", "ts"]], alert, B).itertuples():
+        if any(a < e.end and b > e.start for a, b in labeled):
+            continue
+        w0 = h[(h.index >= e.start - pd.Timedelta(hours=6)) & (h.index <= e.start)]
+        start = w0["low"].idxmin() if len(w0) else e.start
+        w1 = h[(h.index >= e.start) & (h.index < e.end + pd.Timedelta(hours=6))]
+        if w1.empty:
+            continue
+        # кінець — правило розмітки (impulse_end); немає — рух триває, кінець = останній бар
+        fw = h[(h.index >= start) & (h.index < e.end + pd.Timedelta(hours=36))]
+        found = impulse_end(fw, e.start)
+        stop_at = found - B if found is not None else fw.index[-1]
+        peak = fw.loc[:stop_at, "high"].idxmax()
+        drop = [found] if found is not None else []
+        end = stop_at + B
+        nxt = [a for a, b in labeled if a >= start]          # не налазити на наступний розмічений інтервал
+        if nxt:
+            end = min(end, min(nxt))
+        prev = [b for a, b in labeled if b <= e.start]
+        if prev:
+            start = max(start, max(prev))
+        if end <= start:
+            continue
+        span = t[(t["ts"] >= e.start) & (t["ts"] < e.end)]
+        p0, pk = h.at[start, "price"] if start in h.index else w0["price"].iloc[0], fw.loc[:stop_at, "high"].max()
+        oi0, oik = h["oi"].asof(start), h["oi"].asof(peak)
+        d = {"start": start, "end": end, "alert_start": e.start, "alert_min": int((e.end - e.start) / pd.Timedelta(minutes=1)),
+             "p_max": float(span["p15"].max()), "move": float(pk / p0 - 1) if p0 else None,
+             "oi_chg": float(oik / oi0 - 1) if oi0 and pd.notna(oi0) and pd.notna(oik) else None,
+             "oi_drop": bool(len(drop))}
+        if out and d["start"] < out[-1]["end"]:       # два епізоди одного руху — одна чернетка
+            out[-1].update(end=max(out[-1]["end"], d["end"]), p_max=max(out[-1]["p_max"], d["p_max"]))
+            continue
+        out.append(d)
+    for d in out:
+        d["reason"] = (f"Alert {d['alert_min'] // 60} год {d['alert_min'] % 60} хв, P до {d['p_max']:.2f}"
+                       + (f" · ціна +{d['move']:.0%}" if d["move"] is not None else "")
+                       + (f" · OI {d['oi_chg']:+.0%}" if d["oi_chg"] is not None else "")
+                       + ("" if d["oi_drop"] else " · розвороту ще немає — рух триває, кінець приблизний"))
+        for k in ("start", "end", "alert_start"):
+            d[k] = int(pd.Timestamp(d[k]).timestamp())
+    return out
+
+
+_queue_cache: dict = {}
+
+
+def label_queue(conn) -> list[dict]:
+    """Де розмітка дасть моделі найбільше: тікери скринера з нерозміченими епізодами (оцінки з таблиці signals).
+    Бали: Alert без розмітки ×3 (або памп, або хибний — обидва цінні), «лише Кандидат» (15m так, 1h ні) ×2,
+    майже-сигнал (15m 0.85–1 порогу) ×1; тікер поза навчанням — +2 (свіжий приклад для моделі або holdout).
+    Для тікерів з tickers.txt — лише останні 7 днів (давнішу історію ти вже переглядав)."""
+    key = int(time.time() // 300)
+    if key in _queue_cache:
+        return _queue_cache[key]
+    sig = query_df(conn, """
+        SELECT s.base_asset, s.ts, s.model, s.probability, s.threshold FROM signals s
+        JOIN (SELECT model, max(model_version) AS v FROM signals GROUP BY model) m ON s.model = m.model AND s.model_version = m.v
+        WHERE s.model IN ('lightgbm_15m', 'lightgbm')""")
+    if sig.empty:
+        return []
+    m15, _ = models_15m()
+    share = m15.get("confirm", {}).get("share", 0.75)
+    t = tier_frame(sig[sig["model"] == "lightgbm_15m"], sig[sig["model"] == "lightgbm"], share)
+    reviewed = {x.upper() for x in read_tickers_file(TICKERS_PATH)}
+    trained = set(m15.get("tickers", []))
+    excluded = excluded_tickers(ROOT)
+    pumps = load_pumps(conn)
+    B = train.BAR_15M
+    recent = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=7)
+    out = []
+    for base, g in t.groupby("base_asset"):
+        if base in excluded:
+            continue
+        if base in reviewed:
+            g = g[g["ts"] >= recent]
+        own = pumps[pumps["base_asset"] == base]
+        unl = lambda e: not ((own["start_ts"] < e.end) & (own["end_ts"] > e.start)).any()  # noqa: E731
+        df = g[["base_asset", "ts"]]
+        al = [e for e in train.signal_episodes(df, (g["tier"] == "alert").to_numpy(), B).itertuples() if unl(e)]
+        co = [e for e in train.signal_episodes(df, (g["tier"] == "candidate").to_numpy(), B).itertuples() if unl(e)]
+        sig_eps = al + co
+        near = [e for e in train.signal_episodes(df, ((g["s15"] >= 0.85) & (g["s15"] < 1)).to_numpy(), B).itertuples()
+                if unl(e) and not any(x.start < e.end + pd.Timedelta(hours=1) and x.end > e.start - pd.Timedelta(hours=1) for x in sig_eps)]
+        fresh = base not in trained and base not in reviewed
+        score = 3 * len(al) + 2 * len(co) + len(near) + (2 if fresh and (al or co) else 0)
+        if not (al or co or near):
+            continue
+        first = min([e.start for e in al + co + near])
+        why = [f"{len(al)} Alert без розмітки"] if al else []
+        why += [f"{len(co)} лише Кандидат (1h не підтвердила)"] if co else []
+        why += [f"{len(near)} майже-сигнал"] if near else []
+        out.append({"ticker": base, "score": score, "alert": len(al), "cand_only": len(co), "near": len(near),
+                    "first": int(pd.Timestamp(first).timestamp()), "fresh": fresh, "reviewed": base in reviewed, "why": " · ".join(why)})
+    out.sort(key=lambda x: -x["score"])
+    _queue_cache.clear()
+    _queue_cache[key] = out[:25]
+    return _queue_cache[key]
 
 
 def user_stops(conn) -> dict:
     """Стопи власника з розмітки → k = (вхід − стоп) / ATR(15m) на барі входу; зведення проти k моделі."""
     rows = [r for r in read_pumps() if r[7] is not None]
     out, ks = [], []
-    for base, start, end, ptype, notes, et, ep, sp in rows:
+    for base, start, end, ptype, notes, et, ep, sp, _setup in rows:
         h = aggregate(load_raw(conn, [base], INTERVAL_15M, since=et - pd.Timedelta(days=2)), base, "15min")
         a = atr(h)
         bar = pd.Timestamp(et).floor("15min")
@@ -607,7 +808,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:           # без інтернету — лише тікери з бази
                     binance, err = [], str(e)
                 return self._send(200, {"binance": binance, "db": db, "error": err,
-                                        "training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
+                                        "training": [t.upper() for t in read_tickers_file(TICKERS_PATH)],
+                                        "excluded": sorted(excluded_tickers(ROOT))})
             if url.path == "/api/jobs":
                 return self._send(200, JOBS)
             if url.path == "/compare":
@@ -619,6 +821,21 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/api/model_status":
                 with psycopg.connect(self.db_url) as conn:
                     return self._send(200, model_status(conn))
+            if url.path == "/api/pumps/suggest_setup":
+                with psycopg.connect(self.db_url) as conn:
+                    return self._send(200, {"items": suggest_setups(conn)})
+            if url.path == "/api/drafts":
+                base = (parse_qs(url.query).get("ticker") or [""])[0].upper()
+                with psycopg.connect(self.db_url) as conn:
+                    items = draft_intervals(conn, base)
+                    t = next(iter(_score_cache.values()), pd.DataFrame())
+                    info = {"from": int(t["ts"].min().timestamp()) if len(t) else None,
+                            "alert_bars": int((t["tier"] == "alert").sum()) if len(t) else 0,
+                            "p_max": float(t["p15"].max()) if len(t) else None}
+                    return self._send(200, _json_safe({"items": items, **info}))
+            if url.path == "/api/queue":
+                with psycopg.connect(self.db_url) as conn:
+                    return self._send(200, _json_safe({"items": label_queue(conn)}))
             if url.path == "/api/stops":
                 with psycopg.connect(self.db_url) as conn:
                     return self._send(200, user_stops(conn))
@@ -703,12 +920,34 @@ class Handler(BaseHTTPRequestHandler):
                             d = dict(zip(["base_asset", "start_ts", "end_ts", "pattern_type", "notes"],
                                          [r[0], r[1].strftime(TS_FORMAT), r[2].strftime(TS_FORMAT), r[3], r[4] or ""]))
                             d.update(entry_ts=body.get("entry_ts") or "", entry_price=body.get("entry_price") or "",
-                                     stop_price=body.get("stop_price") or "")
+                                     stop_price=body.get("stop_price") or "", setup=r[8] or "")
                             r = parse_row(d)
                         out.append(r)
                     return out
                 rows = self._modify(change)
                 return self._send(200, {"rows": rows_to_json(rows)})
+            if path == "/api/pumps/setup":
+                items = body.get("items") or [body]
+                want = {(str(x.get("base_asset", "")).upper(), parse_ts(x["start_ts"])): (x.get("setup") or None) for x in items}
+                bad = [v for v in want.values() if v is not None and v not in SETUPS]
+                if bad:
+                    raise ValueError(f"невідомий setup: {bad[0]}")
+
+                def change(rows):
+                    return [r[:8] + (want[(r[0], r[1])],) if (r[0], r[1]) in want else r for r in rows]
+                rows = self._modify(change)
+                return self._send(200, {"rows": rows_to_json(rows)})
+            if path == "/api/exclude":        # тікер поза скоупом: не навчання, не скан, не скринер (excluded.txt)
+                base = str(body.get("ticker", "")).upper()
+                if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
+                    raise ValueError("невірна назва тікера")
+                on = bool(body.get("on"))
+                reason = re.sub(r"[#\r\n]", " ", str(body.get("reason", ""))).strip()[:120]
+                set_ticker_in_file(os.path.join(ROOT, EXCLUDED_FILE), base, on, reason or "поза скоупом")
+                if on:
+                    set_ticker_in_file(TICKERS_PATH, base, False)      # і з навчання цілком
+                return self._send(200, {"excluded": sorted(excluded_tickers(ROOT)),
+                                        "training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
             if path == "/api/training":
                 base = str(body.get("ticker", "")).upper()
                 if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
@@ -732,7 +971,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Локальний інструмент розмітки пампів")
+    parser = argparse.ArgumentParser(description="Локальний інструмент розмітки імпульсів")
     parser.add_argument("--days", type=int, default=60, help="скільки днів історії показувати")
     parser.add_argument("--port", type=int, default=8765, help="порт на 127.0.0.1")
     parser.add_argument("--no-browser", action="store_true", help="не відкривати браузер автоматично")
@@ -758,7 +997,7 @@ def main() -> None:
         sys.exit(f"Порт {args.port} зайнятий: мабуть, уже запущено інший екземпляр. "
                  f"Зупини його (Ctrl+C у тому терміналі) або запусти з --port 8766.")
     url = f"http://127.0.0.1:{args.port}/"
-    print(f"Розмітка пампів: {url}  (Ctrl+C — зупинити)")
+    print(f"Розмітка імпульсів: {url}  (Ctrl+C — зупинити)")
     if not args.no_browser:
         webbrowser.open(url)
     try:

@@ -218,7 +218,10 @@ def watch_list_15m(conn) -> dict:
     ep = episodes(al, BAR_15M)
     recent_cut = pd.Timestamp(now - timedelta(hours=6))
     alerts = [e for e in ep if e["kind"] == "live" and e["ts"] >= recent_cut]
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts}
+    # старт кожного епізоду «Кандидат або Alert» (15m-модель перетнула поріг) — для сповіщень про Кандидатів
+    cand = t.assign(signal=t["tier"] != "calm", probability=t["p15"])
+    cands = [e for e in episodes(cand, BAR_15M) if e["kind"] == "live" and e["ts"] >= recent_cut]
+    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands}
 
 
 def watch_list(conn, model: str) -> dict:
@@ -598,7 +601,9 @@ def binance_bases() -> set[str]:
 
 def list_sources() -> tuple[list[str], dict]:
     """Твій watchlist.txt і живий авто-список сканера."""
-    manual = [t.upper() for t in read_tickers_file(os.path.join(ROOT, WATCHLIST_FILE))]
+    from fetch import excluded_tickers
+    excluded = excluded_tickers(ROOT)
+    manual = [t.upper() for t in read_tickers_file(os.path.join(ROOT, WATCHLIST_FILE)) if t.upper() not in excluded]
     auto = {b: r for b, r in scanner.active_auto().items() if b not in set(manual)}
     return manual, auto
 
@@ -649,6 +654,75 @@ def remove_from_watchlist(base: str) -> dict:
     from fetch import set_ticker_in_file
     set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base.upper(), False)
     ADD_JOBS.pop(base.upper(), None)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- бектест (backtest.py) — вкладка «Бектест»
+
+BT_DIR = os.path.join(ROOT, "reports", "backtests")
+BT_JOB: dict = {"proc": None, "log": [], "args": None}
+
+
+def backtest_runs() -> list[dict]:
+    """Список прогонів: мета й підсумок (без угод) з reports/backtests/*.json, нові першими."""
+    out = []
+    if not os.path.isdir(BT_DIR):
+        return out
+    for f in sorted(os.listdir(BT_DIR), reverse=True):
+        if not f.endswith(".json") or f.startswith("_"):
+            continue
+        try:
+            with open(os.path.join(BT_DIR, f), encoding="utf-8") as fh:
+                d = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        out.append({**d["meta"], **{k: d.get(k) for k in ("coins", "trades", "sum", "sum_wo_top3", "median", "win_rate")}})
+    return out
+
+
+def backtest_run(run_id: str) -> dict:
+    if not run_id or "/" in run_id or "\\" in run_id or ".." in run_id:
+        raise ValueError("невірний id прогону")
+    path = os.path.join(BT_DIR, run_id + ".json")
+    if not os.path.exists(path):
+        raise ValueError(f"прогону {run_id} немає")
+    with open(path, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def backtest_status() -> dict:
+    p = BT_JOB["proc"]
+    running = p is not None and p.poll() is None
+    st = {}
+    try:
+        with open(os.path.join(BT_DIR, "_status.json"), encoding="utf-8") as fh:
+            st = json.load(fh)
+    except (OSError, ValueError):
+        pass
+    return {"running": running, "code": None if p is None or running else p.returncode, **st,
+            "log": BT_JOB["log"][-4:], "args": BT_JOB["args"]}
+
+
+def backtest_start(body: dict) -> dict:
+    """Запуск backtest.py у фоні (окремий процес — довгий: дані для ~100 монет ~30–60 хв першого разу)."""
+    import subprocess
+    if backtest_status()["running"]:
+        raise ValueError("бектест уже йде")
+    args = ["--min-turnover", str(float(body.get("min_turnover", 20e6))), "--days", str(int(body.get("days", 30))),
+            *(["--max-turnover", str(float(body["max_turnover"]))] if body.get("max_turnover") else []),
+            "--model", "candidate" if body.get("model") == "candidate" else "current",
+            "--entry", "candidate" if body.get("entry") == "candidate" else "alert"]
+    BT_JOB.update(log=[], args=args)
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    p = subprocess.Popen([sys.executable, os.path.join(ROOT, "backtest.py"), *args], cwd=ROOT, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", env=env)
+    BT_JOB["proc"] = p
+
+    def pump():
+        for line in p.stdout:
+            if line.strip():
+                BT_JOB["log"] = (BT_JOB["log"] + [line.rstrip()])[-60:]
+    threading.Thread(target=pump, daemon=True).start()
     return {"ok": True}
 
 
@@ -753,6 +827,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(lambda c: watch_list(c, model))
         if url.path == "/api/journal":
             return self._route(lambda c: journal_view(c, q))
+        if url.path in ("/api/backtests", "/api/backtest", "/api/backtest/status"):
+            try:
+                body = {"/api/backtests": lambda: {"runs": backtest_runs()},
+                        "/api/backtest": lambda: backtest_run(q.get("id", "")),
+                        "/api/backtest/status": backtest_status}[url.path]()
+                return self._send(200, body)
+            except ValueError as e:
+                return self._send(400, {"error": str(e)})
         if url.path == "/api/scan":
             try:
                 return self._send(200, scan_view(q))
@@ -770,6 +852,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/refresh":
             return self._route(lambda c: refresh(c, str(body.get("symbol", "")).upper()))
         try:
+            if url.path == "/api/backtest/run":
+                return self._send(200, backtest_start(body))
             if url.path == "/api/scan/config":
                 return self._send(200, {"ok": True, "config": scanner.save_config(body)})
             if url.path == "/api/watchlist/add":

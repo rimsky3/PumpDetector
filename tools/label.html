@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Розмітка пампів</title>
+<title>Розмітка імпульсів</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
 <style>
@@ -12,7 +12,7 @@
   --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3ea; --grid: #edf0f4;
   --fg: #111418; --fg2: #515966; --fg3: #808895;
   --price: #2a78d6; --oi: #1baf7a; --vol: #aab2bf; --sel: rgba(235,104,52,.13); --sel-edge: #eb6834; --mark: #7a6bd1;
-  --saved: rgba(122,107,209,.14); --saved-alt: rgba(128,136,149,.16);
+  --saved: rgba(122,107,209,.14); --draft: rgba(42,120,214,.13); --saved-alt: rgba(128,136,149,.16);
   --model: #4a3aa7; --tp: #2e9e5b; --fp: #e34948; --fs: #d99100; --fn: #d55181;
   --accent: #2a78d6; --accent-fg: #ffffff;
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -21,13 +21,13 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
   --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
-  --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --saved-alt: rgba(126,135,148,.2);
+  --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --draft: rgba(57,135,229,.2); --saved-alt: rgba(126,135,148,.2);
   --model: #9085e9; --tp: #3fb56f; --fp: #e66767; --fs: #e0a526; --fn: #e87ba4;
   --accent: #3987e5; --accent-fg: #ffffff; color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
   --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
-  --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --saved-alt: rgba(126,135,148,.2);
+  --price: #3987e5; --oi: #199e70; --vol: #4a515c; --sel: rgba(217,89,38,.2); --sel-edge: #e0703f; --mark: #9085e9; --saved: rgba(144,133,233,.18); --draft: rgba(57,135,229,.2); --saved-alt: rgba(126,135,148,.2);
   --model: #9085e9; --tp: #3fb56f; --fp: #e66767; --fs: #e0a526; --fn: #e87ba4;
   --accent: #3987e5; --accent-fg: #ffffff; color-scheme: dark; }
 
@@ -72,12 +72,14 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
 .pbar { grid-column: 1 / -1; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
 .pbar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
 .tlist .meta .stage { display: inline-flex; align-items: center; gap: 6px; color: var(--fg2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tlist .chip2.ex { border-color: var(--fp); color: var(--fp); }
+#exclBtn[aria-pressed="true"] { background: var(--fp); border-color: var(--fp); }
 .tlist .chip2.ms-in { border-color: var(--tp); color: var(--tp); }
 .tlist .chip2.ms-new { border-color: var(--fs); color: var(--fs); }
 /* права панель: вкладки Тікери / угоди тікера / Модель; блоки — картки з кольоровою рамкою (синя — модель, бурштинова — угоди) */
 .stabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
 .stabs button { flex: 1; min-width: 0; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent;
-  color: var(--fg3); padding: 9px 4px 7px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  color: var(--fg3); padding: 9px 2px 7px; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stabs button:hover { color: var(--fg); }
 .stabs button[aria-selected="true"] { color: var(--fg); border-bottom-color: var(--fs); background: transparent; }
 .stabs .n { font: 500 10px var(--mono); padding: 0 5px; border-radius: 8px; background: var(--line); color: var(--fg2); margin-left: 4px; }
@@ -110,6 +112,26 @@ body { background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); }
 .up { color: var(--tp); } .down { color: var(--fp); }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--c, var(--accent)); font-size: 12px; justify-self: start; }
 .linkbtn:hover { text-decoration: underline; }
+td select { width: auto; padding: 2px 6px; font-size: 12px; height: auto; }
+.draftnav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 12px; margin-bottom: 8px;
+  border: 1px dashed var(--price); border-radius: 8px; background: var(--draft); font-size: 13px; }
+.draftnav .note { color: var(--fg2); font-size: 12px; } .draftnav .sp { flex: 1; }
+td .sugg { padding: 1px 7px; font-size: 11px; border-style: dashed; color: var(--fg2); }
+/* індикатор завантаження: смужка вгорі на будь-яке очікування сервера + блідий блок, що оновлюється */
+#topbar { position: fixed; left: 0; right: 0; top: 0; height: 3px; z-index: 300; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .2s; }
+#topbar.on { opacity: 1; }
+#topbar i { position: absolute; top: 0; bottom: 0; width: 35%; background: linear-gradient(90deg, transparent, var(--tb, #d85a30), transparent); animation: tbmove 1.1s linear infinite; }
+@keyframes tbmove { from { left: -35%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { #topbar i { animation: none; left: 0; width: 100%; opacity: .6; } }
+.is-loading { opacity: .45; transition: opacity .15s; pointer-events: none; }
+.ldchip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 2px 9px; border-radius: 12px; background: var(--ld-bg, #412402); color: var(--ld-fg, #ef9f27); }
+.ldchip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: ldspin .8s linear infinite; }
+@keyframes ldspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ldchip::before { animation: none; } }
+.steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11px; }
+.steps span { padding: 1px 7px; border-radius: 10px; background: var(--line); color: var(--fg3); }
+.steps .done { background: var(--ok-bg, #173404); color: var(--ok, #97c459); } .steps .now { background: var(--ld-bg, #412402); color: var(--ld-fg, #ef9f27); }
+.stepbar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 4px; } .stepbar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
 .side-foot { padding: 8px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--fg3); }
 h1 { font-size: 20px; font-weight: 600; margin: 0; text-wrap: balance; }
 .sub { color: var(--fg2); margin: 2px 0 0; font-size: 13px; }
@@ -127,7 +149,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 #rulerBtn[aria-pressed="true"] { background: #2962ff; border-color: #2962ff; color: #fff; }
 .with-model #lw { height: 760px; }
 @media (max-width: 600px) { #lw { height: 460px; } .with-model #lw { height: 580px; } }
-.info { display: flex; flex-wrap: wrap; gap: 3px 14px; padding: 8px 12px; font: 12px/1.5 var(--mono); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--line); min-height: 34px; }
+.info { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 3px 14px; padding: 8px 12px; font: 12px/1.5 var(--mono); font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--line); height: 58px; overflow: hidden; }
 .info span { display: inline-flex; gap: 5px; }
 .info i { font-style: normal; color: var(--fg3); }
 .info b { font-weight: 500; }
@@ -177,7 +199,7 @@ td button { padding: 2px 8px; font-size: 12px; }
 .note { font-size: 12px; color: var(--fg2); margin: 0; }
 .handles { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
 .handle { position: absolute; top: 0; pointer-events: auto; }
-.handle.h-start, .handle.h-end { width: 6px; cursor: ew-resize; background: linear-gradient(90deg, transparent 2px, var(--sel-edge) 2px, var(--sel-edge) 4px, transparent 4px); }
+.handle.h-start, .handle.h-end { width: 12px; cursor: ew-resize; background: linear-gradient(90deg, transparent 4px, var(--sel-edge) 4px, var(--sel-edge) 8px, transparent 8px); }
 .handle.h-stop { height: 6px; cursor: ns-resize; background: linear-gradient(0deg, transparent 2px, var(--fp) 2px, var(--fp) 4px, transparent 4px); }
 .handle:hover { filter: brightness(1.4); }
 .selbar { position: static; z-index: 5; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
@@ -192,10 +214,11 @@ td button { padding: 2px 8px; font-size: 12px; }
 <script src="/js/ruler.js"></script>
 </head>
 <body>
+<div id="topbar" aria-hidden="true"><i></i></div>
 <div class="page">
 <div class="wrap">
   <header>
-    <h1>Розмітка пампів</h1>
+    <h1>Розмітка імпульсів</h1>
     <p class="status" id="status" role="status" aria-live="polite"></p>
     <p class="sub"><span id="srcNote">1h — Coinalyze, усі біржі.</span> За <span id="days">60</span> днів. Ціна — Binance, OI і обсяг — сума по біржах. Час — UTC, бар позначено часом відкриття.</p>
   </header>
@@ -214,6 +237,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       <span class="label" style="margin-left:10px" id="modelLbl" hidden>Модель</span>
       <select id="modelSel" hidden aria-label="Модель для перегляду помилок" style="width:auto"></select>
       <button id="runBtn" title="15m-модель і годинна оцінюють усю історію тікера (автоматично при відкритті): де був би Кандидат і Alert. Кнопка — перерахувати, напр. після дозавантаження даних">Перерахувати модель 15m</button>
+      <button id="draftBtn" title="Модель підказує межі нерозмічених імпульсів на цьому тікері — ти підтверджуєш, правиш або відкидаєш">Чернетки імпульсів</button>
       <button id="modelBtn" aria-pressed="true" title="Показувати на графіку сигнали моделі (клавіша M). Вимкни, поки розмічаєш: так розмітка не підлаштовується під модель">Модель на графіку</button>
     </div>
   </div>
@@ -223,18 +247,18 @@ td button { padding: 2px 8px; font-size: 12px; }
     <div id="lw" role="img" aria-label="Свічковий графік ціни з розміченими інтервалами, open interest, обсяг і ймовірність моделі"></div>
   </div>
   <p class="legend" id="legend" hidden>
-    <span><i class="sw" style="background:var(--saved)"></i>розмічений памп</span>
+    <span><i class="sw" style="background:var(--saved)"></i>розмічений імпульс</span>
     <span><i class="sw" style="background:var(--sel-edge);opacity:.5"></i>виділення</span>
-    <span><i class="sw line"></i>ймовірність пампу</span>
-    <span><i class="sw tp"></i>сигнал у пампі</span>
+    <span><i class="sw line"></i>ймовірність імпульсу</span>
+    <span><i class="sw tp"></i>сигнал у імпульсі</span>
     <span><i class="sw fp"></i>хибний сигнал</span>
-    <span><i class="sw fs"></i>сигнал на фальстарті</span>
-    <span><i class="sw fn"></i>пропущена година пампу</span>
+    <span><i class="sw fs"></i>сигнал на невдалому імпульсі</span>
+    <span><i class="sw fn"></i>пропущена година імпульсу</span>
     <span><i class="sw" style="background:var(--fp)"></i>15m-модель: Alert (▼ і смужка внизу ціни)</span>
     <span><i class="sw" style="background:var(--fs)"></i>15m-модель: Кандидат</span>
   </p>
 
-  <section class="selbar active" id="editbar" aria-label="Редагування розміченого пампу" hidden>
+  <section class="selbar active" id="editbar" aria-label="Редагування розміченого імпульсу" hidden>
     <div class="selbody">
       <dl class="sel-dl">
         <dt>Інтервал</dt><dd id="eTitle">—</dd>
@@ -246,11 +270,13 @@ td button { padding: 2px 8px; font-size: 12px; }
         <div class="fields">
           <label for="eType">Тип</label>
           <select id="eType"><option value="pump">pump</option><option value="false_start">false_start</option><option value="other">other</option></select>
+          <label for="eSetup">Сетап</label>
+          <select id="eSetup" title="Клавіші B / P / O — зберігається одразу"><option value="">— сетап</option><option value="breakout">breakout — вихід з рейнджу</option><option value="pullback">pullback — підбір після відкату</option><option value="other">other</option></select>
           <label for="eNote">Нотатка</label>
           <input type="text" id="eNote">
         </div>
         <div class="actions">
-          <button class="primary" id="eSave">Зберегти тип і нотатку</button>
+          <button class="primary" id="eSave">Зберегти тип, сетап і нотатку</button>
           <button id="eDel">Видалити</button>
           <button id="eClose">Закрити (Esc)</button>
         </div>
@@ -258,8 +284,16 @@ td button { padding: 2px 8px; font-size: 12px; }
     </div>
   </section>
 
-  <section class="selbar" id="selbar" aria-label="Виділений памп">
-    <p class="hint" id="selHint">Клік по свічці ставить початок пампу (відкриття бару), другий клік — останній бар пампу (кінець = його закриття). Стоп — клавіша S і клік на рівні стопу (вхід — ціна на старті; E — інший вхід). Клік по вже розміченому імпульсу — вибрати його: межі й стоп можна перетягувати. Межі можна ставити на будь-якому ТФ: де старт видно чіткіше — 5m чи 15m — там і став. Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. На одному тікері можна розмітити кілька пампів.</p>
+  <section class="selbar" id="selbar" aria-label="Виділений імпульс">
+    <div class="draftnav" id="draftNav" hidden>
+      <b>Чернетка <span id="dnPos"></span></b><span class="note" id="dnWhy"></span>
+      <span class="sp"></span>
+      <button id="dnPrev" title="Попередня (Shift+N)">← Попередня</button>
+      <button id="dnNext" title="Наступна (N)">Наступна →</button>
+      <button class="primary" id="dnOk" title="Додати як Impulse з поточними межами (після твоїх правок кліками)">Прийняти</button>
+      <button id="dnNo" title="Не імпульс — сховати">Відкинути</button>
+    </div>
+    <p class="hint" id="selHint">Клік по свічці ставить початок імпульсу (відкриття бару), другий клік — останній бар імпульсу (кінець = його закриття). Стоп — клавіша S і клік на рівні стопу (вхід — ціна на старті; E — інший вхід). Клік по вже розміченому імпульсу — вибрати його: межі й стоп можна перетягувати. Межі можна ставити на будь-якому ТФ: де старт видно чіткіше — 5m чи 15m — там і став. Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. На одному тікері можна розмітити кілька імпульсів.</p>
     <div class="selbody" id="selBody" hidden>
       <dl class="sel-dl">
         <dt>Тікер</dt><dd id="sTk">—</dd>
@@ -276,10 +310,12 @@ td button { padding: 2px 8px; font-size: 12px; }
         <div class="fields">
           <label for="pType">Тип</label>
           <select id="pType">
-            <option value="pump">pump — класичний памп</option>
-            <option value="false_start">false_start — фальстарт</option>
+            <option value="pump">pump — Impulse</option>
+            <option value="false_start">false_start — Failed impulse</option>
             <option value="other">other</option>
           </select>
+          <label for="pSetup">Сетап</label>
+          <select id="pSetup" title="Клавіші B / P / O"><option value="">— сетап</option><option value="breakout">breakout — вихід з рейнджу</option><option value="pullback">pullback — підбір після відкату</option><option value="other">other</option></select>
           <label for="pNote">Нотатка</label>
           <input type="text" id="pNote" placeholder="напр. OI x3 за 2 дні, потім обвал">
         </div>
@@ -291,9 +327,21 @@ td button { padding: 2px 8px; font-size: 12px; }
     </div>
   </section>
 
+  <section class="card" aria-labelledby="draftH" id="draftCard" hidden>
+    <h2 id="draftH">Чернетки імпульсів</h2>
+    <p class="note">Межі підказує модель з епізодів Alert, яких ще немає в розмітці: старт — мінімум ціни до сигналу, кінець — обвал OI після піку.
+      Це лише чернетка: «Показати» ставить її як виділення — підправ межі кліками й натисни «Додати в список»; «Прийняти» — як є.
+      До навчання потрапляє тільки те, що ти підтвердив.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Старт (UTC)</th><th>Кінець (UTC)</th><th>Тривалість</th><th>Чому</th><th></th></tr></thead>
+      <tbody id="draftRows"></tbody>
+    </table></div>
+    <p class="empty" id="draftEmpty" hidden>Нерозмічених епізодів Alert на цьому тікері немає.</p>
+  </section>
+
   <section class="card" aria-labelledby="m15H" id="m15Card" hidden>
     <h2 id="m15H">15m-модель на цьому тікері</h2>
-    <p class="status err" id="m15Warn" hidden>Тікер був у навчанні: модель бачила його пампи, це не тест. Чесно — лише на тікерах, яких модель не бачила.</p>
+    <p class="status err" id="m15Warn" hidden>Тікер був у навчанні: модель бачила його імпульси, це не тест. Чесно — лише на тікерах, яких модель не бачила.</p>
     <p class="note" id="m15Meta"></p>
     <p class="err-sum" id="m15Sum" style="display:grid;gap:4px"></p>
     <p class="note" id="m15More" hidden>Історії мало для повного тесту. <button id="m15Load">Дозавантажити 60 днів</button></p>
@@ -327,12 +375,14 @@ td button { padding: 2px 8px; font-size: 12px; }
   </section>
 
   <section class="card" aria-labelledby="listH">
-    <h2 id="listH">Розмічені пампи</h2>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h2 id="listH" style="margin-right:auto">Розмічені імпульси</h2>
+      <button id="suggBtn" title="Евристика: чи був рух за добу до старту, відкат і чи тримався OI — підказка, рішення твоє">Підказати сетапи</button>
+      <button id="suggAll" title="Прийняти всі показані підказки">Прийняти всі підказки</button></div>
     <div class="tbl"><table>
-      <thead><tr><th>Тікер</th><th>Початок (UTC)</th><th>Кінець (UTC)</th><th>Тип</th><th>Нотатка</th><th>Мій вхід / стоп</th><th></th></tr></thead>
+      <thead><tr><th>Тікер</th><th>Початок (UTC)</th><th>Кінець (UTC)</th><th>Тип</th><th>Сетап</th><th>Нотатка</th><th>Мій вхід / стоп</th><th></th></tr></thead>
       <tbody id="rows"></tbody>
     </table></div>
-    <p class="empty" id="emptyRows">Поки нічого. Виділи памп на графіку і натисни «Додати в список».</p>
+    <p class="empty" id="emptyRows">Поки нічого. Виділи імпульс на графіку і натисни «Додати в список».</p>
     <p class="note" id="rowCount"></p>
     <p class="note">Кожна зміна одразу записується в pumps.csv і таблицю pumps у базі.</p>
   </section>
@@ -343,10 +393,12 @@ td button { padding: 2px 8px; font-size: 12px; }
     <button role="tab" id="stab-list" data-stab="list" aria-controls="pane-list">Тікери<span class="n" id="sideCount"></span></button>
     <button role="tab" id="stab-trades" data-stab="trades" aria-controls="pane-trades"><span id="stabTk">Тікер</span> · угоди</button>
     <button role="tab" id="stab-model" data-stab="model" aria-controls="pane-model">Модель<span class="dot" id="stabDot" hidden></span></button>
+    <button role="tab" id="stab-queue" data-stab="queue" aria-controls="pane-queue" title="Що розмітити далі">Черга</button>
   </div>
   <div class="cur" id="cur" hidden>
     <span><b id="curTk"></b> <span id="curInfo"></span></span>
-    <button id="trainBtn" aria-pressed="false" title="Переглянув увесь тікер: де пампу не розмічено — його не було. Тоді в навчання йдуть усі години тікера, а не лише розмічені інтервали (tickers.txt)">У навчання</button>
+    <button id="exclBtn" aria-pressed="false" title="Тікер поза скоупом (смикана ціна, проливи, тонкий стакан): не йде в навчання, сканер і скринер його не беруть">Виключити</button>
+    <button id="trainBtn" aria-pressed="false" title="Переглянув увесь тікер: де імпульсу не розмічено — його не було. Тоді в навчання йдуть усі години тікера, а не лише розмічені інтервали (tickers.txt)">У навчання</button>
   </div>
   <div class="spane list" id="pane-list" role="tabpanel" aria-labelledby="stab-list">
   <div class="side-head">
@@ -377,11 +429,22 @@ td button { padding: 2px 8px; font-size: 12px; }
     </div>
     <div class="acc" id="qSig" hidden>
       <div class="acc-h"><span class="ico" aria-hidden="true">◆</span>Сигнали на тікері<span class="v" id="qSigV"></span></div>
-      <div class="acc-b"><div class="qgrid" id="qSigGrid"></div><span class="small warn" id="qSigWarn" hidden>Тікер у навчанні — модель бачила його пампи, це не тест.</span></div>
+      <div class="acc-b"><div class="qgrid" id="qSigGrid"></div><span class="small warn" id="qSigWarn" hidden>Тікер у навчанні — модель бачила його імпульси, це не тест.</span></div>
     </div>
     <div class="acc warm">
       <div class="acc-h"><span class="ico" aria-hidden="true">⊥</span>Твої стопи · усі тікери<span class="v" id="qStopsN"></span></div>
       <div class="acc-b"><div class="qgrid" id="qStops"></div></div>
+    </div>
+  </div>
+  <!-- черга розмітки: де твоя розмітка дасть моделі найбільше (active learning) -->
+  <div class="spane scroll" id="pane-queue" role="tabpanel" aria-labelledby="stab-queue" hidden>
+    <div class="acc warm">
+      <div class="acc-h"><span class="ico" aria-hidden="true">✎</span>Що розмітити далі<button class="v" id="qRefresh" style="border:0;background:none;color:var(--fg2);cursor:pointer" title="Оновити">⟳</button></div>
+      <div class="acc-b">
+        <span class="small">Тікери скринера з нерозміченими сигналами: Alert (×3), лише Кандидат — 1h не підтвердила (×2), майже-сигнал (×1);
+          поза навчанням +2. Для тікерів з навчання — лише останні 7 днів.</span>
+        <div id="queueList" style="display:grid;gap:6px"></div>
+      </div>
     </div>
   </div>
   <div class="spane scroll" id="pane-model" role="tabpanel" aria-labelledby="stab-model" hidden>
@@ -410,7 +473,7 @@ td button { padding: 2px 8px; font-size: 12px; }
 (() => {
   const DATA = {};          // кеш рядів: ключ "ТІКЕР|ТФ"
   let TICKERS = [];         // тікери з даними в базі
-  let UNI = [], TRAIN = [], JOBS = {};                 // усі перпи Binance, tickers.txt, завантаження
+  let UNI = [], TRAIN = [], JOBS = {}, EXCL = [];                 // усі перпи Binance, tickers.txt, завантаження
   const LS = { list: "db", sort: "vol", q: "" };
   const H = 3600;
   const TF_SEC = { "1h": 3600, "15m": 900, "5m": 300 };
@@ -419,19 +482,40 @@ td button { padding: 2px 8px; font-size: 12px; }
   const $ = (id) => document.getElementById(id);
 
   // ---------- API локального сервера (label.py) ----------
-  const api = async (method, path, body) => {
-    const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
+  // ---------- індикатор завантаження: лічильник активних запитів → смужка вгорі (з затримкою, щоб не миготіла) ----------
+  let PENDING = 0, tbTimer = null;
+  const tbSet = (d) => {
+    PENDING = Math.max(0, PENDING + d);
+    clearTimeout(tbTimer);
+    if (PENDING > 0) tbTimer = setTimeout(() => document.getElementById("topbar")?.classList.add("on"), 150);
+    else document.getElementById("topbar")?.classList.remove("on");
+  };
+  // блок, що оновлюється: блідне, у заголовку — чіп «Оновлюю…»; повертає функцію «готово»
+  const busy = (blockEl, chipEl, text = "Оновлюю…") => {
+    const t = setTimeout(() => {
+      blockEl?.classList.add("is-loading");
+      if (chipEl) { chipEl.className = "ldchip"; chipEl.textContent = text; chipEl.hidden = false; }
+    }, 200);
+    return () => { clearTimeout(t); blockEl?.classList.remove("is-loading"); if (chipEl) chipEl.hidden = true; };
+  };
+  // quiet — фонові опитування (стан перенавчання, черга завантажень) смужку не вмикають
+  const api = async (method, path, body, quiet = false) => {
+    if (!quiet) tbSet(1);
+    try {
+      const res = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    } finally { if (!quiet) tbSet(-1); }
   };
   const parseTs = (s) => {
     const [d, t] = s.split(" ");
     const [y, m, dd] = d.split("-").map(Number), [hh, mm] = t.split(":").map(Number);
     return Date.UTC(y, m - 1, dd, hh, mm) / 1000;
   };
+  const SETUP_HTML = '<option value="">—</option><option value="breakout">breakout</option><option value="pullback">pullback</option><option value="other">other</option>';
   const fromServer = (list) => list.map((r) => ({ tk: r.base_asset, a: parseTs(r.start_ts), b: parseTs(r.end_ts), type: r.pattern_type, note: r.notes || "",
-    et: r.entry_ts ? parseTs(r.entry_ts) : null, ep: r.entry_price ?? null, sp: r.stop_price ?? null }));
+    et: r.entry_ts ? parseTs(r.entry_ts) : null, ep: r.entry_price ?? null, sp: r.stop_price ?? null, su: r.setup || null }));
   const status = (msg, isErr) => { const el = $("status"); el.textContent = msg; el.classList.toggle("err", !!isErr); };
 
   let rows = [];
@@ -439,7 +523,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   const st = { tk: null, tf: "1h", log: false, oiUsd: false, a: null, b: null, model: "lightgbm", showModel: true };
   try { st.showModel = localStorage.getItem("label-show-model") !== "0"; } catch (e) {}
   const BAR = () => TF_SEC[st.tf];
-  // бар (t — відкриття) у пампі, якщо на момент його закриття памп уже триває: a < t + бар ≤ b (як features.in_pump)
+  // бар (t — відкриття) у імпульсі, якщо на момент його закриття імпульс уже триває: a < t + бар ≤ b (як features.in_pump)
   const inPump = (t, a, b) => t + BAR() > a && t + BAR() <= b;
 
   // ---------- форматування ----------
@@ -477,7 +561,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   let C = {}, FONT = {};
   const readColors = () => {
     const s = getComputedStyle(document.documentElement);
-    ["panel", "line", "grid", "fg", "fg2", "fg3", "price", "oi", "vol", "sel", "sel-edge", "mark", "saved", "saved-alt", "model", "tp", "fp", "fs", "fn"].forEach((k) => C[k] = s.getPropertyValue("--" + k).trim());
+    ["panel", "line", "grid", "fg", "fg2", "fg3", "price", "oi", "vol", "sel", "sel-edge", "mark", "saved", "saved-alt", "draft", "model", "tp", "fp", "fs", "fn"].forEach((k) => C[k] = s.getPropertyValue("--" + k).trim());
     FONT.mono = s.getPropertyValue("--mono").trim();
     FONT.sans = s.getPropertyValue("--sans").trim();
   };
@@ -513,19 +597,19 @@ td button { padding: 2px 8px; font-size: 12px; }
     });
     return out;
   };
-  // розмітка на момент t за поточним pumps.csv: "pump", "fs" (фальстарт або other) або null
+  // розмітка на момент t за поточним pumps.csv: "pump", "fs" (невдалий імпульс або other) або null
   const labelAt = (t) => {
     for (const r of rows) if (r.tk === st.tk && inPump(t, r.a, r.b)) return r.type === "pump" ? "pump" : "fs";
     return null;
   };
-  // клас години: tp — сигнал у пампі, fp — хибний сигнал, fs — сигнал на фальстарті, fn — пропущена година пампу
+  // клас години: tp — сигнал у імпульсі, fp — хибний сигнал, fs — сигнал на невдалому імпульсі, fn — пропущена година імпульсу
   const hourClass = (i) => {
     const p = P(); if (!p || p.score[i] == null) return null;
     const lab = labelAt(D().t[i]);
     if (p.signal[i]) return lab === "pump" ? "tp" : lab ? "fs" : "fp";
     return lab === "pump" ? "fn" : null;
   };
-  const CLASS_TEXT = { tp: "сигнал у пампі", fp: "хибний сигнал", fs: "сигнал на фальстарті", fn: "пропущена година пампу" };
+  const CLASS_TEXT = { tp: "сигнал у імпульсі", fp: "хибний сигнал", fs: "сигнал на невдалому імпульсі", fn: "пропущена година імпульсу" };
 
   // ---------- графік: TradingView Lightweight Charts (app/vendor, віддає label.py) ----------
   // Панелі: свічки + розмічені інтервали + виділення | OI (+ мітки лістингів) | обсяг | модель (якщо є передбачення).
@@ -649,6 +733,15 @@ td button { padding: 2px 8px; font-size: 12px; }
       const hit = rowAt(t);
       if (hit) { if (EDIT.row && EDIT.row.a === hit.a) return; selectRow(hit); return; }
       if (EDIT.row) { closeEdit(); return; }                // клік поза ним — зняти вибір
+      // клік по синій зоні чернетки — вибрати цю чернетку (межі тягнуться ручками), а не починати нове виділення
+      if (DRAFTS && DRAFTS.show && DRAFTS.tk === st.tk) {
+        const list = draftList(), k = list.findIndex((d) => inPump(t, d.start, d.end));
+        if (k >= 0) {
+          const inSel = st.a != null && st.b != null && inPump(t, st.a, st.b);
+          if (!inSel) goDraft(k, false);                     // без зуму: графік лишається, як був; уже вибрана й підправлена — клік усередині нічого не скидає
+          return;
+        }
+      }
     }
     if (st.a == null || st.b != null) { st.a = t; st.b = null; clearSel(); }
     else if (t >= st.a) st.b = t + BAR();                 // кінець — закриття клікнутого бару
@@ -674,7 +767,9 @@ td button { padding: 2px 8px; font-size: 12px; }
       candles.push(ok ? { time, open: d.open[i], high: d.high[i], low: d.low[i], close: d.price[i] } : { time });
       const ty = typeAt(time);
       const chosen = EDIT.row && EDIT.row.tk === st.tk && inPump(time, EDIT.row.a, EDIT.row.b);
-      saved.push(chosen ? { time, value: 1, color: C.sel } : ty ? { time, value: 1, color: ty === "pump" ? C.saved : C["saved-alt"] } : { time });
+      const dr = !ty && DRAFTS && DRAFTS.show && DRAFTS.tk === st.tk && draftList().some((x) => inPump(time, x.start, x.end));
+      saved.push(chosen ? { time, value: 1, color: C.sel } : ty ? { time, value: 1, color: ty === "pump" ? C.saved : C["saved-alt"] }
+        : dr ? { time, value: 1, color: C.draft } : { time });
       const inSel = st.a != null && (st.b != null ? inPump(time, st.a, st.b) : time <= st.a && st.a < time + BAR());
       sel.push(inSel ? { time, value: 1 } : { time });
       const [o, hh, l, c] = st.oiUsd ? [d.oiO[i], d.oiH[i], d.oiL[i], d.oi[i]] : [d.coinO[i], d.coinH[i], d.coinL[i], d.coin[i]];
@@ -688,16 +783,18 @@ td button { padding: 2px 8px; font-size: 12px; }
     // мітки: номери розмічених інтервалів і межі виділення — на свічках; лістинг нової біржі — на OI
     const marks = own.map((r, k) => ({ time: barAt(r.a), position: "aboveBar", shape: "square", size: 0.6,
       color: r.type === "pump" ? C.mark : C.fg3, text: `#${k + 1}${r.type === "pump" ? "" : " " + r.type}` }));
+    if (DRAFTS && DRAFTS.show && DRAFTS.tk === st.tk) draftList().forEach((x, k) => marks.push({ time: barAt(x.start), position: "aboveBar",
+      shape: "square", size: 0.6, color: C.price, text: `чернетка ${k + 1}` }));
     if (st.a != null) marks.push({ time: barAt(st.a), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "початок" });
     if (st.b != null) marks.push({ time: barAt(st.b - 1), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: "кінець" });
-    // мій вхід і стоп: ▲ «мій вхід» і пунктир стопу від входу до кінця пампу (+ незбережений вхід у режимі розмітки)
+    // мій вхід і стоп: ▲ «мій вхід» і пунктир стопу від входу до кінця імпульсу (+ незбережений вхід у режимі розмітки)
     const mine = own.filter((r) => r.sp != null);
     mine.forEach((r) => { const te = barAt(r.et); if (te != null) marks.push({ time: te, position: "belowBar", shape: "arrowUp", color: C.mark, text: "мій вхід" }); });
     if (RISK.row && RISK.et != null) marks.push({ time: RISK.et, position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: `вхід ${fmtPx(RISK.ep)}` });
     const se = st.a != null && st.b != null && SEL.stop != null ? selEntry() : null;
     if (se) marks.push({ time: barAt(se.t), position: "belowBar", shape: "arrowUp", color: C["sel-edge"], text: `вхід ${fmtPx(se.px)}` });
-    // кожен стоп — окремий короткий відрізок від входу до кінця свого пампу. Одна лінія з пропусками не годиться:
-    // бібліотека з'єднує точки через пропуски, і стопи різних пампів злипались у похилу лінію
+    // кожен стоп — окремий короткий відрізок від входу до кінця свого імпульсу. Одна лінія з пропусками не годиться:
+    // бібліотека з'єднує точки через пропуски, і стопи різних імпульсів злипались у похилу лінію
     S.ustops.forEach((x) => chart.removeSeries(x)); S.ustops = [];
     const segs = mine.map((r) => ({ from: barAt(r.et), to: barAt(r.b - 1), v: r.sp }));
     if (se) segs.push({ from: barAt(se.t), to: barAt(st.b - 1), v: SEL.stop });
@@ -721,7 +818,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     });
     mk.candles.setMarkers(marks.filter((m) => idx.has(m.time)).sort((a, b) => a.time - b.time));
     const listing = Object.entries(d.oiStart).filter(([, t0]) => t0 - d.t[0] >= 36 * H && idx.has(t0))
-      .map(([ex, t0]) => ({ time: t0, position: "aboveBar", shape: "arrowDown", color: C.mark, text: `+${ex}: стрибок суми, не памп` }));
+      .map(([ex, t0]) => ({ time: t0, position: "aboveBar", shape: "arrowDown", color: C.mark, text: `+${ex}: стрибок суми, не імпульс` }));
     mk.oi.setMarkers(listing.sort((a, b) => a.time - b.time));
 
     if (S.prob) {
@@ -759,7 +856,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     return px != null ? { t, px } : null;
   };
   const setSelMode = (mode) => {
-    if (st.a == null || st.b == null) { status("Спершу виділи памп: клік — старт, клік — кінець", true); return; }
+    if (st.a == null || st.b == null) { status("Спершу виділи імпульс: клік — старт, клік — кінець", true); return; }
     SEL.mode = SEL.mode === mode ? null : mode;
     status(SEL.mode === "stop" ? "Клікни на графіку рівень стопу (нижче входу). Esc — скасувати"
       : SEL.mode === "entry" ? "Клікни бар і ціну входу. Esc — скасувати" : "");
@@ -790,7 +887,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     $("sB").textContent = st.b != null ? fmtTs(st.b) : (st.a != null ? "клікни ще раз" : "—");
     if (st.a != null && st.b != null) {
       $("sDur").textContent = fmtMin(st.b - st.a);
-      const ia = idxAt(st.a + 1 - BAR()), ib = idxAt(st.b + 1 - BAR()) - 1;   // бари, що в пампі за inPump
+      const ia = idxAt(st.a + 1 - BAR()), ib = idxAt(st.b + 1 - BAR()) - 1;   // бари, що в імпульсі за inPump
       let pmax = -Infinity, omax = -Infinity;
       for (let i = ia; i <= ib; i++) {
         if (d.price[i] != null && d.price[i] > pmax) pmax = d.price[i];
@@ -806,6 +903,8 @@ td button { padding: 2px 8px; font-size: 12px; }
     $("selBody").hidden = st.a == null;
     $("selHint").hidden = st.a != null;
     $("selbar").classList.toggle("active", st.a != null);
+    try { if (chart) placeHandles(); } catch (e) {}      // до оголошення ручок (старт сторінки) — нічого
+    if (typeof renderDraftNav === "function") renderDraftNav();
   };
 
   const renderRows = () => {
@@ -813,9 +912,24 @@ td button { padding: 2px 8px; font-size: 12px; }
     rows.sort((x, y) => x.tk.localeCompare(y.tk) || x.a - y.a);
     rows.forEach((r, k) => {
       const tr = document.createElement("tr");
-      [[r.tk, "m"], [fmtTs(r.a), "m"], [fmtTs(r.b), "m"], [r.type, ""], [r.note, ""]].forEach(([v, c]) => {
+      [[r.tk, "m"], [fmtTs(r.a), "m"], [fmtTs(r.b), "m"], [{ pump: "Impulse", false_start: "Failed impulse" }[r.type] || r.type, ""]].forEach(([v, c]) => {
         const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.appendChild(td);
       });
+      // сетап: вибір прямо в таблиці + підказка (✓ — прийняти)
+      const tds = document.createElement("td");
+      if (r.type === "pump") {
+        const sel = document.createElement("select"); sel.innerHTML = SETUP_HTML; sel.value = r.su || "";
+        sel.addEventListener("change", () => saveSetup([{ base_asset: r.tk, start_ts: fmtTs(r.a), setup: sel.value }]));
+        tds.appendChild(sel);
+        const sg = SUGG[`${r.tk}|${fmtTs(r.a)}`];
+        if (sg && !r.su) {
+          const b = document.createElement("button"); b.textContent = `${sg.setup} ✓`; b.className = "sugg"; b.title = sg.reason;
+          b.addEventListener("click", () => saveSetup([{ base_asset: r.tk, start_ts: fmtTs(r.a), setup: sg.setup }]));
+          tds.append(" ", b);
+        }
+      }
+      tr.appendChild(tds);
+      const tdn = document.createElement("td"); tdn.textContent = r.note; tr.appendChild(tdn);
       // вхід і стоп власника: «0.0208 · −3.0% (2.4 ATR)»; кнопка «Стоп» — задати клік-кліком на графіку
       const tdr = document.createElement("td"); tdr.className = "m";
       if (r.sp != null) {
@@ -824,7 +938,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       }
       if (r.type === "pump") {
         const rb = document.createElement("button"); rb.textContent = r.sp != null ? "Змінити" : "Стоп";
-        rb.title = "Один клік на графіку — рівень стопу (вхід — ціна на старті пампу)";
+        rb.title = "Один клік на графіку — рівень стопу (вхід — ціна на старті імпульсу)";
         rb.addEventListener("click", () => startRisk(r));
         tdr.appendChild(rb);
         if (r.sp != null) {
@@ -850,18 +964,21 @@ td button { padding: 2px 8px; font-size: 12px; }
     const n = (t) => rows.filter((r) => r.type === t).length;
     $("rowCount").textContent = rows.length
       ? `${rows.length} інтервалів: pump — ${n("pump")}, false_start — ${n("false_start")}` + (n("other") ? `, other — ${n("other")}` : "")
+        + ` · сетапи імпульсів: breakout — ${rows.filter((r) => r.type === "pump" && r.su === "breakout").length}, pullback — ${rows.filter((r) => r.type === "pump" && r.su === "pullback").length}`
+        + `, other — ${rows.filter((r) => r.type === "pump" && r.su === "other").length}, без сетапу — ${rows.filter((r) => r.type === "pump" && !r.su).length}`
       : "";
     renderList();
+    if (typeof renderDrafts === "function") { renderDrafts(); renderDraftNav(); }
     renderErrors();   // помилки рахуються за поточною розміткою
     if (typeof loadModelStatus === "function" && MS_READY) loadModelStatus();
   };
 
   // ---------- помилки моделі ----------
-  // Епізод — сусідні години з сигналом. Він влучний, якщо перетинає памп; інакше це фальстарт або хибний сигнал.
-  // Пропущений памп — розмічений pump без жодного сигналу всередині.
+  // Епізод — сусідні години з сигналом. Він влучний, якщо перетинає імпульс; інакше це невдалий імпульс або хибний сигнал.
+  // Пропущений імпульс — розмічений pump без жодного сигналу всередині.
   const modelEvents = () => {
     const d = D(), p = P(), ev = [];
-    ev.delays = [];                                        // затримка першого сигналу, год — по одній на спійманий памп
+    ev.delays = [];                                        // затримка першого сигналу, год — по одній на спійманий імпульс
     if (!p || !p.n) return ev;
     const own = rows.filter((r) => r.tk === st.tk);
     let i = 0;
@@ -877,8 +994,8 @@ td button { padding: 2px 8px; font-size: 12px; }
       i = j + 1;
     }
     own.filter((r) => r.type === "pump").forEach((r) => {
-      const ia = idxAt(r.a + 1 - H), ib = idxAt(r.b + 1 - H) - 1;          // години пампу за inPump
-      if (ia >= d.t.length || p.score[ia] == null) return;   // памп поза періодом передбачень
+      const ia = idxAt(r.a + 1 - H), ib = idxAt(r.b + 1 - H) - 1;          // години імпульсу за inPump
+      if (ia >= d.t.length || p.score[ia] == null) return;   // імпульс поза періодом передбачень
       let caught = false, maxP = 0, firstSig = null;
       for (let k = ia; k <= ib; k++) {
         maxP = Math.max(maxP, p.score[k] ?? 0);
@@ -890,7 +1007,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     ev.sort((x, y) => x.a - y.a);
     return ev;
   };
-  const EVENT_TEXT = { fp: "Хибний сигнал", fs: "Сигнал на фальстарті", fn: "Пропущений памп", tp: "Спіймано" };
+  const EVENT_TEXT = { fp: "Хибний сигнал", fs: "Сигнал на невдалому імпульсі", fn: "Пропущений імпульс", tp: "Спіймано" };
   const renderErrors = () => {
     if (!PRED.available) { $("errCard").hidden = true; return; }
     $("errCard").hidden = false;
@@ -903,7 +1020,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       sum.textContent = "Для цього тікера немає передбачень. Запусти python features.py і python train.py.";
     } else {
       const pumps = rows.filter((r) => r.tk === st.tk && r.type === "pump").length;
-      [["Пампів спіймано", `${pumps - n("fn")}/${pumps}`], ["Хибних сигналів", n("fp")], ["Сигналів на фальстартах", n("fs")]].forEach(([k, v]) => {
+      [["Імпульсів спіймано", `${pumps - n("fn")}/${pumps}`], ["Хибних сигналів", n("fp")], ["Сигналів на невдалих імпульсах", n("fs")]].forEach(([k, v]) => {
         const s = document.createElement("span"); s.append(k + ": "); const bb = document.createElement("b"); bb.textContent = v; s.appendChild(bb); sum.appendChild(s);
       });
     }
@@ -925,7 +1042,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     });
     $("errEmpty").hidden = !(p && p.n) || errors.length > 0;
     const caught = ev.delays;
-    $("errNote").textContent = (p && p.n ? (caught.length ? `Затримка першого сигналу від початку кожного спійманого пампу, год: ${caught.join(", ")}. ` : "") : "")
+    $("errNote").textContent = (p && p.n ? (caught.length ? `Затримка першого сигналу від початку кожного спійманого імпульсу, год: ${caught.join(", ")}. ` : "") : "")
       + `Передбачення з train.py від ${PRED.updated} UTC: кожен тікер оцінювала модель, яка його не бачила. `
       + "Помилки рахуються за поточною розміткою, тож після її зміни перезапусти features.py і train.py.";
   };
@@ -975,15 +1092,15 @@ td button { padding: 2px 8px; font-size: 12px; }
     const line = (name, s) => {
       const p = document.createElement("span");
       const caught = s.pumps_caught, delay = s.median_delay_h == null ? "—" : `${Math.round(s.median_delay_h * 60)} хв`;
-      p.append(`${name}: спіймано пампів `); const b = document.createElement("b"); b.textContent = caught; p.appendChild(b);
-      p.append(` · затримка ${delay} · фальстартів із сигналом ${s.false_starts_triggered} · хибних епізодів на 30 д ${s.false_alarms_per_30d == null ? "—" : s.false_alarms_per_30d.toFixed(1)}`);
+      p.append(`${name}: спіймано імпульсів `); const b = document.createElement("b"); b.textContent = caught; p.appendChild(b);
+      p.append(` · затримка ${delay} · невдалих імпульсів із сигналом ${s.false_starts_triggered} · хибних епізодів на 30 д ${s.false_alarms_per_30d == null ? "—" : s.false_alarms_per_30d.toFixed(1)}`);
       sum.appendChild(p);
     };
     line("Alert", M.summary.alert); line("Кандидат або Alert", M.summary.candidate);
     const tb = $("m15Rows"); tb.replaceChildren();
     M.episodes.slice().reverse().forEach((e) => {
       const tr = document.createElement("tr");
-      const lab = e.label === "pump" ? "памп ✓" : e.label === "false_start" ? "фальстарт" : e.label ? e.label : "не розмічено";
+      const lab = e.label === "pump" ? "Impulse ✓" : e.label === "false_start" ? "Failed impulse" : e.label ? e.label : "не розмічено";
       [[M15_TEXT[e.kind === "alert" ? 2 : 1], e.kind === "alert" ? "cls-fp" : "cls-fs"], [fmtTs(e.start), "m"], [fmtMin(e.end - e.start), "m"],
        [e.p_max.toFixed(2), "m"], [lab, e.label === "pump" ? "cls-tp" : ""]].forEach(([v, c]) => {
         const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.appendChild(td);
@@ -1008,12 +1125,12 @@ td button { padding: 2px 8px; font-size: 12px; }
       row("Угод:", `${T.n} · прибуткових ${T.wins} (${Math.round(T.wins / T.n * 100)}%) · по стопу ${T.stops}`);
       row("Сер. виграш / програш:", `${pct(T.avg_win)} / ${pct(T.avg_loss)}`);
       row("Очікування на угоду:", pct(T.expectancy), T.expectancy >= 0 ? "up" : "down");
-      row("У розмічених пампах / поза ними:", `${pct(T.in_pump)} / ${pct(T.outside)}`);
+      row("У розмічених імпульсах / поза ними:", `${pct(T.in_pump)} / ${pct(T.outside)}`);
     }
     const tt = $("m15Trades"); tt.replaceChildren();
     M.trades.slice().reverse().forEach((x) => {
       const tr = document.createElement("tr");
-      const lab = x.label === "pump" ? "памп ✓" : x.label === "false_start" ? "фальстарт" : x.label ? x.label : "не розмічено";
+      const lab = x.label === "pump" ? "Impulse ✓" : x.label === "false_start" ? "Failed impulse" : x.label ? x.label : "не розмічено";
       [[fmtTs(x.entry_ts), "m"], [x.exit_ts ? fmtTs(x.exit_ts) : "відкрита", "m"],
        [x.result == null ? "—" : fmtPct(x.result), x.result == null ? "" : x.result >= 0 ? "cls-tp" : "cls-fp"],
        [{ stop: "стоп", model: "модель", open: "—" }[x.reason] || x.reason, ""], [lab, x.label === "pump" ? "cls-tp" : ""]].forEach(([v, c]) => {
@@ -1028,7 +1145,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   const refreshM15 = (tk) => { if (MODEL15[tk]) runModel15(tk); };
 
   // ---------- мій вхід і стоп (розмітка ризику) ----------
-  // Для розміченого пампу: клік — де зайшов би (час бару і ціна в точці кліку), другий клік — рівень стопу.
+  // Для розміченого імпульсу: клік — де зайшов би (час бару і ціна в точці кліку), другий клік — рівень стопу.
   // Сервер рахує «мій k» = (вхід − стоп) / ATR(15m) на барі входу — для порівняння зі стопом моделі.
   const RISK = { row: null, et: null, ep: null };
   let STOPS = { byKey: {}, n: 0 };
@@ -1042,16 +1159,16 @@ td button { padding: 2px 8px; font-size: 12px; }
   const renderStops = () => {
     renderQuickStops();
     const el = $("stopSum"); if (!el) return;
-    if (!STOPS.n) { el.textContent = "Твоїх стопів ще немає: у таблиці «Розмічені пампи» — кнопка «Стоп» біля пампу."; return; }
+    if (!STOPS.n) { el.textContent = "Твоїх стопів ще немає: у таблиці «Розмічені імпульси» — кнопка «Стоп» біля імпульсу."; return; }
     el.textContent = `Твої стопи: ${STOPS.n} · медіана ${STOPS.median.toFixed(2)} ATR(15m) (половина — від ${STOPS.p25.toFixed(2)} до ${STOPS.p75.toFixed(2)})` +
       (STOPS.k_model != null ? ` · стоп моделі зараз ${STOPS.k_model.toFixed(2)} ATR` : "");
   };
   const startRisk = (r) => {
     if (r.tk !== st.tk) { status(`Спершу відкрий ${r.tk}`, true); return; }
-    // вхід — ціна на старті розміченого пампу (відкриття бару старту), тож потрібен лише клік на рівні стопу
+    // вхід — ціна на старті розміченого імпульсу (відкриття бару старту), тож потрібен лише клік на рівні стопу
     RISK.row = r; RISK.et = barAt(r.a);
     const i = idx.get(RISK.et); RISK.ep = RISK.et != null ? (D().open[i] ?? D().price[i]) : null;
-    if (RISK.ep == null) { RISK.row = null; status("Старт цього пампу поза завантаженим графіком", true); return; }
+    if (RISK.ep == null) { RISK.row = null; status("Старт цього імпульсу поза завантаженим графіком", true); return; }
     if (!EDIT.row) { showRange(r.a - 12 * H, r.b + 12 * H); setRangeBtn(-1); $("chart").scrollIntoView({ behavior: "smooth", block: "start" }); }
     status(`${r.tk} ${fmtTs(r.a)}: вхід ${fmtPx(RISK.ep)} (старт). Клікни рівень стопу. Esc — скасувати`);
     draw();
@@ -1085,7 +1202,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   const openAt = (t) => { const i = idx.get(t); return i == null ? null : (D().open[i] ?? D().price[i]); };
   const selectRow = (r) => {
     EDIT.row = r; st.a = st.b = null; clearSel(); RISK.row = null;
-    $("eType").value = r.type; $("eNote").value = r.note || "";
+    $("eType").value = r.type; $("eNote").value = r.note || ""; $("eSetup").value = r.su || "";
     renderEdit(); renderSel(); draw();
   };
   const closeEdit = () => { EDIT.row = null; EDIT.drag = null; renderEdit(); draw(); };
@@ -1107,7 +1224,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     try {
       rows = fromServer((await api("POST", "/api/pumps/update", {
         base_asset: r.tk, orig_start_ts: fmtTs(r.a), start_ts: fmtTs(n.a), end_ts: fmtTs(n.b),
-        pattern_type: n.type, notes: n.note || "",
+        pattern_type: n.type, notes: n.note || "", setup: n.type === "pump" ? (n.su || "") : "",
         entry_ts: n.sp != null && n.et != null ? fmtTs(n.et) : "", entry_price: n.sp != null && n.ep != null ? String(n.ep) : "",
         stop_price: n.sp != null ? String(n.sp) : "" })).rows);
       status(`${r.tk} ${fmtTs(n.a)} → ${fmtTs(n.b)} збережено`);
@@ -1120,29 +1237,40 @@ td button { padding: 2px 8px; font-size: 12px; }
   const hBox = document.createElement("div"); hBox.className = "handles"; chartEl.appendChild(hBox);
   const mk3 = (cls, title) => { const h = document.createElement("div"); h.className = "handle " + cls; h.title = title; hBox.appendChild(h); return h; };
   const HS = mk3("h-start", "Перетягни — змінити старт"), HE = mk3("h-end", "Перетягни — змінити кінець"), HP = mk3("h-stop", "Перетягни — змінити стоп");
+  // ручки: на вибраному збереженому інтервалі (EDIT.row) або на поточному виділенні (нове чи з чернетки)
+  const handleTarget = () => EDIT.row ? (EDIT.row.tk === st.tk ? EDIT.row : null)
+    : (st.a != null && st.b != null ? { a: st.a, b: st.b, sp: null, sel: true } : null);
   const placeHandles = () => {
-    const r = EDIT.row;
+    const r = handleTarget();
     [HS, HE, HP].forEach((h) => { h.hidden = true; });
-    if (!r || !chart || r.tk !== st.tk) return;
+    if (!r || !chart) return;
     const ts = chart.timeScale(), half = (ts.options().barSpacing || 6) / 2, ph = chart.panes()[0].getHeight();
     const xs = ts.timeToCoordinate(barAt(r.a)), xe = ts.timeToCoordinate(barAt(r.b - 1));
-    if (xs != null) { HS.hidden = false; HS.style.left = `${xs - half - 3}px`; HS.style.height = `${ph}px`; }
-    if (xe != null) { HE.hidden = false; HE.style.left = `${xe + half - 3}px`; HE.style.height = `${ph}px`; }
+    if (xs != null) { HS.hidden = false; HS.style.left = `${xs - half - 6}px`; HS.style.height = `${ph}px`; }
+    if (xe != null) { HE.hidden = false; HE.style.left = `${xe + half - 6}px`; HE.style.height = `${ph}px`; }
     if (r.sp != null && xs != null) {
       const y = S.candles.priceToCoordinate(r.sp);
       if (y != null) { HP.hidden = false; HP.style.top = `${y - 3}px`; HP.style.left = `${xs - half}px`; HP.style.width = `${Math.max(12, (xe ?? xs) - xs + 2 * half)}px`; }
     }
   };
   const startDrag = (kind) => (e) => {
-    if (!EDIT.row) return;
+    const tgt = handleTarget(); if (!tgt) return;
     e.preventDefault(); e.stopPropagation();
-    EDIT.drag = { kind, row: { ...EDIT.row } };
+    EDIT.drag = tgt.sel ? { kind, sel: true } : { kind, row: { ...EDIT.row } };
     chart.applyOptions({ handleScroll: false, handleScale: false });
   };
   HS.addEventListener("mousedown", startDrag("start")); HE.addEventListener("mousedown", startDrag("end")); HP.addEventListener("mousedown", startDrag("stop"));
   document.addEventListener("mousemove", (e) => {
     const g = EDIT.drag; if (!g) return;
     const rect = chartEl.getBoundingClientRect(), r = EDIT.row;
+    if (g.sel) {                      // виділення / чернетка: міняємо межі, зберігає «Додати» чи «Прийняти»
+      const t = chart.timeScale().coordinateToTime(e.clientX - rect.left); if (t == null) return;
+      const bt = D().t[nearestIdx(t)];
+      if (g.kind === "start" && bt < st.b) st.a = bt;
+      if (g.kind === "end" && bt + BAR() > st.a) st.b = bt + BAR();
+      renderSel(); draw(); placeHandles();
+      return;
+    }
     if (g.kind === "stop") {
       const p = S.candles.coordinateToPrice(e.clientY - rect.top);
       if (p != null && p < r.ep) r.sp = p;
@@ -1157,6 +1285,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   document.addEventListener("mouseup", () => {
     const g = EDIT.drag; if (!g) return;
     EDIT.drag = null; chart.applyOptions({ handleScroll: true, handleScale: true });
+    if (g.sel) return;
     const r = EDIT.row, o = g.row;
     if (r.a === o.a && r.b === o.b && r.sp === o.sp) return;
     // зберігаємо від ОРИГІНАЛЬНОГО рядка (його старт — ключ на сервері)
@@ -1175,7 +1304,7 @@ td button { padding: 2px 8px; font-size: 12px; }
                     removed: ["прибрано", "ms-new", "тікер був у моделі, але зараз його немає в навчальній вибірці"] };
   let msTimer = null;
   const loadModelStatus = async () => {
-    try { MS = await api("GET", "/api/model_status"); } catch (e) { return; }
+    try { MS = await api("GET", "/api/model_status", null, true); } catch (e) { return; }
     renderModelStatus(); renderList();
     clearTimeout(msTimer);
     if (MS.retrain.state === "running") msTimer = setTimeout(loadModelStatus, 3000);
@@ -1183,7 +1312,7 @@ td button { padding: 2px 8px; font-size: 12px; }
   const fmtNum2 = (v, d = 1) => v == null ? "—" : Number(v).toFixed(d);
   const renderModelStatus = () => {
     const c = MS.current, r = MS.retrain, box = $("mstat");
-    $("msLine").textContent = c ? `Модель від ${c.trained_at.slice(5, 16)} · ${c.tickers} тікерів · ${c.pumps} пампів` : "Моделі ще немає";
+    $("msLine").textContent = c ? `Модель від ${c.trained_at.slice(5, 16)} · ${c.tickers} тікерів · ${c.pumps} імпульсів` : "Моделі ще немає";
     // згорнутий рядок: коротко, що з моделлю і чи треба щось робити
     const sum = $("msSum"); sum.replaceChildren(c ? `Модель ${c.trained_at.slice(5, 16)}` : "Моделі немає");
     const flag = (txt) => { const b = document.createElement("span"); b.className = "dot"; b.textContent = ` · ${txt}`; sum.appendChild(b); };
@@ -1215,9 +1344,9 @@ td button { padding: 2px 8px; font-size: 12px; }
       };
       const num = (s) => { const m = /^(\d+)\/(\d+)$/.exec(s || ""); return m ? +m[1] / +m[2] : null; };
       const cmp = (x, y, higher) => x == null || y == null || x === y ? null : (higher ? y > x : y < x);
-      rowC("Тікерів · пампів", c ? `${c.tickers} · ${c.pumps}` : "—", `${k.tickers} · ${k.pumps}`);
+      rowC("Тікерів · імпульсів", c ? `${c.tickers} · ${c.pumps}` : "—", `${k.tickers} · ${k.pumps}`);
       rowC("Alert: спіймано", c?.alert.pumps_caught ?? "—", k.alert.pumps_caught, cmp(num(c?.alert.pumps_caught), num(k.alert.pumps_caught), true));
-      rowC("Alert: фальстарти", c?.alert.false_starts_triggered ?? "—", k.alert.false_starts_triggered, cmp(num(c?.alert.false_starts_triggered), num(k.alert.false_starts_triggered), false));
+      rowC("Alert: невдалі імпульси", c?.alert.false_starts_triggered ?? "—", k.alert.false_starts_triggered, cmp(num(c?.alert.false_starts_triggered), num(k.alert.false_starts_triggered), false));
       rowC("Alert: хибних / 30 д", fmtNum2(c?.alert.false_alarms_per_30d), fmtNum2(k.alert.false_alarms_per_30d), cmp(c?.alert.false_alarms_per_30d, k.alert.false_alarms_per_30d, false));
       rowC("Alert: F1", fmtNum2(c?.alert.f1, 2), fmtNum2(k.alert.f1, 2), cmp(c?.alert.f1, k.alert.f1, true));
       rowC("Стоп, ATR", fmtNum2(c?.stop_k, 2), fmtNum2(k.stop_k, 2));
@@ -1268,7 +1397,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     if (M) {
       const a = M.summary.alert, c = M.summary.candidate, f = (v) => v == null ? "—" : v.toFixed(1);
       $("qSigV").textContent = `${M.episodes.length} еп.`;
-      qGrid($("qSigGrid"), [["Alert: спіймано пампів", a.pumps_caught], ["Alert: фальстартів із сигналом", String(a.false_starts_triggered)],
+      qGrid($("qSigGrid"), [["Alert: спіймано імпульсів", a.pumps_caught], ["Alert: невдалих імпульсів із сигналом", String(a.false_starts_triggered)],
         ["Alert: хибних на 30 д", f(a.false_alarms_per_30d)], ["Кандидат: спіймано", c.pumps_caught],
         ["Затримка Alert", a.median_delay_h == null ? "—" : `${Math.round(a.median_delay_h * 60)} хв`]]);
       $("qSigWarn").hidden = !M.in_training;
@@ -1282,12 +1411,12 @@ td button { padding: 2px 8px; font-size: 12px; }
     tile("По стопу", T.n ? String(T.stops) : "—");
     tile("Сер. виграш / програш", T.n ? `${pct(T.avg_win)} / ${pct(T.avg_loss)}` : "—", "", true);
     
-    qGrid($("qMore"), [["У пампах / поза ними", `${pct(T.in_pump)} / ${pct(T.outside)}`]]);
+    qGrid($("qMore"), [["У імпульсах / поза ними", `${pct(T.in_pump)} / ${pct(T.outside)}`]]);
     $("qRule").textContent = `Вхід — перший бар Alert; стоп ${T.k == null ? "—" : T.k.toFixed(2)} ATR(15m); вихід — Alert згас ${T.exit_bars} бари. Без комісій.`;
   }
   function renderQuickStops() {
     $("qStopsN").textContent = STOPS.n ? String(STOPS.n) : "";
-    if (!STOPS.n) { qGrid($("qStops"), [["Ще немає", "кнопка «Стоп» у таблиці пампів"]]); return; }
+    if (!STOPS.n) { qGrid($("qStops"), [["Ще немає", "кнопка «Стоп» у таблиці імпульсів"]]); return; }
     qGrid($("qStops"), [["Медіана", `${STOPS.median.toFixed(2)} ATR`], ["Половина між", `${STOPS.p25.toFixed(2)}–${STOPS.p75.toFixed(2)}`],
       ["Стоп моделі зараз", STOPS.k_model != null ? `${STOPS.k_model.toFixed(2)} ATR` : "—"]]);
   }
@@ -1295,6 +1424,178 @@ td button { padding: 2px 8px; font-size: 12px; }
     const d = $("m15TradesDet"); if (d) d.open = true;
     $("m15Card").scrollIntoView({ behavior: "smooth", block: "start" });
   });
+
+
+  // ---------- сетап імпульсу: breakout (вихід з рейнджу) / pullback (підбір після відкату) / other ----------
+  // Модель на сетапі не вчиться (ціль та сама) — він для метрик окремо по кожному сетапу.
+  // Гарячі клавіші: B / P / O — на вибраному імпульсі (або для нового виділення). Підказка — евристика, ти підтверджуєш.
+  const SETUP_TXT = { breakout: "breakout", pullback: "pullback", other: "other" };
+  let SUGG = {};
+  const saveSetup = async (items) => {
+    try { rows = fromServer((await api("POST", "/api/pumps/setup", { items })).rows); }
+    catch (e) { status(e.message, true); return; }
+    items.forEach((x) => delete SUGG[`${x.base_asset}|${x.start_ts}`]);
+    if (EDIT.row) { EDIT.row = rows.find((x) => x.tk === EDIT.row.tk && x.a === EDIT.row.a) || null; if (EDIT.row) $("eSetup").value = EDIT.row.su || ""; }
+    renderRows(); renderEdit();
+  };
+  const setSetupKey = (val) => {
+    if (EDIT.row) { saveSetup([{ base_asset: EDIT.row.tk, start_ts: fmtTs(EDIT.row.a), setup: val }]); status(`${EDIT.row.tk} ${fmtTs(EDIT.row.a)}: сетап ${val}`); }
+    else if (st.a != null) { $("pSetup").value = val; status(`Сетап нового імпульсу: ${val}`); }
+  };
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, select, textarea")) return;
+    const k = e.key.toLowerCase();
+    const val = { b: "breakout", "и": "breakout", p: "pullback", "з": "pullback", o: "other", "щ": "other" }[k];
+    if (val && (EDIT.row || st.a != null)) { e.preventDefault(); setSetupKey(val); }
+  });
+  $("suggBtn").addEventListener("click", async () => {
+    $("suggBtn").disabled = true; status("Рахую підказки сетапів…");
+    try {
+      const r = await api("GET", "/api/pumps/suggest_setup");
+      SUGG = Object.fromEntries(r.items.map((x) => [`${x.base_asset}|${x.start_ts}`, x]));
+      status(r.items.length ? `Підказки для ${r.items.length} імпульсів без сетапу: перевір і прийми ✓ (або «Прийняти всі»)` : "Усі імпульси вже мають сетап");
+    } catch (e) { status(e.message, true); }
+    $("suggBtn").disabled = false; renderRows();
+  });
+  $("suggAll").addEventListener("click", () => {
+    const items = Object.values(SUGG).map((x) => ({ base_asset: x.base_asset, start_ts: x.start_ts, setup: x.setup }));
+    if (items.length) saveSetup(items);
+  });
+
+
+  // ---------- чернетки імпульсів ----------
+  var DRAFTS = { tk: null, items: [], show: false, cur: -1 };
+  function draftKey(tk, d) { return `${tk}|${d.start}`; }
+  var dismissed = new Set();
+  try { dismissed = new Set(JSON.parse(localStorage.getItem("label-drafts-off") || "[]")); } catch (e) {}
+  const saveDismissed = () => { try { localStorage.setItem("label-drafts-off", JSON.stringify([...dismissed])); } catch (e) {} };
+  // видимі чернетки тікера: не відкинуті й не перекриті розміткою
+  function draftList() {
+    return DRAFTS.items.filter((d) => !dismissed.has(draftKey(st.tk, d)) && !rows.some((r) => r.tk === st.tk && r.a < d.end && r.b > d.start));
+  }
+  function renderDraftNav() {
+    if (!DRAFTS) return;
+    const list = draftList(), d = list[DRAFTS.cur];
+    const on = DRAFTS.show && DRAFTS.tk === st.tk && d && st.a === d.start && st.b === d.end;
+    const box = $("draftNav"); box.hidden = !(DRAFTS.show && DRAFTS.tk === st.tk && list.length);
+    if (box.hidden) return;
+    $("dnPos").textContent = d && st.a != null ? `${DRAFTS.cur + 1} / ${list.length}` : `— / ${list.length}`;
+    $("dnWhy").textContent = d && st.a != null ? `${fmtTs(d.start)} → ${fmtTs(d.end)} · ${d.reason}` + (on ? "" : " · межі змінено") : "N — перша чернетка";
+    $("dnOk").disabled = $("dnNo").disabled = !(d && st.a != null && st.b != null);
+  }
+  function goDraft(i, zoom = true) {
+    const list = draftList(); if (!list.length) { renderDraftNav(); return; }
+    DRAFTS.cur = (i + list.length) % list.length;
+    const d = list[DRAFTS.cur];
+    EDIT.row = null; renderEdit(); st.a = d.start; st.b = d.end; $("pType").value = "pump"; $("pSetup").value = "";
+    if (zoom) { showRange(d.start - 12 * H, d.end + 12 * H); setRangeBtn(-1); }
+    renderSel(); draw(); renderDraftNav();
+  }
+  const loadDrafts = async () => {
+    if (!st.tk) return;
+    if (DRAFTS.show && DRAFTS.tk === st.tk) {           // повторний клік — сховати з графіка
+      DRAFTS.show = false; $("draftBtn").setAttribute("aria-pressed", "false"); renderDrafts(); renderDraftNav(); draw(); return;
+    }
+    $("draftBtn").disabled = true; status(`${st.tk}: шукаю нерозмічені епізоди Alert…`);
+    try {
+      const r = await api("GET", `/api/drafts?ticker=${encodeURIComponent(st.tk)}`);
+      DRAFTS.items = r.items; DRAFTS.tk = st.tk; DRAFTS.show = true; DRAFTS.cur = -1;
+      $("draftBtn").setAttribute("aria-pressed", "true");
+      // порожньо — пояснити чому, а не мовчати
+      const open = r.items.filter((d) => !dismissed.has(draftKey(st.tk, d))).length;
+      if (open) status(`${st.tk}: чернеток ${open} — на графіку синім; N / «Наступна →» — по черзі`);
+      else if (r.from == null) status(`${st.tk}: 15m-модель тут не рахувалась — замало 15m-історії (потрібно ≥ 7 днів). «Дозавантажити 60 днів» у картці моделі`, true);
+      else status(`${st.tk}: чернеток немає. 15m-модель рахується з ${fmtTs(r.from)} (раніше 15m-даних немає — «Дозавантажити 60 днів» у картці моделі); `
+        + (r.alert_bars ? "усі епізоди Alert уже розмічені або відкинуті" : `Alert за цей час не було (найвища P ${r.p_max == null ? "—" : r.p_max.toFixed(2)})`));
+    } catch (e) { status(e.message, true); }
+    $("draftBtn").disabled = false; renderDrafts(); renderDraftNav(); draw();
+  };
+  function renderDrafts() {
+    const card = $("draftCard"); card.hidden = DRAFTS.tk !== st.tk || !st.tk || !DRAFTS.show;
+    if (card.hidden) return;
+    const items = DRAFTS.items.filter((d) => !dismissed.has(draftKey(st.tk, d))
+      && !rows.some((r) => r.tk === st.tk && r.a < d.end && r.b > d.start));      // уже розмічено — зникає
+    const tb = $("draftRows"); tb.replaceChildren();
+    items.forEach((d) => {
+      const tr = document.createElement("tr");
+      [[fmtTs(d.start), "m"], [fmtTs(d.end), "m"], [fmtMin(d.end - d.start), "m"], [d.reason, ""]].forEach(([v, c]) => {
+        const td = document.createElement("td"); td.textContent = v; if (c) td.className = c; tr.appendChild(td);
+      });
+      const td = document.createElement("td"); td.style.whiteSpace = "nowrap";
+      const show = document.createElement("button"); show.textContent = "Показати";
+      show.title = "Поставити як виділення: підправ межі кліками і «Додати в список»";
+      show.addEventListener("click", () => { goDraft(draftList().indexOf(d)); $("chart").scrollIntoView({ behavior: "smooth", block: "start" }); });
+      const ok = document.createElement("button"); ok.textContent = "Прийняти"; ok.className = "primary";
+      ok.addEventListener("click", async () => {
+        ok.disabled = true;
+        try {
+          rows = fromServer((await api("POST", "/api/pumps", { base_asset: st.tk, start_ts: fmtTs(d.start), end_ts: fmtTs(d.end),
+            pattern_type: "pump", notes: "з чернетки моделі", setup: "" })).rows);
+          status(`${st.tk} ${fmtTs(d.start)} додано як Impulse`); refreshM15(st.tk);
+        } catch (e) { status(e.message, true); ok.disabled = false; }
+        renderRows(); renderDrafts(); draw();
+      });
+      const no = document.createElement("button"); no.textContent = "Відкинути"; no.title = "Не імпульс — сховати цю чернетку (за бажанням розміть як Failed impulse)";
+      no.addEventListener("click", () => { dismissed.add(draftKey(st.tk, d)); saveDismissed(); renderDrafts(); });
+      td.append(show, " ", ok, " ", no); tr.appendChild(td); tb.appendChild(tr);
+    });
+    $("draftEmpty").hidden = items.length > 0;
+  }
+  $("draftBtn").addEventListener("click", loadDrafts);
+  $("dnNext").addEventListener("click", () => goDraft(DRAFTS.cur + 1));
+  $("dnPrev").addEventListener("click", () => goDraft(DRAFTS.cur - 1));
+  $("dnOk").addEventListener("click", async () => {
+    // приймаємо ПОТОЧНІ межі виділення (якщо підправив кліками — з правками)
+    if (st.a == null || st.b == null) return;
+    const i = DRAFTS.cur;
+    try {
+      rows = fromServer((await api("POST", "/api/pumps", { base_asset: st.tk, start_ts: fmtTs(st.a), end_ts: fmtTs(st.b),
+        pattern_type: $("pType").value, notes: "з чернетки моделі", setup: $("pType").value === "pump" ? $("pSetup").value : "" })).rows);
+      status(`${st.tk} ${fmtTs(st.a)} додано`); refreshM15(st.tk);
+    } catch (e) { status(e.message, true); return; }
+    st.a = st.b = null; clearSel(); renderRows(); renderDrafts();
+    draftList().length ? goDraft(i) : (renderSel(), draw(), renderDraftNav());   // наступна стає на те ж місце
+  });
+  $("dnNo").addEventListener("click", () => {
+    const d = draftList()[DRAFTS.cur]; if (!d) return;
+    const i = DRAFTS.cur; dismissed.add(draftKey(st.tk, d)); saveDismissed();
+    st.a = st.b = null; clearSel(); renderDrafts();
+    draftList().length ? goDraft(i) : (renderSel(), draw(), renderDraftNav());
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, select, textarea")) return;
+    if (!(DRAFTS.show && DRAFTS.tk === st.tk) || !["n", "N", "т", "Т"].includes(e.key)) return;
+    e.preventDefault(); goDraft(DRAFTS.cur + (e.shiftKey ? -1 : 1));
+  });
+
+  // ---------- черга «що розмітити далі» ----------
+  const loadQueue = async () => {
+    const box = $("queueList"); box.replaceChildren(document.createTextNode("Рахую…"));
+    let items = [];
+    try { items = (await api("GET", "/api/queue")).items; } catch (e) { box.replaceChildren(document.createTextNode(e.message)); return; }
+    box.replaceChildren();
+    if (!items.length) { box.append("Нерозмічених сигналів немає."); return; }
+    items.forEach((x) => {
+      const b = document.createElement("button");
+      b.style.cssText = "display:grid;gap:2px;text-align:left;padding:6px 8px;background:var(--panel);font-weight:400";
+      const top = document.createElement("span"); top.style.cssText = "display:flex;justify-content:space-between;gap:6px";
+      const nm = document.createElement("b"); nm.textContent = x.ticker; nm.style.fontFamily = "var(--mono)";
+      const tags = document.createElement("span"); tags.className = "small";
+      tags.textContent = (x.fresh ? "поза навчанням · " : x.reviewed ? "у навчанні · 7 дн. · " : "") + `бали ${x.score}`;
+      top.append(nm, tags);
+      const why = document.createElement("span"); why.className = "small"; why.textContent = x.why;
+      b.append(top, why);
+      b.title = `Перший нерозмічений сигнал: ${fmtTs(x.first)} — відкрити тікер там`;
+      b.addEventListener("click", async () => {
+        await setTicker(x.ticker);
+        showRange(x.first - 24 * H, x.first + 24 * H); setRangeBtn(-1);
+      });
+      box.appendChild(b);
+    });
+  };
+  $("qRefresh").addEventListener("click", loadQueue);
+  document.querySelector('[data-stab="queue"]').addEventListener("click", loadQueue);
+  if (!$("pane-queue").hidden) loadQueue();
 
   // ---------- керування ----------
   const setRangeBtn = (days) => document.querySelectorAll("[data-days]").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.days === days)));
@@ -1319,6 +1620,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       setTf("1h", false);
     }
     st.tk = tk; st.a = st.b = null; EDIT.row = null; renderEdit();
+    if (typeof renderDrafts === "function") { renderDrafts(); renderDraftNav(); }
     if (location.hash.slice(1) !== tk) history.replaceState(null, "", "#" + tk);
     renderM15();
     if (!MODEL15[tk]) runModel15(tk, true);        // 15m-модель одразу: менше секунди, а без неї 15m/5m-панель порожня
@@ -1362,6 +1664,7 @@ td button { padding: 2px 8px; font-size: 12px; }
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = x.base;
       if (x.n) { const c = document.createElement("span"); c.className = "chip2 lb"; c.textContent = `${x.n} розм.`; c.title = "інтервалів у pumps.csv"; nm.appendChild(c); }
       if (x.train) { const c = document.createElement("span"); c.className = "chip2 tr"; c.textContent = "навч."; c.title = "у tickers.txt — іде в навчання"; nm.appendChild(c); }
+      if (EXCL.includes(x.base)) { const c = document.createElement("span"); c.className = "chip2 ex"; c.textContent = "виключено"; c.title = "поза скоупом (excluded.txt): не навчання, не скан, не скринер"; nm.appendChild(c); }
       const msx = MS_CHIP[MS.tickers[x.base]];
       if (msx) { const c = document.createElement("span"); c.className = "chip2 " + msx[1]; c.textContent = msx[0]; c.title = msx[2]; nm.appendChild(c); }
       const num = document.createElement("span"); num.className = "num";
@@ -1406,13 +1709,16 @@ td button { padding: 2px 8px; font-size: 12px; }
       $("curTk").textContent = st.tk;
       $("curInfo").textContent = inTr ? `· ${n} розм., увесь тікер у навчанні` : n ? `· ${n} розм.: у навчання йдуть лише інтервали` : "· без розмітки";
       $("trainBtn").setAttribute("aria-pressed", String(inTr));
+      const ex = EXCL.includes(st.tk);
+      $("exclBtn").setAttribute("aria-pressed", String(ex)); $("exclBtn").textContent = ex ? "Виключено ✕" : "Виключити";
+      $("trainBtn").hidden = ex;
       $("trainBtn").textContent = inTr ? "У навчанні ✓" : "У навчання";
     }
   };
 
   let pollTimer = null;
   const pollJobs = async () => {
-    try { JOBS = await api("GET", "/api/jobs"); } catch (e) { return; }
+    try { JOBS = await api("GET", "/api/jobs", null, true); } catch (e) { return; }
     const active = Object.values(JOBS).some((j) => j.state === "queued" || j.state === "running");
     const fresh = Object.entries(JOBS).filter(([tk, j]) => j.state === "done" && !TICKERS.includes(tk)).map(([tk]) => tk);
     if (fresh.length) {
@@ -1443,11 +1749,20 @@ td button { padding: 2px 8px; font-size: 12px; }
     document.querySelectorAll("[data-list]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
     renderList(true);
   }));
+  $("exclBtn").addEventListener("click", async () => {
+    const on = !EXCL.includes(st.tk);
+    let reason = "";
+    if (on) { reason = prompt(`Чому ${st.tk} поза скоупом? (напр.: смикана ціна, проливи, тонкий стакан)`, "смикана ціна, проливи, тонкий стакан"); if (reason === null) return; }
+    try { const r = await api("POST", "/api/exclude", { ticker: st.tk, on, reason }); EXCL = r.excluded; TRAIN = r.training; }
+    catch (e) { status(e.message, true); return; }
+    status(on ? `${st.tk} виключено: не йде в навчання, сканер і скринер його не беруть (excluded.txt)` : `${st.tk} повернуто в скоуп`);
+    loadModelStatus(); renderList();
+  });
   $("trainBtn").addEventListener("click", async () => {
     const on = !TRAIN.includes(st.tk);
     try { TRAIN = (await api("POST", "/api/training", { ticker: st.tk, on })).training; }
     catch (e) { status(e.message, true); return; }
-    status(on ? `${st.tk} у tickers.txt: у навчання йдуть усі години (нерозмічені — «пампу не було»)` : `${st.tk} прибрано з tickers.txt: у навчанні лишаються тільки розмічені інтервали`);
+    status(on ? `${st.tk} у tickers.txt: у навчання йдуть усі години (нерозмічені — «імпульсу не було»)` : `${st.tk} прибрано з tickers.txt: у навчанні лишаються тільки розмічені інтервали`);
     loadModelStatus();
     renderList();
   });
@@ -1516,7 +1831,8 @@ td button { padding: 2px 8px; font-size: 12px; }
   $("stopBtn").addEventListener("click", () => setSelMode("stop"));
   $("eStopBtn").addEventListener("click", () => { if (EDIT.row) startRisk(EDIT.row); });
   $("eStopClr").addEventListener("click", () => { if (EDIT.row) saveRow(EDIT.row, { sp: null }); });
-  $("eSave").addEventListener("click", () => { if (EDIT.row) saveRow(EDIT.row, { type: $("eType").value, note: $("eNote").value.trim(), sp: $("eType").value === "pump" ? EDIT.row.sp : null }); });
+  $("eSave").addEventListener("click", () => { if (EDIT.row) saveRow(EDIT.row, { type: $("eType").value, note: $("eNote").value.trim(), su: $("eSetup").value || null, sp: $("eType").value === "pump" ? EDIT.row.sp : null }); });
+  $("eSetup").addEventListener("change", () => { if (EDIT.row) saveSetup([{ base_asset: EDIT.row.tk, start_ts: fmtTs(EDIT.row.a), setup: $("eSetup").value }]); });
   $("eClose").addEventListener("click", closeEdit);
   $("eDel").addEventListener("click", async () => {
     const r = EDIT.row; if (!r) return;
@@ -1544,13 +1860,13 @@ td button { padding: 2px 8px; font-size: 12px; }
       const e = SEL.stop != null ? selEntry() : null;
       const res = await api("POST", "/api/pumps", {
         base_asset: tk, start_ts: fmtTs(st.a), end_ts: fmtTs(st.b),
-        pattern_type: $("pType").value, notes: $("pNote").value.trim(),
+        pattern_type: $("pType").value, notes: $("pNote").value.trim(), setup: $("pType").value === "pump" ? $("pSetup").value : "",
         entry_ts: e ? fmtTs(e.t) : "", entry_price: e ? String(e.px) : "", stop_price: e ? String(SEL.stop) : "",
       });
       if (e) loadStops();
       rows = fromServer(res.rows);
       refreshM15(tk);
-      st.a = st.b = null; $("pNote").value = ""; clearSel();
+      st.a = st.b = null; $("pNote").value = ""; $("pSetup").value = ""; clearSel();
       status(`Додано ${tk} ${fmtTs(a)}, збережено в pumps.csv і базі`);
     } catch (e) { status(e.message, true); }
     renderSel(); renderRows(); draw();
@@ -1566,7 +1882,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     if (!LWC) { status("Бібліотеку графіків не знайдено: має бути app/vendor/lightweight-charts.standalone.production.js", true); return; }
     try {
       const [tk, pumps, uni] = await Promise.all([api("GET", "/api/tickers"), api("GET", "/api/pumps"), api("GET", "/api/universe")]);
-      TICKERS = uni.db; UNI = uni.binance; TRAIN = uni.training; rows = fromServer(pumps.rows);
+      TICKERS = uni.db; UNI = uni.binance; TRAIN = uni.training; EXCL = uni.excluded || []; rows = fromServer(pumps.rows);
       $("days").textContent = tk.days;
       if (uni.error) $("sideFoot").textContent = `Список Binance недоступний (${uni.error}); показано тікери з бази.`;
     } catch (e) { status(`Сервер не відповідає: ${e.message}. Чи запущено python label.py?`, true); return; }

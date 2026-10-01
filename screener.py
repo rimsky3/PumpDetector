@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 
 import fetch_exchange
 import scanner
-from features import build, build_15m
+from features import build, build_15m, build_hourly_own, oi_seen_share
 from fetch import Coinalyze, collect, collect_liquidations, read_tickers_file
 from train import M15_NAME, PROBA_MODELS, load_model, model_path
 
@@ -46,6 +46,9 @@ BACKFILL_15M = 7 * 24 * 4       # скільки 15m-барів історії �
 INTRADAY_DAYS = 10              # новому тікеру — 10 днів 15m-історії (тижневі вікна ознак + запас)
 INTRADAY_TAIL_DAYS = 0.25       # мінімальний хвіст — 6 годин (upsert, дублікатів немає)
 MAX_GAP_DAYS = 29               # найдовший пропуск, який дозаповнюємо (історія OI Binance — 30 днів)
+OWN_HOURLY_MIN_SHARE = 0.70     # годинна модель з власних 15m, якщо Binance+Bybit тримають ≥ 70% OI тікера
+COINALYZE_OWN_REFRESH_H = 6     # таким тікерам годинні дані Coinalyze — раз на 6 год (графік 1h, історія), не щогодини
+_coin_refreshed: dict = {}      # тікер → коли востаннє тягнули годинні дані Coinalyze
 BACKGROUND_HOURS = 3             # тікери навчання поза списком: історія бірж (з OKX) раз на 3 год
 NO_COINALYZE: set[str] = set()   # тікери, яких Coinalyze не має (годинних даних не буде)
 
@@ -179,6 +182,29 @@ def score_bases(conn, bases: list[str], models: list[dict]) -> tuple[pd.DataFram
     return scored, last_closed
 
 
+def split_hourly(conn, bases: list[str]) -> tuple[list[str], list[str]]:
+    """Звідки годинне підтвердження: own — з наших 15m-даних (Binance+Bybit ≥ OWN_HOURLY_MIN_SHARE OI, або тікера немає
+    в Coinalyze), coin — як раніше, з годинних даних Coinalyze (усі біржі: напр., MON — 42% OI на Hyperliquid)."""
+    share = oi_seen_share(conn, bases)
+    own = [b for b in bases if share.get(b, 1.0) >= OWN_HOURLY_MIN_SHARE]
+    return own, [b for b in bases if b not in own]
+
+
+def score_bases_own(conn, bases: list[str], models: list[dict]) -> tuple[pd.DataFrame, pd.Timestamp]:
+    """Як score_bases, але годинні ознаки — з наших 15m-даних: оцінка закритої години готова одразу о HH:02,
+    без годинного збору Coinalyze (~23 виклики на тікер, на 27 тікерах ~19 хв і 429)."""
+    now = datetime.now(timezone.utc)
+    last_closed = pd.Timestamp(now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=1))
+    since = last_closed - pd.Timedelta(hours=BACKFILL_HOURS) - pd.Timedelta(days=8)    # + тижневі вікна ознак
+    df = build_hourly_own(conn, bases, since=since) if bases else pd.DataFrame()
+    if df.empty:
+        return pd.DataFrame(), last_closed
+    df = df[df["ts"] > last_closed - pd.Timedelta(hours=BACKFILL_HOURS)]
+    scored = score(df, models)
+    save_signals(conn, scored, last_closed)
+    return scored, last_closed
+
+
 def write_status(**fields) -> None:
     os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
     with open(STATUS_FILE, "w", encoding="utf-8") as f:
@@ -242,6 +268,13 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
                         "api_calls_15m": (client.calls_made - calls0) if client else 0})
         return
 
+    # годинне підтвердження з власних 15m — одразу, до будь-якого збору Coinalyze
+    own, coin = split_hourly(conn, bases)
+    scored_own = pd.DataFrame()
+    if own:
+        scored_own, _ = score_bases_own(conn, own, models)
+        print(f"  годинна оцінка з власних 15m: {len(own)} тікерів за {(datetime.now(timezone.utc) - started).seconds} с"
+              + (f"; з Coinalyze (покриття < {OWN_HOURLY_MIN_SHARE:.0%}): {', '.join(coin)}" if coin else ""))
     if fetch:
         # зазвичай 10 днів; після довгого простою — увесь пропуск (Coinalyze тримає ~60 днів; ліміт — за символами, не днями)
         last1h = conn.execute("""SELECT min(t) FROM (SELECT m.base_asset, max(o.ts) AS t FROM ohlcv o JOIN markets m USING (symbol)
@@ -250,16 +283,29 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
         days = int(min(60, max(FETCH_DAYS, np.ceil(gap) + 1)))
         # спершу тікери, де горить 15m-«Кандидат»: їм годинна оцінка потрібна для Alert — вона буде за ~1–2 хв
         # після старту циклу, а не після збору всього списку (Coinalyze: ~23 виклики на тікер, 40 на хвилину)
-        first = [b for b in hot if b not in fresh]
+        first = [b for b in hot if b not in fresh and b in coin]
         if first:
             collect(client, conn, first, days, verbose=False)
             score_bases(conn, first, models)
             print(f"  годинна оцінка першими для гарячих: {', '.join(first)}")
-        rest = [b for b in bases if b not in fresh and b not in first]     # нові вже зібрано в onboard()
+        # тікери з власною годинною оцінкою — Coinalyze лише раз на COINALYZE_OWN_REFRESH_H (графік 1h, історія)
+        # «давно» — за базою (останній годинний бар Coinalyze), а не лише за пам'яттю процесу: інакше після кожного
+        # перезапуску скринер перетягував годинні дані всіх тікерів і перший цикл тривав ~18 хв (пропускав 15m-цикл)
+        if not _coin_refreshed and own:
+            for b_, t_ in conn.execute("""SELECT m.base_asset, max(o.ts) FROM ohlcv o JOIN markets m USING (symbol)
+                                          WHERE o.interval = '1hour' AND m.base_asset = ANY(%s) GROUP BY 1""", (own,)):
+                _coin_refreshed[b_] = pd.Timestamp(t_).to_pydatetime() + timedelta(hours=1)
+        due = [b for b in own if started - _coin_refreshed.get(b, datetime.min.replace(tzinfo=timezone.utc))
+               >= timedelta(hours=COINALYZE_OWN_REFRESH_H)]
+        rest = [b for b in coin + due if b not in fresh and b not in first]     # нові вже зібрано в onboard()
         if rest:
             collect(client, conn, rest, days, verbose=False)
+            for b in due:
+                _coin_refreshed[b] = started
         print(f"  дані оновлено за {(datetime.now(timezone.utc) - started).seconds} с")
-    scored, last_closed = score_bases(conn, bases, models)
+    scored, last_closed = score_bases(conn, coin, models) if coin else (pd.DataFrame(), pd.Timestamp(
+        datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) - timedelta(hours=1)))
+    scored = pd.concat([scored_own, scored], ignore_index=True)
     print(f"  остання закрита година: {last_closed:%m-%d %H:%M} UTC")
     if scored.empty:
         print("  немає тікерів з повною історією для ознак (потрібно ≥ 7 днів)")
@@ -286,6 +332,7 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
     write_status(ok=True, cycle_started=started.isoformat(timespec="seconds"),
                  seconds=int((datetime.now(timezone.utc) - started).total_seconds()),
                  tickers=len(bases), scored=len(table), stale=list(stale.index), missing=missing,
+                 hourly_own=len(own), hourly_coinalyze=coin,
                  api_calls=(client.calls_made - calls0) if client else 0,
                  api_429=(client.rate_limited - limited0) if client else 0, fetched=fetch,
                  cycle_15m_at=started.isoformat(timespec="seconds") if m15 is not None else None, **info15)
@@ -320,7 +367,9 @@ def watch_bases() -> list[str]:
 
 def cycle_bases() -> list[str]:
     """Твій watchlist.txt + авто-список сканера (reports/auto_watchlist.json), без повторів."""
-    manual = watch_bases()
+    from fetch import excluded_tickers
+    excluded = excluded_tickers()
+    manual = [b for b in watch_bases() if b not in excluded]
     return manual + sorted(b for b in scanner.active_auto() if b not in set(manual))
 
 

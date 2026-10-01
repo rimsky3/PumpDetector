@@ -85,7 +85,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .tk-name { font-size: 20px; font-weight: 600; } .tk-price { font-size: 18px; font-weight: 500; }
 .badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line2); color: var(--fg2); }
 .head .r { display: flex; gap: 8px; align-items: center; }
-.ohlc { display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 11px; color: var(--fg2); min-height: 16px; }
+.ohlc { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 3px 14px; font-size: 11px; color: var(--fg2); height: 36px; overflow: hidden; }
 .ohlc b { color: var(--fg); font-weight: 500; }
 .chart-card { flex: 1; min-height: 420px; background: var(--card); border-radius: 10px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
 #chart { flex: 1; min-height: 380px; position: relative; }
@@ -99,6 +99,21 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .toast .tt { font-size: 12px; font-weight: 600; } .toast .ts { font-size: 11px; color: var(--fg2); }
 .toast .x { margin-left: auto; background: none; border: 0; color: var(--fg3); font-size: 14px; align-self: flex-start; }
 
+/* індикатор завантаження: смужка вгорі на будь-яке очікування сервера + блідий блок, що оновлюється */
+#topbar { position: fixed; left: 0; right: 0; top: 0; height: 3px; z-index: 300; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .2s; }
+#topbar.on { opacity: 1; }
+#topbar i { position: absolute; top: 0; bottom: 0; width: 35%; background: linear-gradient(90deg, transparent, var(--tb, #d85a30), transparent); animation: tbmove 1.1s linear infinite; }
+@keyframes tbmove { from { left: -35%; } to { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { #topbar i { animation: none; left: 0; width: 100%; opacity: .6; } }
+.is-loading { opacity: .45; transition: opacity .15s; pointer-events: none; }
+.ldchip { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; padding: 2px 9px; border-radius: 12px; background: var(--ld-bg, #412402); color: var(--ld-fg, #ef9f27); }
+.ldchip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; border: 2px solid currentColor; border-top-color: transparent; animation: ldspin .8s linear infinite; }
+@keyframes ldspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ldchip::before { animation: none; } }
+.steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 11px; }
+.steps span { padding: 1px 7px; border-radius: 10px; background: var(--line); color: var(--fg3); }
+.steps .done { background: var(--ok-bg, #173404); color: var(--ok, #97c459); } .steps .now { background: var(--ld-bg, #412402); color: var(--ld-fg, #ef9f27); }
+.stepbar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 4px; } .stepbar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
 /* права панель */
 /* сканер ринку: картка-акордеон над списком (бурштинова рамка, як у макеті «B») */
 .scan { border: 1px solid #4a3326; background: #1b1714; border-radius: 10px; transition: border-color .15s; }
@@ -176,6 +191,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .oc { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
 .oc.pump { background: var(--ok-bg); color: var(--ok); } .oc.fp { background: var(--alert-bg); color: var(--warm); } .oc.wait { background: var(--cand-bg); color: var(--amber); }
 .src { font-size: 10px; } .src.label { color: var(--link); } .src.auto { color: var(--amber); } .src.wait { color: var(--fg3); }
+.cmp { display: grid; grid-template-columns: minmax(0, 1fr) 90px 90px 70px; gap: 4px 10px; font-size: 12px; align-items: center; }
+.cmp .h { font-size: 10px; color: var(--fg3); } .cmp .r { text-align: right; }
+.btk { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.btk .kpi { background: var(--card); border-radius: 10px; padding: 10px 12px; } .btk .k { font-size: 11px; color: var(--fg2); }
+.btk .v { font-size: 22px; font-weight: 500; margin-top: 2px; } .btk .s { font-size: 11px; color: var(--fg3); }
+.btrow { display: grid; grid-template-columns: 96px 80px 90px 84px 80px minmax(0, 1fr); gap: 8px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--row); align-items: center; }
+.btrow.h { font-size: 10px; color: var(--fg3); border-bottom-color: var(--line); } .btrow .r { text-align: right; }
+.bttk { display: grid; grid-template-columns: 80px 40px 44px minmax(0, 1fr) 64px; gap: 8px; font-size: 12px; align-items: center; padding: 4px 0; }
+.bttk .r { text-align: right; } .bttk .bar { height: 6px; }
+@media (max-width: 1100px) { .btk { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .jsplit { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 .phead { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .phead .t { font-size: 13px; color: var(--fg2); display: flex; align-items: center; gap: 6px; }
@@ -199,6 +224,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 <script src="/js/ruler.js"></script>
 </head>
 <body>
+<div id="topbar" aria-hidden="true"><i></i></div>
 <div class="app" id="app">
 
   <!-- ================= ЛІВА ПАНЕЛЬ ================= -->
@@ -207,6 +233,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     <nav class="seg" aria-label="Розділи">
       <a href="#forecast" id="navForecast">Прогноз</a>
       <a href="#journal" id="navJournal">Журнал</a>
+      <a href="#backtest" id="navBacktest">Бектест</a>
     </nav>
     <div class="group">
       <div class="lbl"><span>Модель</span><button class="help" data-help="model" aria-label="Що це?">?</button></div>
@@ -216,7 +243,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     <!-- ліва частина «Прогнозу» -->
     <div id="leftForecast" class="group" style="gap: 12px;">
       <div class="card" id="probCard">
-        <div class="t"><span>Ймовірність пампу <button class="help" data-help="prob" aria-label="Що це?">?</button></span><span class="pill none" id="probPill">—</span></div>
+        <div class="t"><span>Ймовірність імпульсу <button class="help" data-help="prob" aria-label="Що це?">?</button></span><span class="pill none" id="probPill">—</span></div>
         <div class="big" id="probVal">—</div>
         <div class="bar"><i id="probBar" style="width:0"></i><b id="probThr" style="left:80%"></b></div>
         <div class="scale"><span>0</span><span id="probThrTxt">поріг —</span><span>1</span></div>
@@ -272,7 +299,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         </div>
       </div>
       <div class="card">
-        <div class="t"><span>Автоправило «Памп»</span><button class="help" data-help="rule" aria-label="Що це?">?</button></div>
+        <div class="t"><span>Автоправило «Impulse»</span><button class="help" data-help="rule" aria-label="Що це?">?</button></div>
         <label class="field">Горизонт, год <input id="rHorizon" type="number" min="1" max="168" step="1" value="24"></label>
         <label class="field">Ціна, не менше % <input id="rPrice" type="number" min="0" max="500" step="1" value="15"></label>
         <label class="field">OI, не менше % <input id="rOi" type="number" min="0" max="500" step="1" value="20"></label>
@@ -284,6 +311,23 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="small" id="lblRest"></div>
         <a href="http://127.0.0.1:8765/" target="_blank" rel="noopener" style="font-size:12px">Розмітити в label.py →</a>
       </div>
+    </div>
+
+    <!-- ліва частина «Бектесту» -->
+    <div id="leftBacktest" class="group" style="gap: 12px;" hidden>
+      <div class="lbl"><span>Прогін</span><button class="help" data-help="backtest" aria-label="Що це?">?</button></div>
+      <div class="card">
+        <label class="field">Оборот від, млн $/добу <input id="btTurn" type="number" min="1" step="1" value="20"></label>
+        <label class="field">Оборот до, млн $/добу <input id="btTurnMax" type="number" min="1" step="1" placeholder="без меж"></label>
+        <label class="field">Вікно, днів <input id="btDays" type="number" min="7" max="30" step="1" value="30"></label>
+        <label class="field">Модель <select id="btModel" style="width:96px;height:26px;background:var(--side);border:1px solid var(--line2);border-radius:6px;font-size:12px"><option value="current">поточна</option><option value="candidate">кандидат</option></select></label>
+        <label class="field">Вхід на <select id="btEntry" style="width:96px;height:26px;background:var(--side);border:1px solid var(--line2);border-radius:6px;font-size:12px"><option value="alert">Alert</option><option value="candidate">Кандидат</option></select></label>
+        <span class="small">Без тікерів навчання й виключених; OI ≤ як у сканері. Перший прогін ~30–60 хв (дані), далі — швидше.</span>
+        <button class="btn-primary" id="btRun">Запустити бектест</button>
+        <div class="small" id="btState"></div>
+      </div>
+      <div class="lbl"><span>Попередні прогони</span></div>
+      <div class="seg col" id="btRuns" role="group" aria-label="Прогони"></div>
     </div>
 
     <div class="card" id="sysCard" style="margin-top:auto">
@@ -326,7 +370,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div><div class="tt" id="toastT"></div><div class="ts" id="toastS"></div><a href="#" id="toastA" style="font-size:11px">Відкрити</a></div>
         <button class="x" id="toastX" aria-label="Закрити">×</button>
       </div>
-      <div id="chart" role="img" aria-label="Свічковий графік ціни з зонами сигналу, OI, обсяг і ймовірність пампу"></div>
+      <div id="chart" role="img" aria-label="Свічковий графік ціни з зонами сигналу, OI, обсяг і ймовірність імпульсу"></div>
     </section>
     <p class="hint">Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. Ймовірність — оцінка моделі, не торгова рекомендація.</p>
   </main>
@@ -353,6 +397,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         </button>
         <button class="help" data-help="notify" aria-label="Що це?">?</button>
       </div>
+      <button class="notify" id="notifyCandBtn" aria-pressed="false" style="height:26px" title="Кандидат — 15m-модель уже бачить початок, годинна ще не підтвердила: раніше на ~15 хв, але більше хибних. Перевіряй стаканом">
+        <span id="notifyCandTxt">Також про Кандидатів (тихіший звук): вимкнено</span>
+      </button>
       <details class="scan" id="scanBox">
         <summary><span class="ico" aria-hidden="true">⌁</span><span>Сканер · <span id="scPreset">—</span></span><button class="help" data-help="scan" aria-label="Що це?">?</button><span class="v" id="scCount">—</span></summary>
         <div class="scb">
@@ -392,13 +439,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   <main class="jmain" id="viewJournal" hidden>
     <div class="jtitle">
       <div><div class="h">Журнал і статистика</div><div class="small" style="color:var(--fg2)">Forward-тест: що модель сказала в реальному часі і що сталося потім.</div></div>
-      <span class="small" id="jSince">—</span>
+      <span style="display:flex;gap:8px;align-items:center"><span id="jBusy" hidden></span><span class="small" id="jSince">—</span></span>
     </div>
     <div id="jError" class="error" hidden></div>
     <section class="panel" aria-label="Порівняння моделей">
       <div class="mgrid h">
         <span style="display:flex;align-items:center;gap:6px">Модель <button class="help" data-help="compare" aria-label="Що це?">?</button></span>
-        <span>Сигналів</span><span>З них пампи</span><span>Пампів спіймано</span><span>Сер. затримка</span><span>Сер. угода</span><span>Хибних / 30 д</span>
+        <span>Сигналів</span><span>З них імпульси</span><span>Імпульсів спіймано</span><span>Сер. затримка</span><span>Сер. угода</span><span>Хибних / 30 д</span>
       </div>
       <div id="mRows"></div>
       <div class="small" style="padding:8px 18px" id="mValid"></div>
@@ -408,7 +455,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="phead">
           <span class="t">Журнал сигналів <button class="help" data-help="journal" aria-label="Що це?">?</button></span>
           <div class="seg sm" id="outSeg" role="group" aria-label="Фільтр результату">
-            <button data-out="all" aria-pressed="true">Усі</button><button data-out="pump">Памп</button><button data-out="fp">Хибні</button><button data-out="auto">Авто, перевірити</button><button data-out="wait">Очікують</button>
+            <button data-out="all" aria-pressed="true">Усі</button><button data-out="pump">Impulse</button><button data-out="fp">Хибні</button><button data-out="auto">Авто, перевірити</button><button data-out="wait">Очікують</button>
           </div>
         </div>
         <div class="jcols h">
@@ -428,7 +475,45 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:8px">
           <span class="phead" style="padding:0;border:0"><span class="t">За тікерами <button class="help" data-help="tickers" aria-label="Що це?">?</button></span></span>
           <div id="byTk" class="group" style="gap:8px"></div>
-          <span class="small">частка сигналів, що виявились пампом</span>
+          <span class="small">частка сигналів, що виявились імпульсом</span>
+        </section>
+      </div>
+    </div>
+  </main>
+  <!-- ================= БЕКТЕСТ ================= -->
+  <main class="jmain" id="viewBacktest" hidden>
+    <div class="jtitle">
+      <div><div class="h" id="btTitle">Бектест</div><div class="small" style="color:var(--fg2)" id="btSub">Модель на монетах, яких не бачила в навчанні: список — правилом до прогону.</div></div>
+      <span style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
+        <span class="small" id="btMeta">—</span>
+        <label class="small" style="display:flex;gap:6px;align-items:center">Порівняти з
+          <select id="btCmpSel" style="height:26px;background:var(--side);border:1px solid var(--line2);border-radius:6px;font-size:12px;max-width:340px"></select></label>
+      </span>
+    </div>
+    <section class="panel" id="btCmp" hidden style="padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+      <div class="phead" style="padding:0;border:0"><span class="t">Порівняння прогонів <button class="help" data-help="btCompare" aria-label="Що це?">?</button></span><span class="small" id="btCmpNote"></span></div>
+      <div class="jsplit" style="grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)">
+        <div id="btCmpTable"></div>
+        <div><div class="small" style="margin-bottom:4px">За монетами (спільні): де B краще і гірше за A</div><div id="btCmpTk"></div></div>
+      </div>
+    </section>
+    <div id="btEmpty" class="card" hidden><span class="dim">Прогонів ще немає. Ліворуч — «Запустити бектест», або в терміналі <code>python backtest.py</code>.</span></div>
+    <div id="btBody" hidden style="display:flex;flex-direction:column;gap:16px">
+      <div class="btk" id="btKpis"></div>
+      <div class="jsplit">
+        <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+          <div class="phead" style="padding:0;border:0"><span class="t">Результат угод по днях <button class="help" data-help="btEquity" aria-label="Що це?">?</button></span><span class="small">накопичена сума закритих угод, %</span></div>
+          <svg id="btEq" viewBox="0 0 700 200" width="100%" height="200" role="img" aria-label="Накопичений результат угод по днях"></svg>
+          <div class="phead" style="padding:0;border:0"><span class="t">Угоди</span>
+            <div class="seg sm" id="btTf" role="group" aria-label="Фільтр угод"><button data-bf="all" aria-pressed="true">Усі</button><button data-bf="win">У плюсі</button><button data-bf="loss">У мінусі</button><button data-bf="stop">Стоп</button></div></div>
+          <div class="btrow h"><span>Вхід, UTC</span><span>Монета</span><span>Вихід</span><span class="r">Тривалість</span><span class="r">Результат</span><span></span></div>
+          <div id="btTrades"></div>
+          <div class="small" id="btMore"></div>
+        </section>
+        <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:8px">
+          <div class="phead" style="padding:0;border:0"><span class="t">За монетами <button class="help" data-help="btTickers" aria-label="Що це?">?</button></span><span class="small">сорт: сума ↓</span></div>
+          <div id="btTk"></div>
+          <span class="small">Монети внизу — де модель збиткова: кандидати на «Виключити».</span>
         </section>
       </div>
     </div>
@@ -445,7 +530,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const st = {
     view: "forecast", model: LS.get("pd-model2", "tier15"), chartTf: null, ticker: LS.get("pd-ticker", null), days: 3, oiUsd: LS.get("pd-oiusd", false),
     meta: null, data: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])),
-    notify: LS.get("pd-notify", false), seen: new Set(LS.get("pd-seen", [])),
+    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), seen: new Set(LS.get("pd-seen", [])),
     jDays: "30", jKind: "live", jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
 
@@ -466,24 +551,49 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const pctCls = (v) => v == null ? "" : v >= 0 ? "ok" : "red";
 
-  const api = async (path, opts) => {
-    const res = await fetch(path, opts);
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
+  // ---------- індикатор завантаження: лічильник активних запитів → смужка вгорі (з затримкою, щоб не миготіла) ----------
+  let PENDING = 0, tbTimer = null;
+  const tbSet = (d) => {
+    PENDING = Math.max(0, PENDING + d);
+    clearTimeout(tbTimer);
+    if (PENDING > 0) tbTimer = setTimeout(() => document.getElementById("topbar")?.classList.add("on"), 150);
+    else document.getElementById("topbar")?.classList.remove("on");
+  };
+  // блок, що оновлюється: блідне, у заголовку — чіп «Оновлюю…»; повертає функцію «готово»
+  const busy = (blockEl, chipEl, text = "Оновлюю…") => {
+    const t = setTimeout(() => {
+      blockEl?.classList.add("is-loading");
+      if (chipEl) { chipEl.className = "ldchip"; chipEl.textContent = text; chipEl.hidden = false; }
+    }, 200);
+    return () => { clearTimeout(t); blockEl?.classList.remove("is-loading"); if (chipEl) chipEl.hidden = true; };
+  };
+  // opts.quiet — фонові опитування (статус бектесту тощо) смужку не вмикають
+  const api = async (path, opts = {}) => {
+    const { quiet, ...fo } = opts;
+    if (!quiet) tbSet(1);
+    try {
+      const res = await fetch(path, fo);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      return data;
+    } finally { if (!quiet) tbSet(-1); }
   };
   const show = (e, msg) => { e.textContent = msg || ""; e.hidden = !msg; };
   const modelInfo = () => (st.meta?.models || []).find((m) => m.name === st.model);
 
   // ---------- підказки «?» ----------
   const HELP = {
+    backtest: "Бектест — модель проходить історію монет, яких не бачила в навчанні: усі USDT-перпи Binance з середнім оборотом від заданого, OI не більше, ніж у сканері, без тікерів навчання і виключених. Список задається правилом ДО прогону, тож вибору «де був памп» немає. Угоди — тими самими правилами, що й «Позиція моделі». Без прослизання, стакану і твого фільтру стаканом; той самий період ринку, що й навчання.",
+    btEquity: "Накопичена сума результатів закритих угод по днях (дата виходу), у % — як якби кожна угода була однією позицією однакового розміру. Сума ≠ дохідність рахунку; для порівняння прогонів і моделей.",
+    btCompare: "Два прогони поруч: A — відкритий ліворуч, B — вибраний у «Порівняти з». Зелене — B краще. Чесно лише для однієї смуги монет і вікна (напр., поточна модель і кандидат на тих самих монетах). На кривій B — синій пунктир. Різниця в кілька десятків відсотків суми — ще шум.",
+    btTickers: "Сума результатів угод по кожній монеті. Клік — відкрити монету в розмітці (модель на графіку). Стабільно збиткові монети — кандидати на «Виключити».",
     seen: "Яку частку open interest тікера (середнє за 30 днів, усі біржі) бачить модель. 15m-модель бере лише Binance і Bybit; сірі біржі вона не бачить. Якщо частка мала, імпульс може початись там раніше, ніж модель його помітить.",
-    history: "Як модель торгувала б цей тікер на всьому відрізку, де вона його оцінювала (разом з історією при додаванні в список): закриті угоди за тими самими правилами, що й «Позиція моделі». Одна монета за тиждень — це 1–3 угоди: контекст, а не доказ. Якщо тікер у навчанні, модель бачила ці пампи, і цифри завищені.",
+    history: "Як модель торгувала б цей тікер на всьому відрізку, де вона його оцінювала (разом з історією при додаванні в список): закриті угоди за тими самими правилами, що й «Позиція моделі». Одна монета за тиждень — це 1–3 угоди: контекст, а не доказ. Якщо тікер у навчанні, модель бачила ці імпульси, і цифри завищені.",
     scan: "Сканер ринку кожні 15 хв проглядає всі USDT-перпи Binance і сам додає в список ті, що «прокидаються»: великий оборот і обсяг у кілька разів вищий за норму, або OI і ціна ростуть разом. Такий тікер позначено «АВТО»; він тримається в списку заданий час після останнього спрацювання (або поки модель дає сигнал). Сповіщення — лише на Alert моделі, не на вхід у список.",
     model: "«15m + 1h» — основна: 15-хвилинна модель дає ранній сигнал («Кандидат»), годинна його підтверджує («Alert»). LightGBM 1h і Регресія 1h — старі годинні моделі для порівняння. Перемикач змінює всі цифри на обох екранах.",
-    prob: "Для «15m + 1h»: P — оцінка 15-хвилинної моделі, що зараз триває памп-імпульс. Вище порогу — «Кандидат» (рано, частіше хибно: перевір стакан). Якщо ще й годинна модель ≥ ¾ свого порогу (рядок «1h» нижче) — «Alert». Число поруч зі статусом — скільки часу поспіль тримається рівень.",
+    prob: "Для «15m + 1h»: P — оцінка 15-хвилинної моделі, що зараз триває імпульс. Вище порогу — «Кандидат» (рано, частіше хибно: перевір стакан). Якщо ще й годинна модель ≥ ¾ свого порогу (рядок «1h» нижче) — «Alert». Число поруч зі статусом — скільки часу поспіль тримається рівень.",
     metrics: "Ключові ознаки, на які дивиться модель: зміна open interest за 4 год (у USD, як бачить модель, без стрибків від лістингів), обсяг відносно звичайного за 7 днів (у σ), частка акаунтів у лонг.",
-    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert, вихід — Alert згас 4 бари поспіль (1 год), стоп — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених пампах). Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
+    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert, вихід — Alert згас 4 бари поспіль (1 год), стоп — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених імпульсах). Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
     insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
     oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
     tf: "Таймфрейм графіка. Модель від цього не змінюється: «15m + 1h» рахує на 15m, годинні — на 1h. На крупнішому ТФ бар показує найвищу оцінку й рівень сигналу за свій час (Alert усередині години не загубиться), на дрібнішому — останню оцінку, відому на момент закриття бару. 5m — для точного входу; оновлюється скринером.",
@@ -491,19 +601,19 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
     filters: "Фільтр списку: усі тікери, лише Alert, Alert і кандидати, або обрані ★ (зірочка в рядку або клавіша F). Для годинних моделей «Кандидат» — P вище половини порогу.",
-    notify: "Коли на новому live-барі починається Alert — звук і системне сповіщення браузера, навіть якщо вкладка у фоні. Старі й in-sample оцінки мовчать. Дашборд має бути відкритим.",
+    notify: "Коли на новому live-барі починається Alert — звук і системне сповіщення браузера, навіть якщо вкладка у фоні. Старі й in-sample оцінки мовчать. Дашборд має бути відкритим. Кнопка нижче — також про Кандидатів: 15m-модель уже бачить початок, годинна ще не підтвердила; один тихіший тон замість двох. Раніше на ~15 хв, але хибних ≈ в 1.5 раза більше — перевіряй стаканом.",
     list: "Тікери скринера (watchlist.txt), спершу Alert, потім кандидати. Міні-графік — ймовірність за 24 год з пунктиром порогу. Δ OI 24г — зміна open interest за добу. Клік по заголовку — сортування, ↑/↓ — наступний тікер.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
     period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду).",
     kinds: "Live — оцінки в реальному часі на барах, яких модель не бачила: єдина чесна перевірка. Історія — дозаповнення при першому запуску. In-sample — бари з навчання, лише для порівняння.",
-    rule: "Автоматична перевірка сигналу, коли розмітки ще немає: якщо за вказаний час після входу ціна і OI виросли не менше порогів — «Памп · авто», інакше «Хибний · авто». Результат попередній: розмітка його перекриває.",
+    rule: "Автоматична перевірка сигналу, коли розмітки ще немає: якщо за вказаний час після входу ціна і OI виросли не менше порогів — «Impulse · авто», інакше «Хибний · авто». Результат попередній: розмітка його перекриває.",
     labels: "Скільки угод у вибраному обсязі вже перевірено твоєю розміткою в label.py. Автоматичні результати варто переглянути: вони грубіші. Фільтр «Авто, перевірити» показує саме їх.",
     system: "Чи все працює: коли скринер востаннє оновив дані, скільки викликів Coinalyze і відповідей 429, яким тікерам бракує 7 днів історії, яка версія моделі активна і з якими налаштуваннями навчена (--fresh-hours: скільки свіжих нерозмічених годин не пішло в навчання).",
-    compare: "Як моделі показують себе на вибраних оцінках. «15m + 1h» — угоди за рівнем Alert, «15m кандидат» — за рівнем Кандидат (раніше, але частіше хибно). «З них пампи» — частка сигналів, що виявились пампом (precision). «Пампів спіймано» — з розмічених пампів. Нижче — валідація на навчанні для порівняння.",
+    compare: "Як моделі показують себе на вибраних оцінках. «15m + 1h» — угоди за рівнем Alert, «15m кандидат» — за рівнем Кандидат (раніше, але частіше хибно). «З них імпульси» — частка сигналів, що виявились імпульсом (precision). «Імпульсів спіймано» — з розмічених імпульсів. Нижче — валідація на навчанні для порівняння.",
     journal: "Кожна угода вибраної моделі: від першого бару з сигналом до виходу за правилами стопу й виходу — з результатом і відсотком угоди.",
     outcome: "«розмітка» — за твоєю розміткою в label.py, остаточно. «авто» — за автоправилом, попередньо. «Очікує» — горизонт автоправила ще не минув і розмітки немає.",
     trades: "Результат кожної закритої угоди у % (хронологічно) і підсумки: частка прибуткових, середній виграш і програш, скільки виходів по стопу.",
-    tickers: "На яких монетах сигнали частіше виявляються правдою: частка вирішених угод (памп або хибний), що виявились пампом.",
+    tickers: "На яких монетах сигнали частіше виявляються правдою: частка вирішених угод (імпульс або хибний), що виявились імпульсом.",
   };
   const pop = $("pop");
   let popBtn = null;
@@ -527,14 +637,17 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- навігація ----------
   const route = () => {
     const [view, tk] = location.hash.slice(1).split("/");
-    st.view = view === "journal" ? "journal" : "forecast";
+    st.view = view === "journal" ? "journal" : view === "backtest" ? "backtest" : "forecast";
     if (tk && st.meta?.tickers.includes(tk.toUpperCase())) selectTicker(tk.toUpperCase(), false);
-    const j = st.view === "journal";
-    $("app").classList.toggle("journal", j);
-    $("viewForecast").hidden = j; $("rightPanel").hidden = j; $("leftForecast").hidden = j;
+    const j = st.view === "journal", bt = st.view === "backtest", fc = !j && !bt;
+    $("app").classList.toggle("journal", !fc);
+    $("viewForecast").hidden = !fc; $("rightPanel").hidden = !fc; $("leftForecast").hidden = !fc;
     $("viewJournal").hidden = !j; $("leftJournal").hidden = !j;
-    $("navForecast").toggleAttribute("aria-current", !j); $("navJournal").toggleAttribute("aria-current", j);
-    if (!j) { $("navForecast").setAttribute("aria-current", "page"); loadTicker(); } else { $("navJournal").setAttribute("aria-current", "page"); Live.stop(); loadJournal(); }
+    $("viewBacktest").hidden = !bt; $("leftBacktest").hidden = !bt;
+    ["navForecast", "navJournal", "navBacktest"].forEach((id) => $(id).removeAttribute("aria-current"));
+    if (fc) { $("navForecast").setAttribute("aria-current", "page"); loadTicker(); }
+    else if (j) { $("navJournal").setAttribute("aria-current", "page"); Live.stop(); loadJournal(); }
+    else { $("navBacktest").setAttribute("aria-current", "page"); Live.stop(); loadBacktests(); }
     closePop();
   };
   const selectTicker = (t, go = true) => {
@@ -570,10 +683,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     }
     const mi = modelInfo();
     if (mi) {
-      row("", "Модель", `${mi.trained_at.slice(5, 16)} · ${mi.pump_intervals} пампів`);
+      row("", "Модель", `${mi.trained_at.slice(5, 16)} · ${mi.pump_intervals} імпульсів`);
       const cfg = mi.settings || {};
       if (cfg.fresh_hours != null) row(cfg.fresh_hours ? "" : "warn", "Навчання",
-        cfg.fresh_hours ? `без свіжих ${cfg.fresh_hours} год (−${cfg.fresh_hours_dropped} год)` : "усі години, і свіжі нерозмічені");
+        cfg.fresh_hours ? `без свіжих ${cfg.fresh_hours} год` + (cfg.fresh_hours_dropped != null ? ` (−${cfg.fresh_hours_dropped} год)` : "") : "усі години, і свіжі нерозмічені");
     }
   };
   const renderStatus = () => {
@@ -631,7 +744,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       $("hN").textContent = hs.n ? `${hs.n} · ${hs.wins}` : "0";
       $("hExp").textContent = hs.n ? fmtPct(hs.expectancy) : "—"; $("hExp").className = hs.n ? pctCls(hs.expectancy) : "dim";
       $("hStop").textContent = hs.n ? `${hs.stops} з ${hs.n}` : "—";
-      $("hNote").textContent = hs.trained ? "тікер у навчанні — модель бачила ці пампи" : "поза навчанням — чесна перевірка";
+      $("hNote").textContent = hs.trained ? "тікер у навчанні — модель бачила ці імпульси" : "поза навчанням — чесна перевірка";
       $("hNote").className = "small" + (hs.trained ? " amber" : "");
     }
     const kTxt = d.k == null ? "—" : d.k.toFixed(1);
@@ -673,10 +786,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
   const loadTicker = async () => {
     if (!st.ticker) return;
+    const done = busy(document.querySelector(".chart-card"), null);
     try {
       st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&days=30${st.chartTf ? "&tf=" + st.chartTf : ""}`);
       show($("fError"), "");
     } catch (e) { st.data = null; show($("fError"), e.message); }
+    finally { done(); }
     renderHead(); renderLeft(); renderChart();
     Live.start();
     // сервер у фоні дозавантажує закриті бари, яких ще немає в базі, — перезапитуємо, щойно вони будуть
@@ -985,7 +1100,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
   // ---------- сканер ринку (авто-список) і «＋ у watchlist» ----------
   // Набір порогів вибирається кліком — одразу видно, скільки тікерів пройшло б за останнім сканом і як набір
-  // спрацював би на розмічених пампах. Нічого не змінюється, доки не натиснеш «Зберегти» (діє з наступного скану).
+  // спрацював би на розмічених імпульсах. Нічого не змінюється, доки не натиснеш «Зберегти» (діє з наступного скану).
   const SC = { data: null, preset: null, custom: null, dirty: false };
   const mln = (v) => `${Math.round(v / 1e6)} млн $`;
   const scQuery = () => {
@@ -1021,7 +1136,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       res.append("Пройшли б зараз: ", el("b", "", String(pv.count)), ` з ${pv.checked} перевірених`);
       if (pv.top.length) res.append(" — ", pv.top.map((x) => x.base).join(", "));
     } else res.append("Скану ще не було: він іде кожні 15 хв разом зі скринером (або python scanner.py).");
-    res.append(el("br"), "На розмічених пампах: ");
+    res.append(el("br"), "На розмічених імпульсах: ");
     if (rc) res.append("вчасно ", el("b", "", `${rc.early}/${rc.pumps}`), `, лише під час ${rc.during}, не спрацював ${rc.never}`);
     else res.append(el("span", "small", "не перевірено — python scanner.py --recall"));
     if (SC.dirty) res.append(el("br"), el("span", "dirty", "Не збережено — натисни «Зберегти»"));
@@ -1072,6 +1187,168 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   $("addBtn").addEventListener("click", () => addTicker($("addIn").value));
   $("addIn").addEventListener("keydown", (e) => { if (e.key === "Enter") addTicker($("addIn").value); });
 
+
+  // ---------- бектест ----------
+  // Прогони backtest.py (reports/backtests/*.json). «графік →» відкриває монету в розмітці (label.py): модель там
+  // рахується на льоту, тож угоди бектесту не змішуються з журналом.
+  const BT = { runs: [], cur: null, data: null, filter: "all", poll: null };
+  const pctS = (v, d = 1) => v == null ? "—" : `${v >= 0 ? "+" : "−"}${Math.abs(v * 100).toFixed(d)}%`;
+  const loadBacktests = async (pick) => {
+    try { BT.runs = (await api("/api/backtests")).runs; } catch (e) { BT.runs = []; }
+    const box = $("btRuns"); box.replaceChildren();
+    BT.runs.forEach((r) => {
+      const band = `${Math.round(r.min_turnover / 1e6)}${r.max_turnover ? "–" + Math.round(r.max_turnover / 1e6) : "+"} млн`;
+      const b = el("button", "", `${r.at.slice(5, 16).replace("T", " ")} · ${r.model === "candidate" ? "кандидат" : "поточна"} · ${band} · ${r.coins} мон.${r.entry === "candidate" ? " · Канд." : ""}`);
+      b.setAttribute("aria-pressed", String(r.id === (pick || BT.cur))); b.addEventListener("click", () => openBacktest(r.id)); box.appendChild(b);
+    });
+    $("btEmpty").hidden = BT.runs.length > 0; $("btBody").hidden = !BT.runs.length;
+    if (BT.runs.length) openBacktest(pick || BT.cur || BT.runs[0].id);
+    pollBacktest();
+  };
+  const openBacktest = async (id) => {
+    BT.cur = id;
+    document.querySelectorAll("#btRuns button").forEach((b, i) => b.setAttribute("aria-pressed", String(BT.runs[i]?.id === id)));
+    const done = busy($("btBody"), null);
+    try { BT.data = await api(`/api/backtest?id=${encodeURIComponent(id)}`); } catch (e) { return; } finally { done(); }
+    fillCmpSel(); renderBacktest(); if ($("btCmpSel").value) renderCompare();
+  };
+  const kpi = (k, v, s, cls) => { const d = el("div", "kpi"); d.append(el("div", "k", k), el("div", "v " + (cls || ""), v), el("div", "s", s)); return d; };
+  const renderBacktest = () => {
+    const d = BT.data; if (!d) return;
+    const m = d.meta;
+    $("btTitle").textContent = `Бектест · ${m.model === "candidate" ? "кандидат" : "поточна модель"} · ${d.coins} монет поза навчанням`;
+    $("btMeta").textContent = `${m.at.slice(0, 16).replace("T", " ")} UTC · ${m.days} дн. · оборот ${Math.round(m.min_turnover / 1e6)}${m.max_turnover ? "–" + Math.round(m.max_turnover / 1e6) : "+"} млн $ · вхід на ${m.entry === "candidate" ? "Кандидаті" : "Alert"} · модель ${m.model_version.slice(5, 16)} · комісія ${(m.fee * 100).toFixed(1)}%`;
+    const k = $("btKpis"); k.replaceChildren(
+      kpi("Угод", String(d.trades), `${d.coins} монет · ${m.days} дн.${d.open ? ` · ще ${d.open} відкр.` : ""}`),
+      kpi("У плюсі", d.win_rate == null ? "—" : `${Math.round(d.win_rate * 100)}%`, `виграш ${pctS(d.avg_win)} · програш ${pctS(d.avg_loss)}`),
+      kpi("Медіана угоди", pctS(d.median, 2), `середня ${pctS(d.mean, 2)}`, d.median == null ? "" : d.median >= 0 ? "ok" : "red"),
+      kpi("Сума без топ-3", pctS(d.sum_wo_top3, 0), `усього ${pctS(d.sum, 0)}`, d.sum_wo_top3 >= 0 ? "ok" : "red"),
+      kpi("Alert на день", d.alerts_per_day == null ? "—" : d.alerts_per_day.toFixed(1), `на всіх ${d.coins} монетах`),
+      kpi("Епізодів Alert / 30 д", d.alert_episodes_per_coin_30d == null ? "—" : d.alert_episodes_per_coin_30d.toFixed(1), `на монету · по стопу ${d.stop_rate == null ? "—" : Math.round(d.stop_rate * 100) + "%"}`));
+    // крива: накопичена сума по днях
+    const svg = $("btEq"); svg.replaceChildren();
+    const ns = "http://www.w3.org/2000/svg", W = 700, Hh = 200, pts = d.equity || [];
+    if (pts.length > 1) {
+      const vals = pts.map((p) => p.sum), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = hi - lo || 1;
+      const X = (i) => 40 + i * (W - 60) / (pts.length - 1), Y = (v) => 14 + (hi - v) / span * (Hh - 40);
+      const mk = (tag, attrs) => { const e = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([a, v]) => e.setAttribute(a, v)); svg.appendChild(e); return e; };
+      mk("line", { x1: 40, x2: W - 20, y1: Y(0), y2: Y(0), stroke: cssVar("--line2"), "stroke-dasharray": "3 3" });
+      mk("polyline", { points: pts.map((p, i) => `${X(i)},${Y(p.sum)}`).join(" "), fill: "none", stroke: vals[vals.length - 1] >= 0 ? cssVar("--ok") : cssVar("--hot"), "stroke-width": 2 });
+      if (BT.cmp && BT.cmp.equity && BT.cmp.equity.length > 1) {      // B — синя пунктирна, по тих самих днях
+        const byDay = Object.fromEntries(BT.cmp.equity.map((p) => [p.day, p.sum]));
+        let last = 0; const pts2 = pts.map((p, i) => { if (byDay[p.day] != null) last = byDay[p.day]; return `${X(i)},${Math.max(4, Math.min(Hh - 20, Y(last)))}`; });
+        mk("polyline", { points: pts2.join(" "), fill: "none", stroke: cssVar("--link"), "stroke-width": 2, "stroke-dasharray": "5 3" });
+      }
+      [[0, pts[0].day.slice(5)], [pts.length - 1, pts[pts.length - 1].day.slice(5)]].forEach(([i, t]) => {
+        const e = mk("text", { x: X(i), y: Hh - 6, fill: cssVar("--fg3"), "font-size": 10, "text-anchor": i ? "end" : "start" }); e.textContent = t; });
+      [[hi, pctS(hi, 0)], [0, "0"], [lo, pctS(lo, 0)]].filter(([v], i, a) => i === 1 || v !== 0).forEach(([v, t]) => {
+        const e = mk("text", { x: 34, y: Y(v) + 3, fill: cssVar("--fg3"), "font-size": 10, "text-anchor": "end" }); e.textContent = t; });
+    }
+    renderBtTrades();
+    // за монетами
+    const tk = $("btTk"); tk.replaceChildren();
+    const maxAbs = Math.max(0.01, ...d.per_ticker.map((x) => Math.abs(x.sum)));
+    const head = el("div", "bttk"); head.style.cssText = "font-size:10px;color:var(--fg3)";
+    ["Монета", "Угод", "У плюсі", "", "Сума"].forEach((t, i) => { const s = el("span", i === 1 || i === 2 || i === 4 ? "r" : "", t); head.appendChild(s); });
+    tk.appendChild(head);
+    d.per_ticker.filter((x) => x.trades || x.open).forEach((x) => {
+      const r = el("div", "bttk");
+      const a = el("a", "", x.ticker); a.href = `http://127.0.0.1:8765/#${encodeURIComponent(x.ticker)}`; a.target = "_blank"; a.rel = "noopener"; a.title = "Відкрити в розмітці (модель на графіку)";
+      const nm = el("span"); nm.appendChild(a);
+      const bar = el("div", "bar"); const i = el("i"); i.style.width = `${Math.abs(x.sum) / maxAbs * 100}%`; i.style.background = x.sum >= 0 ? cssVar("--ok") : cssVar("--hot"); bar.appendChild(i);
+      r.append(nm, el("span", "r", String(x.trades)), el("span", "r dim", x.trades ? `${Math.round(x.wins / x.trades * 100)}%` : "—"), bar, el("span", "r " + (x.sum >= 0 ? "ok" : "red"), pctS(x.sum)));
+      tk.appendChild(r);
+    });
+  };
+  const renderBtTrades = () => {
+    const d = BT.data; if (!d) return;
+    const f = BT.filter, all = d.trades_list.filter((x) => f === "all" || (f === "win" && x.ret > 0 && x.reason !== "open") ||
+      (f === "loss" && x.ret <= 0 && x.reason !== "open") || (f === "stop" && x.reason === "stop"));
+    const box = $("btTrades"); box.replaceChildren();
+    all.slice(0, 60).forEach((x) => {
+      const r = el("div", "btrow");
+      const a = el("a", "", "графік →"); a.href = `http://127.0.0.1:8765/#${encodeURIComponent(x.ticker)}`; a.target = "_blank"; a.rel = "noopener";
+      const dur = x.exit_ts ? fmtMin((x.exit_ts - x.entry_ts) / 60) : "—";
+      r.append(el("span", "", fmtTs(x.entry_ts)), el("b", "", x.ticker), el("span", "dim", { stop: "стоп", model: "Alert згас", open: "відкрита" }[x.reason] || x.reason),
+        el("span", "r dim", dur), el("span", "r " + (x.ret >= 0 ? "ok" : "red"), pctS(x.ret)), el("span", "r", "")); r.lastChild.appendChild(a);
+      box.appendChild(r);
+    });
+    $("btMore").textContent = all.length > 60 ? `показано 60 з ${all.length}` : `${all.length} угод`;
+  };
+  document.querySelectorAll("#btTf [data-bf]").forEach((b) => b.addEventListener("click", () => {
+    BT.filter = b.dataset.bf; document.querySelectorAll("#btTf [data-bf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); renderBtTrades();
+  }));
+
+  // ---------- порівняння прогонів: A — відкритий прогін, B — вибраний у «Порівняти з» ----------
+  const fillCmpSel = () => {
+    const sel = $("btCmpSel"); const keep = sel.value; sel.replaceChildren(el("option", "", "—"));
+    sel.firstChild.value = "";
+    BT.runs.filter((r) => r.id !== BT.cur).forEach((r) => {
+      const o = el("option", "", `${r.at.slice(5, 16).replace("T", " ")} · ${r.model === "candidate" ? "кандидат" : "поточна"} · ${Math.round(r.min_turnover / 1e6)}${r.max_turnover ? "–" + Math.round(r.max_turnover / 1e6) : "+"} млн · ${r.coins} мон.`);
+      o.value = r.id; sel.appendChild(o);
+    });
+    sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
+  };
+  const renderCompare = async () => {
+    const id = $("btCmpSel").value, box = $("btCmp");
+    if (!id || !BT.data) { box.hidden = true; BT.cmp = null; renderBacktest(true); return; }
+    try { BT.cmp = await api(`/api/backtest?id=${encodeURIComponent(id)}`); } catch (e) { return; }
+    const A = BT.data, B = BT.cmp; box.hidden = false;
+    const same = A.meta.min_turnover === B.meta.min_turnover && (A.meta.max_turnover || 0) === (B.meta.max_turnover || 0) && A.meta.days === B.meta.days;
+    $("btCmpNote").textContent = same ? "та сама смуга монет — порівняння чесне" : "РІЗНІ смуги монет або вікна — порівнюй обережно";
+    $("btCmpNote").className = "small " + (same ? "" : "amber");
+    const rows = [["Угод", (d) => d.trades, (v) => String(v), null], ["У плюсі", (d) => d.win_rate, (v) => v == null ? "—" : Math.round(v * 100) + "%", true],
+      ["Медіана угоди", (d) => d.median, (v) => pctS(v, 2), true], ["Середня угода", (d) => d.mean, (v) => pctS(v, 2), true],
+      ["Сума без топ-3", (d) => d.sum_wo_top3, (v) => pctS(v, 0), true], ["Сума", (d) => d.sum, (v) => pctS(v, 0), true],
+      ["Alert на день", (d) => d.alerts_per_day, (v) => v == null ? "—" : v.toFixed(1), false], ["По стопу", (d) => d.stop_rate, (v) => v == null ? "—" : Math.round(v * 100) + "%", false]];
+    const t = el("div", "cmp");
+    const nm = (d) => `${d.meta.model === "candidate" ? "кандидат" : "поточна"} ${d.meta.at.slice(5, 16).replace("T", " ")}`;
+    [["", "h"], [`A · ${nm(A)}`, "h r"], [`B · ${nm(B)}`, "h r"], ["B − A", "h r"]].forEach(([x, c]) => t.appendChild(el("span", c, x)));
+    rows.forEach(([name, get, fmt, higher]) => {
+      const a = get(A), b = get(B), diff = a != null && b != null ? b - a : null;
+      const better = diff == null || higher == null || Math.abs(diff) < 1e-9 ? "" : (higher ? diff > 0 : diff < 0) ? "ok" : "red";
+      t.append(el("span", "dim", name), el("span", "r", fmt(a)), el("span", "r " + better, fmt(b)),
+        el("span", "r " + better, diff == null ? "—" : name === "Угод" ? (diff >= 0 ? "+" : "") + diff : name.includes("Alert") ? diff.toFixed(1) : pctS(diff, name.includes("Сума") ? 0 : 2)));
+    });
+    $("btCmpTable").replaceChildren(t);
+    const pa = Object.fromEntries(A.per_ticker.map((x) => [x.ticker, x])), pb = B.per_ticker.filter((x) => pa[x.ticker]);
+    const diffs = pb.map((x) => ({ tk: x.ticker, a: pa[x.ticker].sum, b: x.sum, d: x.sum - pa[x.ticker].sum })).sort((x, y) => y.d - x.d);
+    const tk = el("div", "cmp"); [["Монета", "h"], ["A", "h r"], ["B", "h r"], ["B − A", "h r"]].forEach(([x, c]) => tk.appendChild(el("span", c, x)));
+    [...diffs.slice(0, 5), ...(diffs.length > 10 ? [null] : []), ...diffs.slice(-5)].forEach((x) => {
+      if (!x) { tk.append(el("span", "dim", "…"), el("span"), el("span"), el("span")); return; }
+      tk.append(el("b", "", x.tk), el("span", "r " + (x.a >= 0 ? "ok" : "red"), pctS(x.a)), el("span", "r " + (x.b >= 0 ? "ok" : "red"), pctS(x.b)), el("span", "r " + (x.d >= 0 ? "ok" : "red"), pctS(x.d)));
+    });
+    $("btCmpTk").replaceChildren(diffs.length ? tk : el("span", "small", "Спільних монет немає — прогони на різних смугах обороту."));
+    renderBacktest(true);
+  };
+  $("btCmpSel").addEventListener("change", renderCompare);
+
+  const pollBacktest = async () => {
+    clearTimeout(BT.poll);
+    let s; try { s = await api("/api/backtest/status", { quiet: true }); } catch (e) { return; }
+    $("btRun").disabled = s.running;
+    $("btRun").textContent = s.running ? "Бектест іде…" : "Запустити бектест";
+    const bs = $("btState"); bs.replaceChildren();
+    if (s.running) {        // кроки, як у макеті C: ✓ готові · поточний · попереду + смужка
+      const names = ["монети", "дані", "модель", "підсумок"], cur = (s.step || 1) - 1;
+      const row = el("div", "steps");
+      names.forEach((n, i) => row.appendChild(el("span", i < cur ? "done" : i === cur ? "now" : "", i < cur ? `✓ ${n}` : i === cur ? (s.stage || n) : n)));
+      const bar = el("div", "stepbar"); const fill = el("i"); fill.style.width = `${Math.round(((cur + 0.5) / names.length) * 100)}%`; bar.appendChild(fill);
+      bs.append(row, bar);
+    } else if (s.code) bs.textContent = `помилка (код ${s.code}): ${(s.log || []).slice(-1)[0] || ""}`;
+    if (s.running) BT.poll = setTimeout(pollBacktest, 5000);
+    else if (BT.wasRunning) { BT.wasRunning = false; loadBacktests(); }
+    if (s.running) BT.wasRunning = true;
+  };
+  $("btRun").addEventListener("click", async () => {
+    try {
+      await api("/api/backtest/run", { method: "POST", body: JSON.stringify({ min_turnover: +$("btTurn").value * 1e6, days: +$("btDays").value,
+        max_turnover: $("btTurnMax").value ? +$("btTurnMax").value * 1e6 : null,
+        model: $("btModel").value, entry: $("btEntry").value }) });
+    } catch (e) { $("btState").textContent = e.message; return; }
+    BT.wasRunning = true; pollBacktest();
+  });
+
   // ---------- сповіщення про новий live Alert ----------
   let audioCtx = null;
   const beep = () => {
@@ -1085,10 +1362,27 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       });
     } catch (e) {}
   };
+  // Кандидат — один нижчий тон (Alert — два високі), щоб розрізняти на слух
+  const chime = () => {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = 520; o.connect(g); g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+      o.start(t); o.stop(t + 0.36);
+    } catch (e) {}
+  };
   const renderNotify = () => {
     $("notifyBtn").setAttribute("aria-pressed", String(st.notify));
     $("notifyTxt").textContent = `Звук і сповіщення про новий Alert: ${st.notify ? "увімкнено" : "вимкнено"}`;
+    $("notifyCandBtn").hidden = !st.notify;
+    $("notifyCandBtn").setAttribute("aria-pressed", String(st.notifyCand));
+    $("notifyCandTxt").textContent = `Також про Кандидатів (тихіший звук): ${st.notifyCand ? "увімкнено" : "вимкнено"}`;
   };
+  $("notifyCandBtn").addEventListener("click", () => {
+    st.notifyCand = !st.notifyCand; LS.set("pd-notify-cand", st.notifyCand); renderNotify();
+    if (st.notifyCand) chime();
+  });
   $("notifyBtn").addEventListener("click", async () => {
     st.notify = !st.notify; LS.set("pd-notify", st.notify); renderNotify();
     if (st.notify) {
@@ -1098,13 +1392,31 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   });
   let firstAlertsCheck = true;
   const checkAlerts = () => {
-    const alerts = st.list?.alerts || [];
+    const alerts = st.list?.alerts || [], cands = st.list?.cands || [];
     const fresh = alerts.filter((a) => !st.seen.has(`${a.ticker}|${a.ts}`));
+    const freshC = cands.filter((a) => !st.seen.has(`c|${a.ticker}|${a.ts}`));
     fresh.forEach((a) => st.seen.add(`${a.ticker}|${a.ts}`));
+    freshC.forEach((a) => st.seen.add(`c|${a.ticker}|${a.ts}`));
     LS.set("pd-seen", [...st.seen].slice(-300));
     // при першому завантаженні старі сигнали не озвучуємо — лише ті, що з'являться, поки сторінка відкрита
     if (firstAlertsCheck) { firstAlertsCheck = false; return; }
-    if (!fresh.length || !st.notify) return;
+    if (!st.notify) return;
+    // Кандидат: окремо й тихіше; якщо на тому ж тікері одразу Alert — повідомляємо лише Alert
+    const candOnly = freshC.filter((c) => !fresh.some((a) => a.ticker === c.ticker));
+    if (!fresh.length && candOnly.length && st.notifyCand) {
+      const c = candOnly[0];
+      $("toastT").textContent = `Кандидат: ${c.ticker} · ${fmtP(c.probability)} — перевір стакан`;
+      $("toastS").textContent = `${fmtTs(c.ts)} UTC · годинна ще не підтвердила${candOnly.length > 1 ? ` · ще ${candOnly.length - 1}` : ""}`;
+      $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; selectTicker(c.ticker); };
+      $("toast").hidden = false;
+      chime();
+      if ("Notification" in window && Notification.permission === "granted") {
+        try { const n = new Notification(`Pump Detector: Кандидат ${c.ticker}`, { body: `P15 = ${fmtP(c.probability)} · ${fmtTs(c.ts)} UTC · перевір стакан`, tag: `pd-c-${c.ticker}-${c.ts}` });
+          n.onclick = () => { window.focus(); selectTicker(c.ticker); }; } catch (e) {}
+      }
+      return;
+    }
+    if (!fresh.length) return;
     const a = fresh[0];
     $("toastT").textContent = `Новий Alert: ${a.ticker} · ${fmtP(a.probability)}`;
     $("toastS").textContent = `${fmtTs(a.ts)} UTC${fresh.length > 1 ? ` · ще ${fresh.length - 1}` : ""}`;
@@ -1184,13 +1496,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       mr.appendChild(row);
     });
     const v = j.validation?.[st.model];
-    $("mValid").textContent = v ? `Для порівняння — leave-ticker-out на навчанні (${modelInfo()?.title || st.model}): precision ${v.precision.toFixed(2)}, recall ${v.recall.toFixed(2)}, спіймано пампів ${v.pumps_caught}. Якщо live сильно гірше — модель не узагальнюється.` : "";
+    $("mValid").textContent = v ? `Для порівняння — leave-ticker-out на навчанні (${modelInfo()?.title || st.model}): precision ${v.precision.toFixed(2)}, recall ${v.recall.toFixed(2)}, спіймано імпульсів ${v.pumps_caught}. Якщо live сильно гірше — модель не узагальнюється.` : "";
     // журнал
     const f = st.jOut;
     const rows = j.rows.filter((r) => f === "all" || (f === "pump" && r.outcome === "pump") || (f === "fp" && r.outcome === "fp") || (f === "auto" && r.source === "auto") || (f === "wait" && r.outcome === "wait"));
     const box = $("jRows"); box.replaceChildren();
     if (!rows.length) box.appendChild(el("div", "empty", j.rows.length ? "Під фільтр нічого не підпадає." : "Угод у вибраному обсязі ще немає. Live-оцінки накопичуються, поки працює скринер (кожні 15 хв)."));
-    const OUT = { pump: "Памп", fp: "Хибний", wait: "Очікує" }, SRC = { label: "розмітка", auto: "авто", wait: `до ${j.rule.horizon} год` };
+    const OUT = { pump: "Impulse", fp: "Хибний", wait: "Очікує" }, SRC = { label: "розмітка", auto: "авто", wait: `до ${j.rule.horizon} год` };
     rows.forEach((r) => {
       const row = el("div", "jcols");
       row.append(el("span", "dim", fmtTs(r.entry_ts)));
@@ -1239,7 +1551,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const loadJournal = async () => {
     const r = st.rule;
     const q = `model=${st.model}&days=${st.jDays}&kind=${st.jKind}&horizon=${r.horizon}&price=${r.price / 100}&oi=${r.oi / 100}`;
+    const done = busy($("viewJournal").querySelector(".jsplit"), $("jBusy"), "Рахую журнал…");
+    const done2 = busy($("viewJournal").querySelector("section.panel"), null);
     try { st.journal = await api(`/api/journal?${q}`); show($("jError"), ""); } catch (e) { show($("jError"), e.message); return; }
+    finally { done(); done2(); }
     renderJournal();
   };
   document.querySelectorAll("#periodSeg [data-days]").forEach((b) => b.addEventListener("click", () => { st.jDays = b.dataset.days; pressIn("periodSeg", "days", st.jDays); loadJournal(); }));
@@ -1277,7 +1592,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     await loadList(); loadScan(false);
     route();
     addEventListener("hashchange", route);
-    setInterval(async () => { try { st.meta = await api("/api/meta"); } catch (e) { return; } renderSystem(); checkRetrain(); refreshAll(); }, 60000);
+    setInterval(async () => { try { st.meta = await api("/api/meta", { quiet: true }); } catch (e) { return; } renderSystem(); checkRetrain(); refreshAll(); }, 60000);
     setInterval(renderStatus, 1000);
   };
   init();
