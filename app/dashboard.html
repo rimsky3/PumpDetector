@@ -261,6 +261,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 </style>
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
 <script src="/js/ruler.js"></script>
+<script src="/js/profile.js"></script>
 </head>
 <body>
 <div id="topbar" aria-hidden="true"><i></i></div>
@@ -409,6 +410,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         </div>
         <button class="tool" id="rulerBtn" aria-pressed="false" title="Лінійка: виміряти відрізок (або Shift + клік на графіку)" aria-label="Лінійка"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"></path><path d="m7 13 2 2M10 10l2 2M13 7l2 2"></path></svg></button>
         <button class="help" data-help="ruler" aria-label="Що це?">?</button>
+        <div class="seg sm" id="vpSeg" role="group" aria-label="Профіль обсягу за період">
+          <button data-vp="off" aria-pressed="true" title="Профіль обсягу вимкнено">VP</button><button data-vp="day" title="Профіль обсягу на кожен день UTC">День</button><button data-vp="week" title="Профіль обсягу на кожен тиждень (з понеділка, UTC)">Тиж</button>
+        </div>
+        <button class="tool" id="vpBtn" aria-pressed="false" title="Профіль фрагмента (V): клік — початок, клік — кінець" aria-label="Профіль фрагмента"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 3v18"></path><path d="M4 6h7M4 10h12M4 14h16M4 18h9"></path></svg></button>
+        <button class="help" data-help="vp" aria-label="Що це?">?</button>
         <button class="help" data-help="oiunit" aria-label="Що це?">?</button>
         <div class="seg sm" id="oiSeg" role="group" aria-label="Одиниці OI">
           <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
@@ -655,6 +661,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
     oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
     tf: "Таймфрейм графіка. Модель від цього не змінюється: «15m + 1h» рахує на 15m, годинні — на 1h. На крупнішому ТФ бар показує найвищу оцінку й рівень сигналу за свій час (Alert усередині години не загубиться), на дрібнішому — останню оцінку, відому на момент закриття бару. 5m — для точного входу; оновлюється скринером.",
+    vp: "Профіль обсягу, як в ATAS: скільки обсягу пройшло на кожному рівні ціни. «День» / «Тиж» — профіль на кожен день або тиждень UTC (зліва від свічок періоду). Кнопка з гістограмою або клавіша V — профіль фрагмента: клік — початок, клік — кінець; межі тягнуться мишею, × або Del (курсор над фрагментом) — прибрати; фрагменти зберігаються для тікера. Помаранчева лінія — POC (рівень з найбільшим обсягом; у фрагмента продовжується праворуч пунктиром), пунктир — межі value area (70% обсягу), яскравіші рівні — усередині неї. Будується з 5m-свічок Binance + Bybit (немає 5m — з 15m / 1h): обсяг свічки розподілено по її діапазону, тому це наближення до тикового профілю ATAS.",
     ruler: "Лінійка, як у TradingView: Shift + клік на графіку (або кнопка) — початок, рух миші — кінець, клік — зафіксувати, ще клік або Esc — прибрати. Показує зміну ціни, кількість барів і час, обсяг, зміну OI у USD і в монетах, максимальну ймовірність і скільки годин сигнал був вище порогу.",
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
@@ -961,8 +968,25 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     chart.subscribeCrosshairMove((p) => renderOhlc(p && p.time != null ? idx.get(p.time) : null));
     if (window.PDRuler) ruler = PDRuler.create({ chart, el: chartEl, series: S.candles, times: () => st.data?.series.t || [],
       info: rulerInfo, onModeChange: (on) => $("rulerBtn").setAttribute("aria-pressed", String(on)) });
+    makeVp();
   };
   $("rulerBtn").addEventListener("click", () => { if (ruler) ruler.toggle(); });
+  // профіль обсягу (app/js/profile.js): статичний за день / тиждень і фрагменти
+  let vp = null;
+  const vpPeriod = () => LS.get("pd-vp-period", "off");
+  const makeVp = () => {
+    if (!window.PDProfile) return;
+    vp = PDProfile.create({ chart, el: chartEl, series: S.candles, times: () => st.data?.series.t || [], bar: () => st.data?.bar || 900,
+      symbol: () => st.ticker || "", onModeChange: (on) => $("vpBtn").setAttribute("aria-pressed", String(on)),
+      onInfo: (t) => { $("vpBtn").title = `Профіль фрагмента (V): клік — початок, клік — кінець · ${t}`; } });
+    vp.setPeriod(vpPeriod()); pressIn("vpSeg", "vp", vpPeriod());
+  };
+  $("vpBtn").addEventListener("click", () => { if (vp) vp.toggle(); });
+  $("vpSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-vp]"); if (!b) return;
+    LS.set("pd-vp-period", b.dataset.vp); pressIn("vpSeg", "vp", b.dataset.vp);
+    if (vp) vp.setPeriod(b.dataset.vp);
+  });
   const renderOhlc = (i) => {
     const d = st.data; if (!d || !d.series.t.length) return;
     const s = d.series; if (i == null) i = s.t.length - 1;
@@ -1034,6 +1058,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const key = `${d.ticker}|${st.model}|${d.tf}`;
     if (key !== rangeKey) { rangeKey = key; setRange(); if (ruler) ruler.clear(); }
     if (ruler) ruler.redraw();
+    if (vp) vp.reload();
     renderOhlc(null);
     Live.draw();                 // setData прибирає незакриту свічку — повертаємо її
   };

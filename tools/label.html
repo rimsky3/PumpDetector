@@ -212,6 +212,7 @@ td button { padding: 2px 8px; font-size: 12px; }
 
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
 <script src="/js/ruler.js"></script>
+<script src="/js/profile.js"></script>
 </head>
 <body>
 <div id="topbar" aria-hidden="true"><i></i></div>
@@ -232,6 +233,9 @@ td button { padding: 2px 8px; font-size: 12px; }
       <span class="label" style="margin-left:10px">Ціна</span>
       <button id="logBtn" aria-pressed="false">Лог. шкала</button>
       <button id="rulerBtn" aria-pressed="false" title="Лінійка: виміряти відрізок (або Shift + клік на графіку). Esc — прибрати"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"></path><path d="m7 13 2 2M10 10l2 2M13 7l2 2"></path></svg>Лінійка</button>
+      <span class="label" style="margin-left:10px">Профіль</span>
+      <button data-vp="off" aria-pressed="true" title="Профіль обсягу вимкнено">—</button><button data-vp="day" aria-pressed="false" title="Профіль обсягу на кожен день UTC">День</button><button data-vp="week" aria-pressed="false" title="Профіль обсягу на кожен тиждень (з понеділка, UTC)">Тиж</button>
+      <button id="vpBtn" aria-pressed="false" title="Профіль фрагмента (V): клік — початок, клік — кінець; межі тягнуться мишею; × або Del — прибрати. POC — помаранчева лінія, пунктир — value area 70%">Фрагмент</button>
       <span class="label" style="margin-left:10px">OI</span>
       <button id="oiCoinBtn" aria-pressed="true" title="OI у монетах: чистий приплив позицій, без впливу ціни">Монети</button><button id="oiUsdBtn" aria-pressed="false" title="OI у USD, як дає Coinalyze: між годинами стрибає разом із ціною">USD</button>
       <span class="label" style="margin-left:10px" id="modelLbl" hidden>Модель</span>
@@ -620,7 +624,8 @@ td button { padding: 2px 8px; font-size: 12px; }
 
   const fmtDur = (hrs) => { const d = Math.floor(Math.abs(hrs) / 24), h = Math.abs(hrs) % 24; return (hrs < 0 ? "−" : "") + (d ? `${d} д ${h} год` : `${h} год`); };
   const signed = (v) => (v >= 0 ? "+" : "−") + fmtPx(Math.abs(v));
-  let ruler = null;
+  let ruler = null, vp = null;
+  const vpPeriod = () => { try { return localStorage.getItem("label-vp-period") || "off"; } catch (e) { return "off"; } };
   const rulerInfo = (i1, i2, p1, p2) => {
     const d = D(), bars = i2 - i1, hrs = (d.t[i2] - d.t[i1]) / H, p = P();
     let vol = 0, pmax = null, above = 0;
@@ -686,9 +691,14 @@ td button { padding: 2px 8px; font-size: 12px; }
     chart.timeScale().subscribeVisibleLogicalRangeChange(() => placeHandles && placeHandles());
     if (window.PDRuler) ruler = PDRuler.create({ chart, el: chartEl, series: S.candles, times: () => D().t,
       info: rulerInfo, onModeChange: (on) => $("rulerBtn").setAttribute("aria-pressed", String(on)) });
+    if (window.PDProfile) {
+      vp = PDProfile.create({ chart, el: chartEl, series: S.candles, times: () => D().t, bar: () => BAR(), symbol: () => st.tk || "",
+        onModeChange: (on) => $("vpBtn").setAttribute("aria-pressed", String(on)) });
+      vp.setPeriod(vpPeriod());
+    }
   };
 
-  const rebuildChart = () => { if (chart) { chart.remove(); chart = null; ruler = null; } loadedTk = null; draw(); };
+  const rebuildChart = () => { if (chart) { if (vp) vp.destroy(); chart.remove(); chart = null; ruler = null; vp = null; } loadedTk = null; draw(); };
 
   // рядок над графіком: значення під курсором (або останній бар)
   const renderInfo = (i) => {
@@ -724,6 +734,7 @@ td button { padding: 2px 8px; font-size: 12px; }
 
   const onChartClick = (param) => {
     if (ruler && ruler.busy()) return;          // клік належить лінійці, а не розмітці
+    if (vp && vp.busy()) return;                // … або профілю обсягу
     if (param.time == null || !idx.has(param.time)) return;
     const t = param.time;
     if (RISK.row) { onRiskClick(param); return; }
@@ -842,6 +853,7 @@ td button { padding: 2px 8px; font-size: 12px; }
     wm.applyOptions({ lines: [{ text: `${st.tk} · ${st.tf}`, color: C.line, fontSize: 56, fontStyle: "600", fontFamily: FONT.sans }] });
     if (loadedTk !== st.tk) { loadedTk = st.tk; chart.timeScale().fitContent(); if (ruler) ruler.clear(); }
     if (ruler) ruler.redraw();
+    if (vp) vp.reload();
     placeHandles();
     renderInfo(null);
   };
@@ -1834,6 +1846,13 @@ td button { padding: 2px 8px; font-size: 12px; }
   $("oiCoinBtn").addEventListener("click", () => setOiUnit(false));
   $("oiUsdBtn").addEventListener("click", () => setOiUnit(true));
   $("rulerBtn").addEventListener("click", () => { if (ruler) ruler.toggle(); });
+  $("vpBtn").addEventListener("click", () => { if (vp) vp.toggle(); });
+  document.querySelectorAll("button[data-vp]").forEach((b) => b.addEventListener("click", () => {
+    try { localStorage.setItem("label-vp-period", b.dataset.vp); } catch (e) {}
+    document.querySelectorAll("button[data-vp]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    if (vp) vp.setPeriod(b.dataset.vp);
+  }));
+  document.querySelectorAll("button[data-vp]").forEach((x) => x.setAttribute("aria-pressed", String(x.dataset.vp === vpPeriod())));
   // сигнали моделі на графіку: вимикати на час розмітки (без «якоря» на модель), вмикати для порівняння
   const setShowModel = (on) => {
     st.showModel = on; $("modelBtn").setAttribute("aria-pressed", String(on));

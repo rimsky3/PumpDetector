@@ -11,3 +11,4 @@ QNT
 ZEC
 SOON
 TRUMP
+1000PEPE    # додано з дашборду

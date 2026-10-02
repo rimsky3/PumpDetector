@@ -46,6 +46,7 @@ from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, a
 from risk import PARTIAL_EXIT, atr, position_state, trade_stats as summarize_trades
 from tiers import tier_frame
 import train
+import volume_profile
 from fetch import (EXCLUDED_FILE, TICKERS_FILE, Coinalyze, collect, collect_liquidations, excluded_tickers,
                    read_tickers_file, set_ticker_in_file)
 from load_pumps import (SETUPS, check_overlaps, parse_row, parse_ts, read_pumps,
@@ -818,6 +819,10 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError(f"невідомий таймфрейм {tf}")
                 with psycopg.connect(self.db_url) as conn:
                     return self._send(200, ticker_data(conn, base, self.days, tf))
+            if url.path == "/api/profile":      # профіль обсягу на графіку (app/js/profile.js, volume_profile.py)
+                q = {k: v[0] for k, v in parse_qs(url.query).items()}
+                with psycopg.connect(self.db_url) as conn:
+                    return self._send(200, volume_profile.api(conn, q))
             if url.path == "/api/predictions":
                 base = (parse_qs(url.query).get("ticker") or [""])[0].upper()
                 return self._send(200, predictions(base))

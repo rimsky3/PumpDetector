@@ -455,6 +455,12 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   бектест — поле «Режим» (backtest.py --strategy id; OB з архіву orderbook.archive_allow_fn, кеш data/book_cache/);
   нова версія моделі після «Перенавчити» в UI бектесту — «нова версія» (не «кандидат»). Скринер не змінювався: сигнали
   однакові для всіх 15m-режимів. risk.position_state(entry=, allow=). tiers.LIMIT_MODEL більше не використовується журналом.
+- ПРОФІЛЬ ОБСЯГУ НА ГРАФІКУ (2026-10-03, власник: режими «за період» і «фрагмент», «видимий діапазон» не потрібен):
+  volume_profile.py (build / api / CLI; свічки 5m → 15m → 1h, обсяг свічки рівномірно по low–high, VA 70%) + /api/profile
+  у dashboard.py і label.py + app/js/profile.js (PDProfile: setPeriod day/week/off, фрагмент — кнопка або V, два кліки,
+  межі тягнуться, × / Del; localStorage pd-vp-frag-<тікер>, pd-vp-period / label-vp-period). LWC logicalToCoordinate
+  дає 0 для дробових індексів — X рахується від цілого бару + крок. Далі: тест «реакція на рівень профілю проти
+  випадкового рівня» на тому ж volume_profile.build.
 - НАГАДАТИ власнику ~2026-10-25: експеримент «15m-модель з OKX» (див. вище OKX). Рахувати розмічені пампи після 2026-09-15
   на тікерах з OKX (TRUMP, TRB, NIGHT, SOON, NMR, MUBARAK, AKE, QNT, STX…) — від їх кількості залежить, чи є сенс.
   screener.py раз на 3 год (BACKGROUND_HOURS) тягне 15m/5m бірж (з OKX) + 15m-ліквідації для tickers.txt поза списком.

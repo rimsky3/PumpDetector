@@ -201,6 +201,17 @@ the order book filter reads the Binance `bookDepth` archive there).
 The screener records snapshots for coins near a signal into `book_ratio` (every cycle); the dashboard reads the live value
 (`/api/book`) and the value at each Alert.
 
+### `volume_profile.py`
+
+| Usage | Meaning |
+|---|---|
+| `python volume_profile.py SOON --days 2` | daily volume profiles (UTC days) for the last N days: POC, value area, step, volume |
+| `python volume_profile.py SOON --from "2026-10-02 08:00" --to "2026-10-02 14:00"` | one profile for a fixed range |
+
+Same code serves `/api/profile` in the dashboard and the labeling tool (`app/js/profile.js`). Built from candles, not
+ticks: each candle's volume (Binance + Bybit, USD) is spread evenly over its low–high range; the finest timeframe that
+covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown from the POC towards the larger neighbour.
+
 ### `experiments/long_backtest.py`
 
 The entry rules (market, order book filter OB ≥ 1, limit −0.5 ATR, both) over 6 months on Bybit data (15m candles and

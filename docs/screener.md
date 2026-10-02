@@ -225,6 +225,14 @@ with a short explanation.
 chart or the ruler button, move, click to fix, click again or Esc to remove. Shows the price change, bars and
 time, summed volume, OI change in USD and in coins, and the model's max probability with hours above threshold.
 
+**Volume profile** (like ATAS; shared `app/js/profile.js` + `volume_profile.py`, also in the labeling tool):
+**День / Тиж** draws a profile for every UTC day or week (Monday start) at the left of its candles; the profile
+button or **V** draws a fixed-range profile — click the start, click the end; edges can be dragged, × or Del (cursor
+over it) removes it; fragments are saved per ticker in the browser and survive timeframe switches. Each profile shows
+volume per price level (value area brighter), the POC (orange; a fragment's POC extends to the right as a dashed line
+to watch retests) and VAH / VAL (dashed). Built from 5m candles (15m / 1h when 5m don't cover the range), so it
+approximates a tick profile within a level or two.
+
 Keyboard: **↑/↓** next ticker, **Enter** refresh the ticker, **F** favourite. **Alert notifications**: when a new
 live signal episode starts while the page is open, a sound, a browser notification and an in-page toast
 (opt-in; favourites, sort order and settings are stored in the browser).

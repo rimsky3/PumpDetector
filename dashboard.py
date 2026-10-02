@@ -42,6 +42,7 @@ from screener import (FETCH_DAYS, INTRADAY_DAYS, STATUS_FILE, WATCHLIST_FILE, la
                       load_models, next_hourly, next_run, score_15m, score_bases, update_15m)
 import fetch_exchange
 import orderbook
+import volume_profile
 import strategies
 import scanner
 import journal as J
@@ -959,6 +960,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(400, {"error": str(e)})
         if url.path == "/api/book":            # біди / аски ±2% наживо (Binance + Bybit), кеш кілька секунд
             return self._route(lambda c: orderbook.live(c, q.get("symbol", "").upper()) or {"ratio": None})
+        if url.path == "/api/profile":          # профіль обсягу: дні / тижні / фрагмент (app/js/profile.js)
+            return self._route(lambda c: volume_profile.api(c, q))
         if url.path == "/api/ticker":
             days = max(1, min(60, int(q.get("days", 30))))
             return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days, q.get("tf"), q.get("strategy")))

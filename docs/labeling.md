@@ -100,6 +100,9 @@ This opens http://127.0.0.1:8765, a local page served only to this computer.
 - **Ruler** (button or Shift + click): measure a span — price change, bars, volume, OI change in USD and coins,
   model probability. Handy for judging whether an OI spike is big enough to label. Ruler clicks never set
   interval boundaries.
+- **Профіль** (volume profile): **День / Тиж** — a profile per UTC day or week; **Фрагмент** or **V** — a fixed-range
+  profile (click start, click end; drag edges; × or Del removes). Same tool as in the dashboard; its clicks never set
+  interval boundaries either.
 - Each change is written to `pumps.csv` immediately and synced to the database.
 - Labeled intervals stay on the chart, numbered; each ticker button shows how many intervals it has.
 
