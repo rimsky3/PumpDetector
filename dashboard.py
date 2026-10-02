@@ -41,6 +41,8 @@ def last_atr(h: pd.DataFrame) -> float | None:
 from screener import (FETCH_DAYS, INTRADAY_DAYS, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
                       load_models, next_hourly, next_run, score_15m, score_bases, update_15m)
 import fetch_exchange
+import orderbook
+import strategies
 import scanner
 import journal as J
 import tiers as T
@@ -141,7 +143,8 @@ def virtual_models() -> list[dict]:
               "pump_intervals": m["pump_intervals"], "risk": m.get("risk", {}), "settings": m.get("settings", {}),
               "confirm": m.get("confirm", {}), "exit_bars": m.get("exit_bars")}
     return [{"name": T.TIER_MODEL, "title": "15m + 1h", "validation": m.get("tier_validation", {}), **common},
-            {"name": T.CAND_MODEL, "title": "15m кандидат", "validation": m.get("validation", {}), **common}]
+            {"name": T.CAND_MODEL, "title": "15m кандидат", "validation": m.get("validation", {}), **common},
+            {"name": T.LIMIT_MODEL, "title": "15m + 1h · лімітом", "validation": m.get("tier_validation", {}), **common}]
 
 
 def meta(conn) -> dict:
@@ -160,7 +163,8 @@ def meta(conn) -> dict:
     virt = virtual_models()
     return {
         "models": virt[:1] + hourly,              # перемикач: 15m + 1h (основна), далі годинні
-        "journal_models": virt + hourly,          # журнал: ще й «Кандидат» окремим рядком
+        "journal_models": [{"name": s["id"], "title": s["title"], "note": s.get("note")} for s in strategies.load()],
+        "strategies": [strategies.public(s) for s in strategies.load()],     # режими: один список для трьох вкладок
         "tickers": sorted(set(watch) | set(scored)),
         "auto": sorted(auto),
         "watchlist": watch,
@@ -194,7 +198,7 @@ def watch_list_15m(conn) -> dict:
     now = datetime.now(timezone.utc)
     raw = load_raw(conn, sorted(t["base_asset"].unique()), INTERVAL_15M, since=now - timedelta(days=2))
     newest = troll.sort_values("ts").groupby("base_asset").tail(1).set_index("base_asset") if len(troll) else None
-    rows = []
+    rows, hmap = [], {}
     for base, g in t.groupby("base_asset"):
         g = g.sort_values("ts")
         last = g.iloc[-1]
@@ -207,6 +211,7 @@ def watch_list_15m(conn) -> dict:
                 break
             streak += 1
         h = aggregate(raw, base, "15min")
+        hmap[base] = h
         lt = g["ts"].iloc[-1]                     # спарклайн і зміни за 24 год — на звичайних 15m-барах
         h = h[h.index <= lt] if not h.empty else h
         spark = g.set_index("ts")["p15"].reindex(pd.date_range(lt - 95 * BAR_15M, lt, freq="15min"))
@@ -228,6 +233,19 @@ def watch_list_15m(conn) -> dict:
     ep = episodes(al, BAR_15M)
     recent_cut = pd.Timestamp(now - timedelta(hours=6))
     alerts = [e for e in ep if e["kind"] == "live" and e["ts"] >= recent_cut]
+    # для сповіщення: OB у момент сигналу і ліміт −0.5 ATR (ковзний бар 5-хв циклу → останній звичайний 15m-бар до нього)
+    for e in alerts:
+        hb = hmap.get(e["ticker"])
+        try:
+            rows_b = orderbook.history(conn, e["ticker"], (recent_cut - timedelta(hours=1)).to_pydatetime())
+        except Exception:
+            conn.rollback()
+            rows_b = []
+        e["ob"] = ob_at_signal(rows_b, e["ts"])
+        if hb is not None and len(hb):
+            base_ts = hb.index[hb.index <= pd.Timestamp(e["ts"])]
+            lim = limit_hint(hb, base_ts[-1]) if len(base_ts) else None
+            e["limit"] = lim["price"] if lim else None
     # старт кожного епізоду «Кандидат або Alert» (15m-модель перетнула поріг) — для сповіщень про Кандидатів
     cand = t.assign(signal=t["tier"] != "calm", probability=t["p15"])
     cands = [e for e in episodes(cand, BAR_15M) if e["kind"] == "live" and e["ts"] >= recent_cut]
@@ -289,7 +307,31 @@ def _watch_list(conn, model: str) -> dict:
     return {"rows": rows, "recent": ep[:6], "alerts": alerts}
 
 
-def ticker_15m(conn, base: str, days: int) -> dict:
+LIMIT_ATR, LIMIT_VALID = 0.5, pd.Timedelta(hours=1)      # experiments/limit_entry.py: стабільний ліміт −0.5 ATR, 1 год
+
+
+def alert_starts(t: pd.DataFrame) -> list[pd.Timestamp]:
+    """Бари, на яких почався епізод Alert (рівень alert, попередній бар — ні)."""
+    al = (t["tier"] == "alert").to_numpy() if len(t) else []
+    return [t.index[i] for i in range(len(al)) if al[i] and (i == 0 or not al[i - 1])]
+
+
+def ob_at_signal(rows, ts: pd.Timestamp) -> float | None:
+    """OB у момент сигналу: перший знімок стакану за ≤ 12 хв після закриття сигнального бару (скринер пише після оцінки)."""
+    return orderbook.at_signal(rows, ts)
+
+
+def limit_hint(h: pd.DataFrame, ts: pd.Timestamp) -> dict | None:
+    """Ліміт −0.5 ATR від закриття сигнального бару, дійсний 1 год після закриття; None — бару немає."""
+    if ts not in h.index:
+        return None
+    a = atr(h).get(ts)
+    if a is None or pd.isna(a):
+        return None
+    return {"price": float(h.at[ts, "price"] - LIMIT_ATR * a), "until": pd.Timestamp(ts) + BAR_15M + LIMIT_VALID}
+
+
+def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
     """Екран тікера для 15m + 1h: 15m-свічки, P 15m-моделі, годинний контекст, рівні сигналу, позиція."""
     m15 = State.m15
     now = datetime.now(timezone.utc)
@@ -302,7 +344,17 @@ def ticker_15m(conn, base: str, days: int) -> dict:
     cur = f.dropna(subset=["oi_chg_4h"]).iloc[-1] if f["oi_chg_4h"].notna().any() else None
     t = tier_rows(conn, base).set_index("ts").sort_index()
     k, exit_bars = m15.get("risk", {}).get("k"), m15.get("exit_bars", 4)
-    pos = position_state(h, t["alert_score"], 1.0, k, exit_bars, PARTIAL_EXIT) if len(t) else {"open": False}
+    strat = strat or strategies.get(None)
+    # стакан — для міток OB і фільтра режиму «OB ≥ 1»
+    try:
+        book_rows = orderbook.history(conn, base, (h.index.min() if len(h) else pd.Timestamp(now)).to_pydatetime())
+    except Exception:
+        conn.rollback()
+        book_rows = []
+    # позиція за режимом: сигнал (Alert / Кандидат), вхід (ринок / ліміт), фільтр OB; вихід спільний (частковий)
+    score = t["s15"] if strat.get("signal") == "candidate" and len(t) else (t["alert_score"] if len(t) else None)
+    pos = position_state(h, score, 1.0, k, exit_bars, PARTIAL_EXIT, strategies.entry_rule(strat),
+                         orderbook.allow_fn(book_rows) if strat.get("ob") else None) if len(t) else {"open": False}
     last = t.iloc[-1] if len(t) else None
     streak = 0
     if last is not None:
@@ -322,6 +374,12 @@ def ticker_15m(conn, base: str, days: int) -> dict:
         tr["live"] = bool(live.get(tr["entry_ts"], False))
     history = {**trade_stats(pos.get("trades", [])), "trained": trained,
                "days": round((t.index.max() - t.index.min()) / pd.Timedelta(days=1), 1) if len(t) else 0}
+    # стакан (біди / аски ±2%) на початках Alert — зі знімків скринера; ліміт −0.5 ATR, поки дійсний
+    starts = [s for s in alert_starts(t) if s >= view.index.min()]
+    ob_marks = [{"ts": s, "v": v} for s in starts if (v := ob_at_signal(book_rows, s)) is not None]
+    lim = limit_hint(h, starts[-1]) if starts else None          # підказка: ліміт −0.5 ATR від останнього Alert, 1 год
+    if lim and lim["until"] <= pd.Timestamp(now):
+        lim = None
     return {
         "ticker": base, "model": T.TIER_MODEL, "tf": "15m", "bar": 900, "threshold": thr, "k": k, "history": history,
         "streak": streak, "streak_min": streak * 15, "chg_24h": chg24,
@@ -338,7 +396,7 @@ def ticker_15m(conn, base: str, days: int) -> dict:
             "oi_chg_4h": math.expm1(cur["oi_chg_4h"]) if cur is not None else None,
             "volume_z_7d": cur["volume_z_7d"] if cur is not None else None,
         },
-        "position": pos,
+        "position": pos, "ob_marks": ob_marks, "limit": lim,
         "series": {
             "t": list(view.index),
             "open": view["open"].tolist(), "price": view["price"].tolist(),
@@ -431,6 +489,7 @@ def rebar(conn, res: dict, base: str, tf: str, days: int) -> dict:
         for key in ("entry_ts", "exit_ts", "partial_ts"):
             if tr.get(key) is not None:
                 tr[key] = snap(tr[key])
+    res["ob_marks"] = [{**m, "ts": snap(m["ts"])} for m in res.get("ob_marks", [])]
     res.update({
         "tf": tf, "bar": sec, "native_tf": res["tf"], "position": pos, "last_bar": view.index.max(),
         "series": {
@@ -491,13 +550,16 @@ def live_symbols(conn, base: str) -> dict:
             "price_exchange": "Binance" if "Binance" in rows else ("Bybit" if "Bybit" in rows else None)}
 
 
-def ticker(conn, base: str, model: str, days: int, tf: str | None = None) -> dict:
+def ticker(conn, base: str, model: str, days: int, tf: str | None = None, strategy: str | None = None) -> dict:
+    strat = strategies.get(strategy) if strategy else None
+    if strat is not None:                       # режим задає модель: 15m-режими — tier15, решта — годинні
+        model = T.TIER_MODEL if strategies.is15(strat) else strat["model"]
     native = "15m" if model == T.TIER_MODEL else "1h"
     refreshing = ensure_fresh(conn, base, tf or native)
     if model == T.TIER_MODEL:
         if State.m15 is None:
             raise ValueError("15m-моделі немає: python train.py")
-        res = ticker_15m(conn, base, days)
+        res = ticker_15m(conn, base, days, strat)
     else:
         res = ticker_1h(conn, base, model, days)
     res = rebar(conn, res, base, tf, days) if tf else res
@@ -721,7 +783,7 @@ def backtest_start(body: dict) -> dict:
     args = ["--min-turnover", str(float(body.get("min_turnover", 20e6))), "--days", str(int(body.get("days", 30))),
             *(["--max-turnover", str(float(body["max_turnover"]))] if body.get("max_turnover") else []),
             "--model", "candidate" if body.get("model") == "candidate" else "current",
-            "--entry", "candidate" if body.get("entry") == "candidate" else "alert"]
+            "--strategy", strategies.get(body.get("strategy"))["id"]]
     BT_JOB.update(log=[], args=args)
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
     p = subprocess.Popen([sys.executable, os.path.join(ROOT, "backtest.py"), *args], cwd=ROOT, stdout=subprocess.PIPE,
@@ -773,10 +835,14 @@ _prepared_lock = threading.Lock()
 
 
 def journal_bundles() -> dict:
-    bundles = {m["name"]: m for m in State.models}
-    if State.m15 is not None:
-        bundles = {T.TIER_MODEL: State.m15, T.CAND_MODEL: State.m15, **bundles}
-    return bundles
+    """Режими для журналу: {id режиму: {scores, bundle, strat}} (strategies.json); режим без своєї моделі — пропускається."""
+    hourly = {m["name"]: m for m in State.models}
+    out = {}
+    for s in strategies.load():
+        bundle = State.m15 if strategies.is15(s) else hourly.get(s["model"])
+        if bundle is not None:
+            out[s["id"]] = {"scores": strategies.scores_name(s), "bundle": bundle, "strat": s}
+    return out
 
 
 def journal_version(conn) -> tuple:
@@ -814,7 +880,7 @@ def journal_view(conn, q: dict) -> dict:
         "oi": float(q.get("oi", J.DEFAULT_RULE["oi"])),
     }
     days = None if q.get("days", "30") == "all" else max(1, int(q.get("days", 30)))
-    model, kind = q.get("model", T.TIER_MODEL if State.m15 else "lightgbm"), q.get("kind", "hist")
+    model, kind = strategies.get(q.get("model"))["id"], q.get("kind", "hist")       # model = id режиму
     # вибір дат (YYYY-MM-DD, дні UTC включно) — замість «останніх N днів»
     day = lambda s: pd.Timestamp(s, tz="UTC").normalize() if s else None  # noqa: E731
     d_from, d_to = day(q.get("from")), day(q.get("to"))
@@ -826,9 +892,10 @@ def journal_view(conn, q: dict) -> dict:
         if len(_journal_cache) > 32:
             _journal_cache.clear()
         res = J.journal(conn, journal_bundles(), model, days, kind, rule, d_from, d_to, prepared)
-        res["validation"] = {m["name"]: m["validation"] for m in State.models}
+        val = {m["name"]: m["validation"] for m in State.models}
         for v in virtual_models():
-            res["validation"][v["name"]] = v["validation"]
+            val[v["name"]] = v["validation"]
+        res["validation"] = {sid: val.get(spec["scores"]) for sid, spec in journal_bundles().items()}
         _journal_cache[key] = res
     return _journal_cache[key]
 
@@ -890,9 +957,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, scan_view(q))
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
+        if url.path == "/api/book":            # біди / аски ±2% наживо (Binance + Bybit), кеш кілька секунд
+            return self._route(lambda c: orderbook.live(c, q.get("symbol", "").upper()) or {"ratio": None})
         if url.path == "/api/ticker":
             days = max(1, min(60, int(q.get("days", 30))))
-            return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days, q.get("tf")))
+            return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days, q.get("tf"), q.get("strategy")))
         return self._send(404, {"error": "не знайдено"})
 
     def do_POST(self):

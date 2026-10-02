@@ -30,6 +30,7 @@ import psycopg
 from dotenv import load_dotenv
 
 import fetch_exchange
+import orderbook
 import scanner
 from features import (INTRADAY_EXCHANGES, build, build_15m, build_from_raw, build_hourly_own, load_raw, oi_seen_share,
                       roll_intraday, short_features)
@@ -204,6 +205,10 @@ def quick_cycle(conn, client: Coinalyze | None, bases: list[str], m15: dict, fet
         if client is not None:
             collect_liquidations(client, conn, hot, ["5m"], LIQ5_DAYS, log=lambda m: None)
     s, open_ = score_15m_rolling(conn, hot, m15)
+    try:
+        orderbook.record(conn, hot)       # стакан гарячих — кожні 5 хв (історія «за 15 хв» і OB у момент сигналу)
+    except Exception as e:
+        print(f"  ! стакан: {e}")
     sig = s[s["signal"]]["base_asset"].tolist() if len(s) else []
     try:
         scanner.touch(sig)
@@ -343,6 +348,11 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
             print(f"  ! авто-список: {e}")
         print(f"  15m: бар {last15:%H:%M} UTC, оцінено {info15['scored_15m']} тікерів"
               + (f"; вище порогу: {', '.join(hot)}" if hot else ""))
+        # знімок стакану (біди / аски ±2%) для тікерів біля сигналу — «OB» у момент Alert і live-перевірка правила
+        try:
+            orderbook.record(conn, sorted(set(hot) | set(hot_bases(conn, bases))))
+        except Exception as e:
+            print(f"  ! стакан: {e}")
     fresh = onboard(conn, client, bases, models, m15) if fetch and client is not None else []
     if not hourly:
         prev = screener_status_file()

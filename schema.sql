@@ -103,3 +103,16 @@ CREATE TABLE IF NOT EXISTS signals (
     scored_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (base_asset, ts, model, model_version)
 );
+
+-- Стакан: біди / аски ±2% від ціни (Binance + Bybit), знімки скринера для тікерів біля сигналу (orderbook.py).
+-- ratio ≥ 1 — покупців у стакані не менше, ніж продавців; «OB» біля Alert у дашборді.
+CREATE TABLE IF NOT EXISTS book_ratio (
+    base_asset TEXT NOT NULL,
+    ts         TIMESTAMPTZ NOT NULL,
+    ratio      DOUBLE PRECISION,
+    bid_usd    DOUBLE PRECISION,
+    ask_usd    DOUBLE PRECISION,
+    binance    DOUBLE PRECISION,
+    bybit      DOUBLE PRECISION,
+    PRIMARY KEY (base_asset, ts)
+);

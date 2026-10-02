@@ -177,6 +177,51 @@ Spearman correlation between the 34 features of the 15m model on 15m bars of all
 `experiments/outcome_target.py`): the strongest pairs and the most independent features in the console, and a heatmap
 ordered by hierarchical clustering in `reports/feature_corr.html`.
 
+### `experiments/limit_entry.py`
+
+A limit buy on a pullback after the Alert instead of a market buy at the signal bar's close: at the VWAP of the last 1–2
+hours or at close − 0.5 / 1 ATR, valid 1 or 2 hours; then the current position rule (partial exit, breakeven, model exit).
+Reports fill rate, PF overall and by turnover band, how many ≥ +10% trades were missed, and waiting time. Uses the caches
+of `experiments/exit_structure.py` (Alert scores) and `experiments/style_backtest.py` (Binance 15m bars with volume).
+
+### `strategies.py`
+
+Modes: a model plus trade rules — signal (Alert or Candidate), entry (market or a limit at −0.5 ATR, valid 1 hour), the
+order book filter (bid / ask ratio ≥ 1 at the signal) — with the shared partial exit. The list lives in
+`strategies.json` (a new experiment is a new entry); `python strategies.py` prints it. The same mode selector drives the
+dashboard's Forecast (position, trade marks), Journal (statistics per mode) and Backtest (`backtest.py --strategy <id>`;
+the order book filter reads the Binance `bookDepth` archive there).
+
+### `orderbook.py`
+
+| Usage | Meaning |
+|---|---|
+| `python orderbook.py GTC MOVR` | print the live bid / ask ratio within ±2% of the price (Binance + Bybit), per exchange too; nothing is written |
+
+The screener records snapshots for coins near a signal into `book_ratio` (every cycle); the dashboard reads the live value
+(`/api/book`) and the value at each Alert.
+
+### `experiments/long_backtest.py`
+
+The entry rules (market, order book filter OB ≥ 1, limit −0.5 ATR, both) over 6 months on Bybit data (15m candles and
+open interest; Binance keeps only ~30 days of 15m OI), with no liquidations and the Binance `bookDepth` archive for the
+order book. Stages are cached (Bybit data in the database, model scores in `data/long_bt/`, order book days in
+`data/book_cache/`); `--skip-fetch` skips the download, `--limit N` runs on N coins. Reports PF overall, by turnover band
+and by month; trades go to `reports/long_backtest_trades.csv`.
+
+### `experiments/entry_rules_backtest.py`
+
+The two entry rules that passed the stability checks — the ±2% order book imbalance filter (bids ≥ asks) and a limit
+entry at close − 0.5 ATR valid one hour — separately and together, against the current market entry, on the backtest
+coins outside training with the partial exit. The imbalance is taken at every signal from the Binance `bookDepth`
+archive. Reports PF by turnover band and by half of the period; trades go to `reports/entry_rules_trades.csv`.
+
+### `experiments/book_filter.py`
+
+A filter model on all order book and spot features at entry (`reports/book_spot_features.csv` from
+`experiments/book_spot.py`): logistic regression and a shallow LightGBM, trained on one half of the period and tested on
+the other in both directions, against all trades and the single "±2% book imbalance" rule.
+
 ### `experiments/exit_partial.py`
 
 Partial exit for the current model's Alert entries: close ⅓ or ½ of the position at +2 / +3 / +4 ATR, keep the rest on
@@ -315,6 +360,8 @@ Thresholds live in `scan_config.json` (edited from the dashboard). See [screener
 | `--days` | 30 | window (Binance keeps open interest history for 30 days) |
 | `--model` | current | `current` or `candidate` (models/candidate/) |
 | `--entry` | alert | `alert` or `candidate` (15m model alone) |
+| `--strategy` | — | a mode from `strategies.json` (`market`, `limit`, `ob`, `ob_limit`, `cand`): signal, entry and order book filter; overrides `--entry` |
+| `--k` | — | stop in ATR instead of the one saved with the model (compare models at the same stop) |
 | `--no-fetch` | off | use only data already in the database |
 | `--limit` | 0 | only the first N coins (a quick check) |
 

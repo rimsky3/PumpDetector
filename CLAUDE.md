@@ -429,6 +429,27 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   з частковим виходом PF base 0.88, coins 0.86, both 0.92 (≥ 20 млн 1.00 / 1.01 / 1.15; 5–20 млн 0.75 / 0.71 / 0.69) — шум.
   Важливість у coins: ret_24h 40%, volume_z_7d 21%, монетний OI ~5% → справжній набір позицій на 15m майже не інформативний;
   модель = «ціна вже виросла + сплеск обсягу». НЕ змінено.
+- OB І ЛІМІТ У ДАШБОРДІ (2026-10-02, власник обрав по макету https://claude.ai/artifact/7Whw2rLpPP6KRLsKZUBHKn):
+  orderbook.py — біди / аски ±2% від mid, Binance /fapi/v1/depth (1000) + Bybit /v5/market/orderbook (500), сума $;
+  таблиця book_ratio (schema.sql, ensure_table). screener пише знімки для hot_bases + сигналів кожен 15m і 5-хв цикл;
+  дашборд: /api/book (live, кеш 4 с, запис раз на хв, ratio_15m), картка «Біди / аски ±2%» під карткою ймовірності
+  (варіант B: велике число, зелене ≥ 1 / бурштинове < 1, «за 15 хв», Binance · Bybit; оновлення 5 с), над баром Alert
+  мітка «OB x» (ob_at_signal: перший знімок ≤ 12 хв після закриття бару; без слів «проти»), плитка «Ліміт» у позиції і
+  лінія «Ліміт» (limit_hint: закриття − 0.5 ATR, діє 1 год), сповіщення «OB x · ліміт y». Симуляція позиції — як була (ринок).
+- ДОВГИЙ БЕКТЕСТ 6 міс. (2026-10-02, experiments/long_backtest.py: 189 монет, Bybit 15m + OI, без ліквідацій, стакан Binance,
+  кеш data/long_bt/, угоди reports/long_backtest_trades.csv): PF ринок 0.96, OB ≥ 1 0.94 (кращий лише 3/7 місяців — НЕ фільтр),
+  ліміт −0.5 ATR 1.02 (кращий 6/7), обидва 1.00. Журнал 24.09–02.10: ринок PF 1.47 / ліміт 1.09 (ліміт пропускає сильні рухи
+  без відкату — MAGMA, ZRO 02.10). РІШЕННЯ: основне правило — вхід по ринку; risk.position_state(entry=LIMIT_ENTRY) є, але
+  використовує лише журнальний рядок tiers.LIMIT_MODEL = tier15_lim («15m + 1h · лімітом») для live-порівняння;
+  дашборд — підказка ліміту (limit_hint), OB — інформація (пояснення «?» каже, що фільтр не підтвердився).
+- РЕЖИМИ (2026-10-02, власник): strategies.py + strategies.json — режим = модель + правила угод (signal alert/candidate,
+  entry market/limit, ob). Список: market (основний), limit, ob, ob_limit, cand, lightgbm, logreg (годинні — порівняння).
+  Дашборд: випадаючий «Режим» замість кнопок моделі (st.strategy, localStorage pd-strategy; st.model = модель режиму),
+  /api/ticker?strategy= → ticker_15m(strat): позиція з entry_rule і orderbook.allow_fn (OB ≥ 1, невідомо — береться);
+  журнал — рядок на кожен режим (journal_bundles → {id: {scores, bundle, strat}}, J.prepare/journal приймають такі spec);
+  бектест — поле «Режим» (backtest.py --strategy id; OB з архіву orderbook.archive_allow_fn, кеш data/book_cache/);
+  нова версія моделі після «Перенавчити» в UI бектесту — «нова версія» (не «кандидат»). Скринер не змінювався: сигнали
+  однакові для всіх 15m-режимів. risk.position_state(entry=, allow=). tiers.LIMIT_MODEL більше не використовується журналом.
 - НАГАДАТИ власнику ~2026-10-25: експеримент «15m-модель з OKX» (див. вище OKX). Рахувати розмічені пампи після 2026-09-15
   на тікерах з OKX (TRUMP, TRB, NIGHT, SOON, NMR, MUBARAK, AKE, QNT, STX…) — від їх кількості залежить, чи є сенс.
   screener.py раз на 3 год (BACKGROUND_HOURS) тягне 15m/5m бірж (з OKX) + 15m-ліквідації для tickers.txt поза списком.

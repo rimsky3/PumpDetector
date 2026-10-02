@@ -120,6 +120,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .tt .tt-h { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 2px; }
 .tt .tt-h b { font-weight: 600; }
 .tt .tt-a { color: var(--link); margin-top: 4px; }
+/* вибір режиму (модель + правила угод) */
+.modesel { display: block; }
+.modesel select { width: 100%; height: 34px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line2); background: var(--card); color: var(--fg); font-size: 13px; font-weight: 500; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 /* вибір дат у журналі */
 .dpbtn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); font-size: 12px; text-align: left; }
 .dpbtn[aria-pressed="true"] { border-color: var(--accent); color: var(--warm); background: #2a1a12; }
@@ -283,8 +287,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       <a href="#backtest" id="navBacktest">Бектест</a>
     </nav>
     <div class="group">
-      <div class="lbl"><span>Модель</span><button class="help" data-help="model" aria-label="Що це?">?</button></div>
-      <div class="seg" id="modelSeg" role="group" aria-label="Модель"></div>
+      <div class="lbl"><span>Режим</span><button class="help" data-help="model" aria-label="Що це?">?</button></div>
+      <label class="modesel"><span class="sr-only">Режим: модель і правила угод</span><select id="modeSel"></select></label>
+      <div class="small" id="modeNote" style="line-height:1.4"></div>
     </div>
 
     <!-- ліва частина «Прогнозу» -->
@@ -296,6 +301,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="scale"><span>0</span><span id="probThrTxt">поріг —</span><span>1</span></div>
         <div class="small" id="probCtx" hidden></div>
         <div class="small" id="probVer">—</div>
+      </div>
+      <div class="card" id="obCard" hidden>
+        <div class="t"><span>Біди / аски ±2% <button class="help" data-help="ob" aria-label="Що це?">?</button></span><span class="small" id="obAge">—</span></div>
+        <div style="display:flex;align-items:baseline;gap:10px"><div class="big" id="obVal">—</div><span class="small">≥ 1 — покупців більше</span></div>
+        <div class="small" id="obChg">—</div>
+        <div class="small" id="obEx">—</div>
       </div>
       <div class="card" id="retrainNote" hidden style="border-color:var(--cand-bg)">
         <div class="t"><span class="amber">Модель перенавчено</span><button class="help" id="retrainX" aria-label="Закрити" style="border:0">×</button></div>
@@ -314,9 +325,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       <div class="card">
         <div class="t"><span>Позиція моделі <button class="help" data-help="position" aria-label="Що це?">?</button></span><b id="posRes" style="font-size:13px;font-weight:500">—</b></div>
         <div class="small" id="posLine">—</div>
-        <div class="tiles" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+        <div class="tiles" style="grid-template-columns: repeat(3, minmax(0, 1fr));">
           <div class="tile" style="border-color:var(--alert-bg)" title="Стоп: ціна і відстань від ціни входу"><div class="k">Стоп</div><div class="v warm" id="tStop">—</div><div class="s" id="tStopS"></div></div>
           <div class="tile" style="border-color:var(--ok-bg)"><div class="k">Вихід</div><div class="v" id="tExit">—</div><div class="s" id="tExitS"></div></div>
+          <div class="tile" style="border-color:var(--live-bg)" title="Лімітна заявка на −0.5 ATR від закриття бару Alert, дійсна 1 год (на бектесті стабільно краща за купівлю по ринку)"><div class="k">Ліміт</div><div class="v" id="tLim" style="color:var(--link)">—</div><div class="s" id="tLimS"></div></div>
         </div>
         <div class="small" id="posRule">—</div>
       </div>
@@ -368,8 +380,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <label class="field">Оборот від, млн $/добу <input id="btTurn" type="number" min="1" step="1" value="20"></label>
         <label class="field">Оборот до, млн $/добу <input id="btTurnMax" type="number" min="1" step="1" placeholder="без меж"></label>
         <label class="field">Вікно, днів <input id="btDays" type="number" min="7" max="30" step="1" value="30"></label>
-        <label class="field">Модель <select id="btModel" style="width:96px;height:26px;background:var(--side);border:1px solid var(--line2);border-radius:6px;font-size:12px"><option value="current">поточна</option><option value="candidate">кандидат</option></select></label>
-        <label class="field">Вхід на <select id="btEntry" style="width:96px;height:26px;background:var(--side);border:1px solid var(--line2);border-radius:6px;font-size:12px"><option value="alert">Alert</option><option value="candidate">Кандидат</option></select></label>
+        <label class="field">Модель <select id="btModel" style="width:96px;height:26px;background:var(--side);border:1px solid var(--line2);border-radius:6px;font-size:12px"><option value="current">поточна</option><option value="candidate">нова версія</option></select></label>
+        <label class="field">Режим <select id="btMode" style="width:150px;height:26px;background:var(--side);border:1px solid var(--line2);border-radius:6px;font-size:12px"></select></label>
         <span class="small">Без тікерів навчання й виключених; OI ≤ як у сканері. Перший прогін ~30–60 хв (дані), далі — швидше.</span>
         <button class="btn-primary" id="btRun">Запустити бектест</button>
         <div class="small" id="btState"></div>
@@ -577,7 +589,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const LS = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
   const st = {
-    view: "forecast", model: LS.get("pd-model2", "tier15"), chartTf: null, ticker: LS.get("pd-ticker", null), days: 3, oiUsd: LS.get("pd-oiusd", false),
+    view: "forecast", model: "tier15", strategy: LS.get("pd-strategy", null), chartTf: null, ticker: LS.get("pd-ticker", null), days: 3, oiUsd: LS.get("pd-oiusd", false),
     meta: null, data: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])),
     notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), seen: new Set(LS.get("pd-seen", [])),
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
@@ -639,10 +651,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     seen: "Яку частку open interest тікера (середнє за 30 днів, усі біржі) бачить модель. 15m-модель бере лише Binance і Bybit; сірі біржі вона не бачить. Якщо частка мала, імпульс може початись там раніше, ніж модель його помітить.",
     history: "Як модель торгувала б цей тікер на всьому відрізку, де вона його оцінювала (разом з історією при додаванні в список): закриті угоди за тими самими правилами, що й «Позиція моделі». Одна монета за тиждень — це 1–3 угоди: контекст, а не доказ. Якщо тікер у навчанні, модель бачила ці імпульси, і цифри завищені.",
     scan: "Сканер ринку кожні 15 хв проглядає всі USDT-перпи Binance і сам додає в список ті, що «прокидаються»: великий оборот і обсяг у кілька разів вищий за норму, або OI і ціна ростуть разом. Такий тікер позначено «АВТО»; він тримається в списку заданий час після останнього спрацювання (або поки модель дає сигнал). Сповіщення — лише на Alert моделі, не на вхід у список.",
-    model: "«15m + 1h» — основна: 15-хвилинна модель дає ранній сигнал («Кандидат»), годинна його підтверджує («Alert»). LightGBM 1h і Регресія 1h — старі годинні моделі для порівняння. Перемикач змінює всі цифри на обох екранах.",
+    model: "Режим = модель + правила угод. Сигнали (Alert, Кандидат) однакові для всіх режимів «15m + 1h»: режим змінює лише, які сигнали беруться і як: вхід по ринку чи лімітом −0.5 ATR, фільтр стакану OB ≥ 1, вхід на Alert чи на Кандидаті. Вихід спільний (½ на +3 ATR, далі беззбиток). Той самий вибір — у «Прогнозі» (позиція, мітки угод), «Журналі» (статистика) і «Бектесті». Список — strategies.json: новий експеримент = новий рядок. Годинні моделі — лише для порівняння.",
     prob: "Для «15m + 1h»: P — оцінка 15-хвилинної моделі, що зараз триває імпульс. Вище порогу — «Кандидат» (рано, частіше хибно: перевір стакан). Якщо ще й годинна модель ≥ ¾ свого порогу (рядок «1h» нижче) — «Alert». Число поруч зі статусом — скільки часу поспіль тримається рівень.",
     metrics: "Ключові ознаки, на які дивиться модель: зміна open interest за 4 год (у USD, як бачить модель, без стрибків від лістингів), обсяг відносно звичайного за 7 днів (у σ), частка акаунтів у лонг.",
-    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert; половина позиції закривається на цілі +3 ATR, після цього стоп на решту переноситься в беззбиток («Б/з» на графіку); решта виходить, коли Alert згас 4 бари поспіль (1 год), або по стопу — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених імпульсах). Результат угоди — усієї позиції. Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
+    ob: "Співвідношення лімітних заявок у стакані в межах ±2% від ціни: сума бідів (купівля) поділена на суму асків (продаж), Binance + Bybit разом, наживо (оновлення кожні 5 с). ≥ 1 — покупців у стакані не менше, ніж продавців. На бектесті 219 монет поза навчанням входи моделі при OB < 1 були найгіршими (PF 0.76 проти 0.98). На графіку над баром Alert — «OB» у момент сигналу (знімок скринера). Лімітки можуть знімати й переставляти. На 6-місячному бектесті правило «брати лише при OB ≥ 1» НЕ підтвердилось (краще лише в 3 з 7 місяців), тому це інформація, а не фільтр.",
+    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert (по ринку; плитка «Ліміт» — підказка входу на відкаті −0.5 ATR, у журналі є рядок «лімітом» для порівняння); половина позиції закривається на цілі +3 ATR, після цього стоп на решту переноситься в беззбиток («Б/з» на графіку); решта виходить, коли Alert згас 4 бари поспіль (1 год), або по стопу — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених імпульсах). Результат угоди — усієї позиції. Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
     insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
     oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
     tf: "Таймфрейм графіка. Модель від цього не змінюється: «15m + 1h» рахує на 15m, годинні — на 1h. На крупнішому ТФ бар показує найвищу оцінку й рівень сигналу за свій час (Alert усередині години не загубиться), на дрібнішому — останню оцінку, відому на момент закриття бару. 5m — для точного входу; оновлюється скринером.",
@@ -706,15 +719,38 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
 
   // ---------- модель ----------
-  const renderModelSeg = () => {
-    const seg = $("modelSeg"); seg.replaceChildren();
-    (st.meta?.models || []).forEach((m) => {
-      const b = el("button", "", m.name === "logreg" ? "Регресія 1h" : m.title);
-      b.setAttribute("aria-pressed", String(m.name === st.model));
-      b.addEventListener("click", () => { st.model = m.name; st.chartTf = null; LS.set("pd-model2", m.name); renderModelSeg(); refreshAll(); });
-      seg.appendChild(b);
-    });
+  // режим = модель + правила угод (strategies.json): один вибір для «Прогнозу», «Журналу» і «Бектесту»
+  const modeInfo = () => (st.meta?.strategies || []).find((s) => s.id === st.strategy);
+  const applyMode = () => {
+    const list = st.meta?.strategies || [];
+    let s = list.find((x) => x.id === st.strategy) || list.find((x) => x.main) || list[0];
+    if (!s) return;
+    st.strategy = s.id;
+    st.model = s.model === "tier15" ? "tier15" : s.model;
+    if (!(st.meta.models || []).some((m) => m.name === st.model)) st.model = st.meta.models[0]?.name || "lightgbm";
   };
+  const renderBtModes = () => {
+    const sel = $("btMode"); if (!sel) return;
+    const keep = sel.value; sel.replaceChildren();
+    (st.meta?.strategies || []).filter((s) => s.model === "tier15").forEach((s) => {
+      const o = el("option", "", s.title.replace("15m + 1h · ", "").replace("15m · ", "")); o.value = s.id; o.title = s.title; sel.appendChild(o);
+    });
+    sel.value = [...sel.options].some((o) => o.value === st.strategy) ? st.strategy : (keep || sel.options[0]?.value || "");
+  };
+  const renderModelSeg = () => {
+    renderBtModes();
+    const sel = $("modeSel"); sel.replaceChildren();
+    (st.meta?.strategies || []).forEach((s) => {
+      const o = el("option", "", s.title + (s.main ? " · основний" : "")); o.value = s.id; sel.appendChild(o);
+    });
+    sel.value = st.strategy || "";
+    $("modeNote").textContent = modeInfo()?.note || "";
+  };
+  $("modeSel").addEventListener("change", (e) => {
+    st.strategy = e.target.value; LS.set("pd-strategy", st.strategy); applyMode(); st.chartTf = null;
+    renderModelSeg(); refreshAll();
+    if (typeof BT !== "undefined" && $("btMode")) $("btMode").value = st.strategy;
+  });
 
   // ---------- стан системи ----------
   const renderSystem = () => {
@@ -804,6 +840,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // плитки: ціна крупно, під нею — відсоток (стоп — від ціни входу)
     const tile = (id, v, sub) => { $(id).textContent = v; $(id + "S").textContent = sub || ""; };
     const px = d.price, a = d.atr;
+    const lim = is15() ? d.limit : null;
+    if (lim && lim.until > Date.now() / 1000) {                 // заявка чекає виконання
+      const u = new Date(lim.until * 1000);
+      tile("tLim", fmtPx(lim.price), `до ${pad(u.getUTCHours())}:${pad(u.getUTCMinutes())}`);
+    } else tile("tLim", "—", is15() ? "після Alert" : "");
     if (p.open) {
       $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
       $("posLine").textContent = `Вхід ${fmtTs(p.entry_ts)} · ${fmtPx(p.entry)} · ${fmtMin(p.hours * 60)}` +
@@ -837,9 +878,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
   const loadTicker = async () => {
     if (!st.ticker) return;
+    if (obTk !== st.ticker) { $("obCard").hidden = true; setTimeout(() => loadBook(), 0); }     // стакан нового тікера — одразу
     const done = busy(document.querySelector(".chart-card"), null);
     try {
-      st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&days=30${st.chartTf ? "&tf=" + st.chartTf : ""}`);
+      st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&strategy=${st.strategy}&days=30${st.chartTf ? "&tf=" + st.chartTf : ""}`);
       show($("fError"), "");
     } catch (e) { st.data = null; show($("fError"), e.message); }
     finally { done(); }
@@ -967,6 +1009,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (tr.partial_ts && tr.partial_ts >= t0 && tr.entry) marks.push({ time: tr.partial_ts, position: "aboveBar", shape: "circle", color: h ? dim : cssVar("--ok"), text: `½ ${fmtPct(tr.partial_price / tr.entry - 1)}${sfx}` });
       if (tr.exit_ts && tr.exit_ts >= t0) marks.push({ time: tr.exit_ts, position: "aboveBar", shape: "arrowDown", color: h ? dim : fg2, text: `${tr.reason === "stop" ? (tr.partial_ts ? "Б/з" : "Стоп") : "Вихід"} ${fmtPct(tr.result_pct)}${sfx}` });
     });
+    // стакан у момент Alert: «OB 1.38» — зелене, коли покупців не менше (≥ 1), бурштинове — коли продавців більше
+    (d.ob_marks || []).forEach((m) => {
+      if (m.ts >= t0) marks.push({ time: m.ts, position: "aboveBar", shape: "circle", color: m.v >= 1 ? cssVar("--ok") : cssVar("--amber"), text: `OB ${m.v.toFixed(2)}` });
+    });
     // коли сканер з поточними порогами додав би тікер у список (лише авто-тікери) — на бар графіка, що містить цей момент
     (d.scanner_entries || []).forEach((ts) => {
       let lo = 0, hi = s.t.length - 1, j = -1;
@@ -976,6 +1022,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     markersApi.setMarkers(marks.filter((m) => idx.has(m.time)).sort((a, b) => a.time - b.time));
     priceLines.forEach(([ser, l]) => ser.removePriceLine(l)); priceLines = [];
     const line = (ser, price, color, title) => { if (price != null) priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]); };
+    if (is15() && d.limit && d.limit.until > Date.now() / 1000) line(S.candles, d.limit.price, cssVar("--link"), "Ліміт");
     if (pos.open) {
       line(S.candles, pos.stop, warm, pos.partial_ts ? "Стоп · б/з" : "Стоп");
       if (pos.target != null && !pos.partial_ts) line(S.candles, pos.target, cssVar("--ok"), "Ціль ½");
@@ -1257,7 +1304,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const box = $("btRuns"); box.replaceChildren();
     BT.runs.forEach((r) => {
       const band = `${Math.round(r.min_turnover / 1e6)}${r.max_turnover ? "–" + Math.round(r.max_turnover / 1e6) : "+"} млн`;
-      const b = el("button", "", `${r.at.slice(5, 16).replace("T", " ")} · ${r.model === "candidate" ? "кандидат" : "поточна"} · ${band} · ${r.coins} мон.${r.entry === "candidate" ? " · Канд." : ""}`);
+      const b = el("button", "", `${r.at.slice(5, 16).replace("T", " ")} · ${r.model === "candidate" ? "нова версія" : "поточна"} · ${band} · ${r.coins} мон. · ${r.strategy_title || (r.entry === "candidate" ? "на Кандидаті" : "ринок")}`);
       b.setAttribute("aria-pressed", String(r.id === (pick || BT.cur))); b.addEventListener("click", () => openBacktest(r.id)); box.appendChild(b);
     });
     $("btEmpty").hidden = BT.runs.length > 0; $("btBody").hidden = !BT.runs.length;
@@ -1275,8 +1322,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const renderBacktest = () => {
     const d = BT.data; if (!d) return;
     const m = d.meta;
-    $("btTitle").textContent = `Бектест · ${m.model === "candidate" ? "кандидат" : "поточна модель"} · ${d.coins} монет поза навчанням`;
-    $("btMeta").textContent = `${m.at.slice(0, 16).replace("T", " ")} UTC · ${m.days} дн. · оборот ${Math.round(m.min_turnover / 1e6)}${m.max_turnover ? "–" + Math.round(m.max_turnover / 1e6) : "+"} млн $ · вхід на ${m.entry === "candidate" ? "Кандидаті" : "Alert"} · модель ${m.model_version.slice(5, 16)} · комісія ${(m.fee * 100).toFixed(1)}%`;
+    $("btTitle").textContent = `Бектест · ${m.model === "candidate" ? "нова версія моделі" : "поточна модель"} · ${d.coins} монет поза навчанням`;
+    $("btMeta").textContent = `${m.at.slice(0, 16).replace("T", " ")} UTC · ${m.days} дн. · оборот ${Math.round(m.min_turnover / 1e6)}${m.max_turnover ? "–" + Math.round(m.max_turnover / 1e6) : "+"} млн $ · ${m.strategy_title || ("вхід на " + (m.entry === "candidate" ? "Кандидаті" : "Alert"))} · модель ${m.model_version.slice(5, 16)} · комісія ${(m.fee * 100).toFixed(1)}%`;
     const k = $("btKpis"); k.replaceChildren(
       kpi("Угод", String(d.trades), `${d.coins} монет · ${m.days} дн.${d.open ? ` · ще ${d.open} відкр.` : ""}`),
       kpi("У плюсі", d.win_rate == null ? "—" : `${Math.round(d.win_rate * 100)}%`, `виграш ${pctS(d.avg_win)} · програш ${pctS(d.avg_loss)}`),
@@ -1343,7 +1390,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const sel = $("btCmpSel"); const keep = sel.value; sel.replaceChildren(el("option", "", "—"));
     sel.firstChild.value = "";
     BT.runs.filter((r) => r.id !== BT.cur).forEach((r) => {
-      const o = el("option", "", `${r.at.slice(5, 16).replace("T", " ")} · ${r.model === "candidate" ? "кандидат" : "поточна"} · ${Math.round(r.min_turnover / 1e6)}${r.max_turnover ? "–" + Math.round(r.max_turnover / 1e6) : "+"} млн · ${r.coins} мон.`);
+      const o = el("option", "", `${r.at.slice(5, 16).replace("T", " ")} · ${r.model === "candidate" ? "нова версія" : "поточна"} · ${Math.round(r.min_turnover / 1e6)}${r.max_turnover ? "–" + Math.round(r.max_turnover / 1e6) : "+"} млн · ${r.coins} мон. · ${r.strategy_title || "ринок"}`);
       o.value = r.id; sel.appendChild(o);
     });
     sel.value = [...sel.options].some((o) => o.value === keep) ? keep : "";
@@ -1361,7 +1408,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       ["Сума без топ-3", (d) => d.sum_wo_top3, (v) => pctS(v, 0), true], ["Сума", (d) => d.sum, (v) => pctS(v, 0), true],
       ["Alert на день", (d) => d.alerts_per_day, (v) => v == null ? "—" : v.toFixed(1), false], ["По стопу", (d) => d.stop_rate, (v) => v == null ? "—" : Math.round(v * 100) + "%", false]];
     const t = el("div", "cmp");
-    const nm = (d) => `${d.meta.model === "candidate" ? "кандидат" : "поточна"} ${d.meta.at.slice(5, 16).replace("T", " ")}`;
+    const nm = (d) => `${d.meta.model === "candidate" ? "нова версія" : "поточна"} ${d.meta.at.slice(5, 16).replace("T", " ")}`;
     [["", "h"], [`A · ${nm(A)}`, "h r"], [`B · ${nm(B)}`, "h r"], ["B − A", "h r"]].forEach(([x, c]) => t.appendChild(el("span", c, x)));
     rows.forEach(([name, get, fmt, higher]) => {
       const a = get(A), b = get(B), diff = a != null && b != null ? b - a : null;
@@ -1403,7 +1450,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     try {
       await api("/api/backtest/run", { method: "POST", body: JSON.stringify({ min_turnover: +$("btTurn").value * 1e6, days: +$("btDays").value,
         max_turnover: $("btTurnMax").value ? +$("btTurnMax").value * 1e6 : null,
-        model: $("btModel").value, entry: $("btEntry").value }) });
+        model: $("btModel").value, strategy: $("btMode").value }) });
     } catch (e) { $("btState").textContent = e.message; return; }
     BT.wasRunning = true; pollBacktest();
   });
@@ -1478,16 +1525,36 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (!fresh.length) return;
     const a = fresh[0];
     $("toastT").textContent = `Новий Alert: ${a.ticker} · ${fmtP(a.probability)}`;
-    $("toastS").textContent = `${fmtTs(a.ts)} UTC${fresh.length > 1 ? ` · ще ${fresh.length - 1}` : ""}`;
+    const extra = (a.ob != null ? ` · OB ${a.ob.toFixed(2)}` : "") + (a.limit != null ? ` · ліміт ${fmtPx(a.limit)}` : "");
+    $("toastS").textContent = `${fmtTs(a.ts)} UTC${extra}${fresh.length > 1 ? ` · ще ${fresh.length - 1}` : ""}`;
     $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; selectTicker(a.ticker); };
     $("toast").hidden = false;
     beep();
     if ("Notification" in window && Notification.permission === "granted") {
-      try { const n = new Notification(`Pump Detector: Alert ${a.ticker}`, { body: `P = ${fmtP(a.probability)} · ${fmtTs(a.ts)} UTC`, tag: `pd-${a.ticker}-${a.ts}` });
+      try { const n = new Notification(`Pump Detector: Alert ${a.ticker}`, { body: `P = ${fmtP(a.probability)}${extra} · ${fmtTs(a.ts)} UTC`, tag: `pd-${a.ticker}-${a.ts}` });
         n.onclick = () => { window.focus(); selectTicker(a.ticker); }; } catch (e) {}
     }
   };
   $("toastX").addEventListener("click", () => { $("toast").hidden = true; });
+
+  // ---------- стакан: біди / аски ±2% (Binance + Bybit) наживо ----------
+  let obTk = null;
+  const loadBook = async () => {
+    const card = $("obCard");
+    if (!st.ticker || !is15() || $("leftForecast").hidden || document.hidden) { if (!st.ticker || !is15()) card.hidden = true; return; }
+    const tk = st.ticker;
+    let b; try { b = await api(`/api/book?symbol=${encodeURIComponent(tk)}`, { quiet: true }); } catch (e) { return; }
+    if (tk !== st.ticker) return;
+    if (b.ratio == null) { card.hidden = true; return; }
+    card.hidden = false; obTk = tk;
+    const r = b.ratio;
+    $("obVal").textContent = r.toFixed(2); $("obVal").className = "big " + (r >= 1 ? "ok" : "amber");
+    $("obAge").textContent = b.ts ? `${Math.max(0, Math.round(Date.now() / 1000 - b.ts))} с тому` : "";
+    $("obChg").textContent = b.ratio_15m != null ? `за 15 хв: ${b.ratio_15m.toFixed(2)} → ${r.toFixed(2)} ${r > b.ratio_15m ? "↑" : r < b.ratio_15m ? "↓" : ""}` : "за 15 хв: —";
+    const f = (v) => v == null ? "—" : v.toFixed(2);
+    $("obEx").textContent = `Binance ${f(b.binance)} · Bybit ${f(b.bybit)}` + (b.full === false ? " · стакан тонший за ±2%" : "");
+  };
+  setInterval(loadBook, 5000);
 
   // ---------- керування «Прогнозу» ----------
   const pressIn = (segId, attr, val) => document.querySelectorAll(`#${segId} [data-${attr}]`).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === String(val))));
@@ -1644,7 +1711,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       row.appendChild(el("span", "", m.false_per_30d == null ? "—" : m.false_per_30d.toFixed(1)));
       mr.appendChild(row);
     });
-    const v = j.validation?.[st.model];
+    const v = j.validation?.[st.strategy];
     $("mValid").textContent = v ? `Для порівняння — leave-ticker-out на навчанні (${modelInfo()?.title || st.model}): precision ${v.precision.toFixed(2)}, recall ${v.recall.toFixed(2)}, спіймано імпульсів ${v.pumps_caught}. Якщо live сильно гірше — модель не узагальнюється.` : "";
     // журнал
     const f = st.jOut;
@@ -1697,7 +1764,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   const loadJournal = async () => {
     const r = st.rule;
-    const q = `model=${st.model}&days=${st.jDays}&kind=${st.jKind}&horizon=${r.horizon}&price=${r.price / 100}&oi=${r.oi / 100}`
+    const q = `model=${st.strategy}&days=${st.jDays}&kind=${st.jKind}&horizon=${r.horizon}&price=${r.price / 100}&oi=${r.oi / 100}`
       + (st.jFrom ? `&from=${st.jFrom}&to=${st.jTo || st.jFrom}` : "");
     const done = busy($("viewJournal").querySelector(".jsplit"), $("jBusy"), "Рахую журнал…");
     const done2 = busy($("viewJournal").querySelector("section.panel"), null);
@@ -1849,7 +1916,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     renderNotify();
     try { st.meta = await api("/api/meta"); }
     catch (e) { show($("fError"), `Сервер не відповідає: ${e.message}`); return; }
-    if (!st.meta.models.some((m) => m.name === st.model)) st.model = st.meta.models[0]?.name || "lightgbm";
+    applyMode();
     if (!st.meta.tickers.includes(st.ticker)) st.ticker = st.meta.tickers[0] || null;
     pressIn("oiSeg", "oi", st.oiUsd ? "usd" : "coins");
     renderModelSeg(); renderSystem(); renderStatus(); checkRetrain();

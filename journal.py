@@ -22,9 +22,11 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
+import orderbook
+import strategies
 from features import aggregate, in_pump, load_pumps, load_raw, query_df
-from risk import EXIT_BARS, PARTIAL_EXIT, position_state
-from tiers import BAR_15M, CAND_MODEL, TIER_MODEL, tier_frame
+from risk import EXIT_BARS, LIMIT_ENTRY, PARTIAL_EXIT, position_state
+from tiers import BAR_15M, CAND_MODEL, LIMIT_MODEL, TIER_MODEL, tier_frame
 
 M15 = "lightgbm_15m"          # 15m-модель у таблиці signals
 CONFIRM_MODEL = "lightgbm"    # годинна модель, що підтверджує «Alert»
@@ -34,7 +36,7 @@ DEFAULT_RULE = {"horizon": 24, "price": 0.15, "oi": 0.20}
 
 
 def is_15m(model: str) -> bool:
-    return model in (TIER_MODEL, CAND_MODEL, M15)
+    return model in (TIER_MODEL, CAND_MODEL, LIMIT_MODEL, M15)
 
 
 def first_scores(conn, model: str, share: float = 0.75, cache: dict | None = None) -> pd.DataFrame:
@@ -50,12 +52,12 @@ def first_scores(conn, model: str, share: float = 0.75, cache: dict | None = Non
 
 
 def _first_scores(conn, model: str, share: float, cache: dict | None) -> pd.DataFrame:
-    if model in (TIER_MODEL, CAND_MODEL):
+    if model in (TIER_MODEL, CAND_MODEL, LIMIT_MODEL):
         s15, s1h = first_scores(conn, M15, cache=cache), first_scores(conn, CONFIRM_MODEL, cache=cache)
         if s15.empty:
             return s15
         t = tier_frame(s15, s1h, share)
-        score = t["alert_score"] if model == TIER_MODEL else t["s15"]
+        score = t["s15"] if model == CAND_MODEL else t["alert_score"]
         return t[["base_asset", "ts", "model_version", "live", "in_sample", "kind"]].assign(
             probability=score.to_numpy(), threshold=1.0, signal=(score >= 1).to_numpy())
     df = query_df(conn, """
@@ -92,8 +94,10 @@ def label_outcome(pumps: pd.DataFrame, base: str, start: pd.Timestamp, end: pd.T
     return None
 
 
-def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict | None = None) -> pd.DataFrame:
-    """Усі угоди моделі по всіх тікерах з результатом і джерелом результату."""
+def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict | None = None,
+                 strat: dict | None = None) -> pd.DataFrame:
+    """Усі угоди моделі по всіх тікерах з результатом і джерелом результату.
+    strat — режим (strategies.py): вхід по ринку чи лімітом, фільтр OB; None — як раніше (за назвою моделі)."""
     scores = first_scores(conn, model, (bundle or {}).get("confirm", {}).get("share", 0.75), cache)
     tf15 = is_15m(model)
     interval, freq, bar = ("15min", "15min", BAR_15M) if tf15 else ("1hour", "h", H)
@@ -125,7 +129,18 @@ def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict 
         g = g.set_index("ts").sort_index()
         # версії моделі мають різні пороги: нормуємо ймовірність на поріг, тоді «сигнал» = score ≥ 1
         norm = (g["probability"] / g["threshold"]).reindex(h.index)
-        pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None)
+        # 15m-контур: частковий вихід; вхід і фільтр — за режимом (strategies.py)
+        if strat is not None:
+            entry = strategies.entry_rule(strat)
+            allow = None
+            if strat.get("ob") and tf15:
+                try:
+                    allow = orderbook.allow_fn(orderbook.history(conn, base, g.index.min().to_pydatetime()))
+                except Exception:
+                    conn.rollback()
+        else:
+            entry, allow = (LIMIT_ENTRY if model == LIMIT_MODEL else None), None
+        pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None, entry, allow)
         trades = list(pos.get("trades", [])) + ([pos] if pos.get("open") else [])
         for t in trades:
             start = pd.Timestamp(t["entry_ts"])
@@ -148,13 +163,15 @@ KIND_SCOPE = {"live": {"live"}, "hist": {"live", "history"}, "all": {"live", "hi
 
 
 def prepare(conn, bundles: dict, rule: dict) -> dict:
-    """Угоди й оцінки всіх моделей — найдовша частина журналу (~20 с). Від періоду, дат і обсягу оцінок не залежить:
-    дашборд кешує результат і лише фільтрує його, тож перемикання періоду — миттєве."""
+    """Угоди й оцінки всіх моделей / режимів — найдовша частина журналу (~20 с). Від періоду, дат і обсягу оцінок не
+    залежить: дашборд кешує результат і лише фільтрує його, тож перемикання періоду — миттєве.
+    bundles: {назва: бандл} або {назва режиму: {"scores": назва оцінок, "bundle": бандл, "strat": режим}}."""
     cache: dict = {}
     out = {}
-    for name, bundle in bundles.items():
+    for name, spec in bundles.items():
+        scores_name, bundle, strat = (spec["scores"], spec["bundle"], spec["strat"]) if "scores" in (spec or {}) else (name, spec, None)
         share = (bundle or {}).get("confirm", {}).get("share", 0.75)
-        out[name] = (build_trades(conn, name, bundle, rule, cache), first_scores(conn, name, share, cache))
+        out[name] = (build_trades(conn, scores_name, bundle, rule, cache, strat), first_scores(conn, scores_name, share, cache))
     out["_pumps"] = cache.get("pumps")
     return out
 
@@ -206,9 +223,10 @@ def journal(conn, bundles: dict, model: str, days: int | None, kind: str, rule: 
         until = (date_to if date_to is not None else date_from) + pd.Timedelta(days=1)
     kinds = KIND_SCOPE.get(kind, KIND_SCOPE["live"])
     per_model, trades_sel = {}, None
-    for name in bundles:
+    for name, spec in bundles.items():
         trades, scores = prepared[name]
-        per_model[name] = model_stats(conn, name, trades, scores, since, kinds, until, prepared.get("_pumps"))
+        scores_name = spec["scores"] if "scores" in (spec or {}) else name
+        per_model[name] = model_stats(conn, scores_name, trades, scores, since, kinds, until, prepared.get("_pumps"))
         if name == model:
             trades_sel = trades
     if trades_sel is None:

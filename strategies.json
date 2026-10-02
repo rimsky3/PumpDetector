@@ -1,0 +1,58 @@
+[
+ {
+  "id": "market",
+  "title": "15m + 1h · ринок",
+  "model": "tier15",
+  "signal": "alert",
+  "entry": "market",
+  "ob": false,
+  "main": true,
+  "note": "основний: вхід по ринку на Alert"
+ },
+ {
+  "id": "limit",
+  "title": "15m + 1h · ліміт −0.5 ATR",
+  "model": "tier15",
+  "signal": "alert",
+  "entry": "limit",
+  "ob": false,
+  "note": "6 міс. бектесту PF 1.02 проти 0.96; журнал 24.09–02.10 гірше за ринок"
+ },
+ {
+  "id": "ob",
+  "title": "15m + 1h · OB ≥ 1",
+  "model": "tier15",
+  "signal": "alert",
+  "entry": "market",
+  "ob": true,
+  "note": "вересень PF 0.96 проти 0.86, але на 6 міс. не підтвердився (3 з 7 місяців)"
+ },
+ {
+  "id": "ob_limit",
+  "title": "15m + 1h · OB + ліміт",
+  "model": "tier15",
+  "signal": "alert",
+  "entry": "limit",
+  "ob": true,
+  "note": "вересень PF 1.08; 6 міс. — 1.00"
+ },
+ {
+  "id": "cand",
+  "title": "15m · вхід на Кандидаті",
+  "model": "tier15",
+  "signal": "candidate",
+  "entry": "market",
+  "ob": false,
+  "note": "раніший вхід (без підтвердження 1h), більше фальстартів"
+ },
+ {
+  "id": "lightgbm",
+  "title": "LightGBM 1h · порівняння",
+  "model": "lightgbm"
+ },
+ {
+  "id": "logreg",
+  "title": "Регресія 1h · порівняння",
+  "model": "logreg"
+ }
+]

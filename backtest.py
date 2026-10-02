@@ -37,6 +37,8 @@ import train
 from features import (FEATURES, FEATURES_15M, INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, build_15m, build_hourly_own,
                       load_raw)
 from fetch import Coinalyze, collect_liquidations, excluded_tickers, find_markets, read_tickers_file, upsert_markets
+import orderbook
+import strategies
 from risk import PARTIAL_EXIT, position_state, trade_stats
 from tiers import tier_frame
 
@@ -133,13 +135,24 @@ def tiers_and_bars(conn, base: str, m15: dict, m1: dict, days: int) -> tuple[pd.
     return t, h[h.index >= start - pd.Timedelta(days=1)]
 
 
-def run_ticker(conn, base: str, m15: dict, m1: dict, days: int, entry: str) -> dict | None:
+def run_ticker(conn, base: str, m15: dict, m1: dict, days: int, entry: str, strat: dict | None = None) -> dict | None:
+    """strat — режим (strategies.py): сигнал Alert / Кандидат, вхід ринок / ліміт, фільтр OB (стакан з архіву Binance).
+    Без режиму — як раніше: entry 'alert' / 'candidate', вхід по ринку."""
     th = tiers_and_bars(conn, base, m15, m1, days)
     if th is None:
         return None
     t, h = th
+    if strat is not None:
+        entry = "candidate" if strat.get("signal") == "candidate" else "alert"
     score = t["alert_score"] if entry == "alert" else t["s15"]
-    pos = position_state(h, score, 1.0, m15.get("risk", {}).get("k"), m15.get("exit_bars", 4), PARTIAL_EXIT)
+    allow = None
+    if strat is not None and strat.get("ob"):
+        row = conn.execute("""SELECT symbol_on_exchange FROM markets WHERE base_asset = %s AND exchange_name = 'Binance'
+                              AND quote_asset = 'USDT' LIMIT 1""", (base,)).fetchone()
+        if row:
+            allow = orderbook.archive_allow_fn(row[0], list(score.index[score >= 1]))
+    pos = position_state(h, score, 1.0, m15.get("risk", {}).get("k"), m15.get("exit_bars", 4), PARTIAL_EXIT,
+                         strategies.entry_rule(strat) if strat is not None else None, allow)
     trades = []
     for tr in list(pos.get("trades", [])) + ([pos] if pos.get("open") else []):
         trades.append({"ticker": base, "entry_ts": int(pd.Timestamp(tr["entry_ts"]).timestamp()),
@@ -193,11 +206,16 @@ def main() -> None:
     p.add_argument("--max-oi", type=float, default=None,
                    help="OI не більше, $ (за замовчуванням — як у сканері, scan_config.json, 500 млн): без BTC/ETH")
     p.add_argument("--model", choices=["current", "candidate"], default="current", help="яку модель тестувати")
-    p.add_argument("--entry", choices=["alert", "candidate"], default="alert", help="рівень входу: Alert або Кандидат")
+    p.add_argument("--entry", choices=["alert", "candidate"], default="alert", help="рівень входу: Alert або Кандидат (без --strategy)")
+    p.add_argument("--strategy", default=None,
+                   help="режим зі strategies.json (market, limit, ob, ob_limit, cand…): сигнал, вхід і фільтр OB; перекриває --entry")
     p.add_argument("--no-fetch", action="store_true", help="не завантажувати дані, лише те, що вже є в базі")
     p.add_argument("--k", type=float, default=None, help="стоп у ATR замість збереженого в моделі (порівняти моделі з однаковим стопом)")
     p.add_argument("--limit", type=int, default=0, help="лише перші N монет (перевірка)")
     args = p.parse_args()
+    strat = strategies.get(args.strategy) if args.strategy else None
+    if strat is not None and not strategies.is15(strat):
+        sys.exit(f"режим {strat['id']} — годинна модель; бектест рахує лише 15m-режими")
     load_dotenv(os.path.join(ROOT, ".env"))
     t0 = time.time()
     mdir = train.MODELS_DIR if args.model == "current" else train.CANDIDATE_DIR
@@ -223,7 +241,7 @@ def main() -> None:
         results = []
         for i, b in enumerate(bases, 1):
             try:
-                r = run_ticker(conn, b, m15, m1, args.days, args.entry)
+                r = run_ticker(conn, b, m15, m1, args.days, args.entry, strat)
             except Exception as e:
                 print(f"  {b}: помилка {e}")
                 r = None
@@ -233,10 +251,12 @@ def main() -> None:
                 status(f"модель: {i}/{len(bases)}", 3, steps, coins=len(bases))
     status("підсумок", 4, steps)
     s = summarize(results, args.days)
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M") + f"_{args.model}_{args.entry}" + (f"_k{args.k:g}" if args.k is not None else "")
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M") + f"_{args.model}_{strat['id'] if strat else args.entry}" \
+        + (f"_k{args.k:g}" if args.k is not None else "")
     meta = {"id": run_id, "at": datetime.now(timezone.utc).isoformat(timespec="minutes"), "model": args.model, "max_oi": max_oi,
             "max_turnover": None if args.max_turnover == float("inf") else args.max_turnover,
-            "model_version": m15["trained_at"], "entry": args.entry, "min_turnover": args.min_turnover, "days": args.days,
+            "model_version": m15["trained_at"], "entry": (("candidate" if strat.get("signal") == "candidate" else "alert") if strat else args.entry),
+            "strategy": strat["id"] if strat else None, "strategy_title": strat["title"] if strat else None, "min_turnover": args.min_turnover, "days": args.days,
             "fee": FEE, "k": m15.get("risk", {}).get("k"), "universe": [u for u in uni if u["base"] in {r["ticker"] for r in results}],
             "excluded_as_trained": len(skip), "minutes": round((time.time() - t0) / 60, 1)}
     os.makedirs(OUT_DIR, exist_ok=True)
