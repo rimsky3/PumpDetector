@@ -215,7 +215,7 @@ live signal episode starts while the page is open, a sound, a browser notificati
   training data are fully labeled), otherwise from an **auto rule**: within the horizon after entry, price
   and OI rose at least by the thresholds (default 24 h, +15 %, +20 %; editable on the page). Until the horizon
   passes the outcome is *waiting*;
-- scope: live only (honest), + history backfill, + in-sample; period 7 / 30 days / all;
+- scope: live + history (default: every out-of-sample bar — this is how the model itself is judged; history = bars scored later, e.g. the screener was off or the scanner added the coin later, same decision on the same data), live only (what reached you in time), + in-sample; the choice is remembered; period 7 / 30 days / all, or "Dates…" — a calendar picker (two months, range in two clicks, presets today / yesterday / this or last week / this or last month / this year; UTC days by trade entry, `/api/journal?from=&to=`);
 - per model: signals, share that turned out pumps (precision), labeled pumps caught, median delay, average
   trade, false signals per 30 ticker-days — next to the leave-ticker-out validation for comparison;
 - trade results chart, by-ticker hit rate, how many trades are confirmed by labels, and system status
@@ -252,8 +252,13 @@ It is a simulation to judge the model, not trading advice.
 - **Hourly context** for a 15m bar is the score of the last hour closed by the bar's close (13:30–13:45 → the 12:00
   hour), so nothing from the future. Tiers are computed when read, so the order of the 15m and hourly parts
   inside one cycle does not matter.
-- **Risk on 15m:** stop = entry − k·ATR(14 bars of 15m), k from 15m MAE of labeled pumps (~1.2); no trailing stop (removed 2026-10-01: the owner exits by the order book);
-  exit when the Alert is gone for 4 bars (1 hour).
+- **Risk on 15m:** stop = entry − k·ATR(14 bars of 15m), k = 90th percentile of the drawdown from the model's actual
+  entry (~2.5); no trailing stop (removed 2026-10-01: the owner exits by the order book). **Partial exit** (since
+  2026-10-02, `risk.PARTIAL_EXIT`): half of the position is closed at entry + 3·ATR, then the stop on the rest moves to
+  breakeven; the rest exits when the Alert is gone for 4 bars (1 hour) or at the stop. A trade's result is that of the
+  whole position. On the backtest coins outside training this raised the profit factor from 0.74 to 0.86, and on the
+  screener journal from 1.44 to 1.67 (`experiments/exit_partial.py`). The chart shows the partial exit ("½ +x%"),
+  the target line before it and the breakeven stop after it. Hourly models keep the plain exit.
 - **Chart timeframe 5m / 15m / 1h** is independent of the model: on a coarser chart a bar shows the highest score
   and tier inside it (an Alert within the hour is not lost), on a finer chart the last score known at the bar's
   close. Positions are computed on the model's own bars; entry/exit marks go to the chart bar that closes with them.

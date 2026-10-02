@@ -134,6 +134,99 @@ entry minus the entry price, applied once the move is 1–2 ATR), optionally OI 
 current "Alert gone for 4 bars", or only together with it (`and`, and `and_small`: while the move is small, exit as now).
 Out-of-fold Alert entries, k·ATR stop, 0.1% fee. Writes `reports/exit_giveback.csv`.
 
+### `review.py`
+
+| Option | Meaning |
+|---|---|
+| `--rebuild` | rebuild the blind-review pool (`reports/review_pool.json`) from all backtest runs and the screener journal |
+| `--summary` | print the summary of decisions in `reviews.csv` |
+
+The review page itself is served by `label.py` at `/review` (see [labeling.md](labeling.md)).
+
+### `my_trades.py`
+
+| Option | Meaning |
+|---|---|
+| `--check` | show the API key permissions (must be read-only) |
+| `--fetch` | download Binance USDⓈ-M trades (`--days`, default 180) → fills and positions with tilt flags in `reports/my_trades/` (not in git) |
+
+The key lives in `.env` (`BINANCE_API_KEY`, `BINANCE_API_SECRET`) and must be read-only; it is never written anywhere else.
+
+### `experiments/my_entries_profile.py`
+
+The owner's systematic long entries (held ≥ 10 min, no tilt flags) versus the model's backtest entries, on Binance 15m
+price and volume only: change over 1h / 4h / 24h before entry, distance to the 24h and 7-day high, share of new 7-day
+highs, pullback position within the day's range, 4h volume against its 7-day norm, and MFE / MAE / share of the move
+taken. Candles for the owner's trades are cached in `reports/my_trades/_klines15.pkl`.
+
+### `experiments/logreg_15m.py`
+
+Logistic regression against LightGBM in the 15m tier on the same features and data: leave-ticker-out on the training
+tickers, a backtest on the backtest coins outside training (Alert with the current hourly confirmation) with the current
+and the partial exit, and the trade-outcome target from `experiments/outcome_target.py` (AUC and trades).
+
+### `experiments/oi_coins_15m.py`
+
+The 15m model with open interest in coins (no price effect) instead of USD, and with both sets: leave-ticker-out on the
+training tickers and a backtest on the backtest coins outside training with the current and the partial exit, plus
+feature importance of the coin variants.
+
+### `experiments/feature_corr.py`
+
+Spearman correlation between the 34 features of the 15m model on 15m bars of all coins (the cache of
+`experiments/outcome_target.py`): the strongest pairs and the most independent features in the console, and a heatmap
+ordered by hierarchical clustering in `reports/feature_corr.html`.
+
+### `experiments/exit_partial.py`
+
+Partial exit for the current model's Alert entries: close ⅓ or ½ of the position at +2 / +3 / +4 ATR, keep the rest on
+the current exit (4 bars without Alert or the stop), with the stop either unchanged or moved to breakeven after the
+partial exit; stop 2 or 2.5 ATR. Grid on the backtest coins by turnover band, then the best set against the current exit
+on the screener journal.
+
+### `experiments/exit_barrier_grid.py`
+
+Robustness of a barrier exit (target +TP·ATR, stop −SL·ATR, time limit) for the current model's Alert entries: a grid of
+neighbouring parameters on the backtest coins (from the `experiments/exit_structure.py` cache), split by turnover band,
+and the same comparison on the screener journal's out-of-sample trades.
+
+### `experiments/outcome_target.py`
+
+A 15m model trained on the trade outcome instead of "impulse is running": triple-barrier labels (+3 ATR before −1.5 ATR
+within 4 hours) on "live" moments (4h volume ≥ 2× its norm or a 2% move in an hour) across all coins with 15m data,
+validated out of sample in both coins and time (group A early → group B late and the reverse; thresholds are quantiles
+of the training predictions). Reports test AUC, non-overlapping trades at several thresholds against all live moments
+and the current model, and feature importance. Features are cached in `reports/backtests/_outcome_feats.pkl`
+(`--refresh` rebuilds).
+
+### `experiments/level_features.py`
+
+Level features for the 15m model (distance to the 24h and 7-day high, in % and in ATR, position in the day's range,
+break of the 7-day high): two identically retrained models, with and without them, compared by leave-ticker-out on the
+training tickers and by a backtest on the backtest coins outside training with the dashboard's position logic.
+
+### `experiments/style_backtest.py`
+
+A mechanical version of the owner's entry style on the backtest coins: a hot coin (24h change and 4h volume against
+its 7-day norm) that has pulled back 3–10% from its 24h high, against "chasing" at the high and random entries, with
+one shared exit (3% stop or 4 hours) and forward prices after 1 / 4 / 12 hours; each rule is also split by whether the
+model's Alert was on at entry. Uses the model-score cache of `experiments/exit_structure.py`.
+
+### `experiments/exit_structure.py`
+
+Exit rules from the owner's review of two stopped trades, on the backtest coins (outside training) with the full
+position logic: the current k·ATR stop, an early exit after 2 or 3 red 15m bars with falling OI and no new high, a stop
+just below the entry bar's low, and their combinations. Reports win rate, mean, median, sum without the top 3, profit
+factor, stop share, holding time and how many ≥ +5% winners each rule cuts. Model scores are cached in
+`reports/backtests/_exit_structure_cache.pkl` (`--refresh` recomputes).
+
+### `experiments/in_play.py`
+
+Backtest trades (coins outside training) split by whether the coin was "in play" before the entry: 24h turnover ×N its
+30-day median, OI up over 3 days, 24h range ×N its median, or a top mover of the hour among all backtest coins, at any
+time in the 5 days before entry (with and without the last 6 hours), at three threshold sets. Also price excursions
+after model entries versus random entries on the same coins.
+
 ### `experiments/early_5m.py`
 
 Earlier signals: the same 15m model on rolling 15m bars every 5 minutes (from 5m exchange data and 5m liquidations)

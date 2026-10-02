@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 
 from features import INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, compute_features, load_raw, query_df
 from fetch import Coinalyze, collect, read_tickers_file
-from risk import EXIT_BARS, atr, position_state, trade_stats
+from risk import EXIT_BARS, PARTIAL_EXIT, atr, position_state, trade_stats
 
 
 def last_atr(h: pd.DataFrame) -> float | None:
@@ -302,7 +302,7 @@ def ticker_15m(conn, base: str, days: int) -> dict:
     cur = f.dropna(subset=["oi_chg_4h"]).iloc[-1] if f["oi_chg_4h"].notna().any() else None
     t = tier_rows(conn, base).set_index("ts").sort_index()
     k, exit_bars = m15.get("risk", {}).get("k"), m15.get("exit_bars", 4)
-    pos = position_state(h, t["alert_score"], 1.0, k, exit_bars) if len(t) else {"open": False}
+    pos = position_state(h, t["alert_score"], 1.0, k, exit_bars, PARTIAL_EXIT) if len(t) else {"open": False}
     last = t.iloc[-1] if len(t) else None
     streak = 0
     if last is not None:
@@ -428,7 +428,7 @@ def rebar(conn, res: dict, base: str, tf: str, days: int) -> dict:
     snap = lambda ts: (pd.Timestamp(ts) + nb - pd.Timedelta(microseconds=1)).floor(freq) if ts is not None else None  # noqa: E731
     pos = dict(res["position"])
     for tr in [pos] + [pos.get("trades", [])][0]:
-        for key in ("entry_ts", "exit_ts"):
+        for key in ("entry_ts", "exit_ts", "partial_ts"):
             if tr.get(key) is not None:
                 tr[key] = snap(tr[key])
     res.update({
@@ -767,6 +767,44 @@ def rescore_on_start() -> None:
 
 
 _journal_cache: dict = {}
+# угоди всіх моделей (journal.prepare) — ключ: правило «Impulse», версія оцінок, розмітка; період лише фільтрує їх
+_prepared: dict = {"key": None, "data": None, "rule": dict(J.DEFAULT_RULE)}
+_prepared_lock = threading.Lock()
+
+
+def journal_bundles() -> dict:
+    bundles = {m["name"]: m for m in State.models}
+    if State.m15 is not None:
+        bundles = {T.TIER_MODEL: State.m15, T.CAND_MODEL: State.m15, **bundles}
+    return bundles
+
+
+def journal_version(conn) -> tuple:
+    """Коли журнал треба перерахувати: нові оцінки (без ковзних 5-хв — вони в журнал не йдуть) або змінена розмітка."""
+    last = conn.execute("SELECT max(scored_at) FROM signals WHERE model <> %s", (T.ROLL_MODEL,)).fetchone()[0]
+    p = os.path.join(ROOT, "pumps.csv")
+    return last, os.path.getmtime(p) if os.path.exists(p) else 0
+
+
+def prepared_for(conn, rule: dict) -> tuple[dict, tuple]:
+    key = (tuple(rule.values()),) + journal_version(conn)
+    with _prepared_lock:                      # фоновий прогрів і запит не рахують одне й те саме двічі
+        if _prepared["key"] != key:
+            _prepared["data"] = J.prepare(conn, journal_bundles(), rule)
+            _prepared["key"] = key
+        _prepared["rule"] = dict(rule)
+        return _prepared["data"], key
+
+
+def journal_warmer() -> None:
+    """Фоновий перерахунок угод, щойно скринер записав нові оцінки, — щоб «Журнал» відкривався одразу."""
+    while True:
+        try:
+            with psycopg.connect(State.db_url) as conn:
+                prepared_for(conn, _prepared["rule"])
+        except Exception as e:  # журнал не має валити дашборд
+            print(f"  ! журнал (фон): {e}")
+        time.sleep(60)
 
 
 def journal_view(conn, q: dict) -> dict:
@@ -776,16 +814,18 @@ def journal_view(conn, q: dict) -> dict:
         "oi": float(q.get("oi", J.DEFAULT_RULE["oi"])),
     }
     days = None if q.get("days", "30") == "all" else max(1, int(q.get("days", 30)))
-    model, kind = q.get("model", T.TIER_MODEL if State.m15 else "lightgbm"), q.get("kind", "live")
-    last = conn.execute("SELECT max(scored_at) FROM signals").fetchone()[0]
-    labels_mtime = os.path.getmtime(os.path.join(ROOT, "pumps.csv")) if os.path.exists(os.path.join(ROOT, "pumps.csv")) else 0
-    key = (model, days, kind, tuple(rule.values()), last, labels_mtime)
+    model, kind = q.get("model", T.TIER_MODEL if State.m15 else "lightgbm"), q.get("kind", "hist")
+    # вибір дат (YYYY-MM-DD, дні UTC включно) — замість «останніх N днів»
+    day = lambda s: pd.Timestamp(s, tz="UTC").normalize() if s else None  # noqa: E731
+    d_from, d_to = day(q.get("from")), day(q.get("to"))
+    if d_from is not None and d_to is not None and d_to < d_from:
+        d_from, d_to = d_to, d_from
+    prepared, pkey = prepared_for(conn, rule)
+    key = (model, days, kind, d_from, d_to) + pkey
     if key not in _journal_cache:
-        _journal_cache.clear()
-        bundles = {m["name"]: m for m in State.models}
-        if State.m15 is not None:
-            bundles = {T.TIER_MODEL: State.m15, T.CAND_MODEL: State.m15, **bundles}
-        res = J.journal(conn, bundles, model, days, kind, rule)
+        if len(_journal_cache) > 32:
+            _journal_cache.clear()
+        res = J.journal(conn, journal_bundles(), model, days, kind, rule, d_from, d_to, prepared)
         res["validation"] = {m["name"]: m["validation"] for m in State.models}
         for v in virtual_models():
             res["validation"][v["name"]] = v["validation"]
@@ -893,6 +933,7 @@ def main() -> None:
     if State.m15 is None:
         print("15m-моделі немає (python train.py) — показую лише годинні моделі")
     threading.Thread(target=rescore_on_start, daemon=True).start()
+    threading.Thread(target=journal_warmer, daemon=True).start()
 
     # На Windows SO_REUSEADDR дозволяє двом процесам зайняти один порт: другий «стартує», але запитів не отримує.
     # Вимикаємо його, щоб повторний запуск одразу казав, що порт зайнятий.

@@ -119,15 +119,33 @@ def trade_stats(trades: list[dict]) -> dict:
             "stops": sum(1 for t in closed if t.get("reason") == "stop")}
 
 
+# Частковий вихід (2026-10-02, власник прийняв як правило 15m-контуру): половина позиції — на цілі +3 ATR від входу,
+# після цього стоп на решту — у беззбиток; решта виходить як раніше (EXIT_BARS барів нижче порогу або стоп).
+# experiments/exit_partial.py: на монетах поза навчанням PF 0.74 → 0.86, у журналі 1.44 → 1.67 (без топ-3 0.66 → 1.04).
+PARTIAL_EXIT = {"frac": 0.5, "atr": 3.0, "breakeven": True}
+
+
 def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float | None,
-                   exit_bars: int = EXIT_BARS) -> dict:
+                   exit_bars: int = EXIT_BARS, partial: dict | None = None) -> dict:
     """Стан «угоди» за сигналами моделі на погодинному ряді тікера.
 
     Угода починається з першого бару з ймовірністю ≥ порогу і закінчується,
     коли ймовірність EXIT_BARS барів поспіль нижче порогу або ціна торкнулась стопу.
+    partial (PARTIAL_EXIT) — частковий вихід: частка frac закривається на entry + atr·ATR, далі стоп у беззбиток;
+    result_pct тоді — результат усієї позиції (зважений), partial_ts / partial_price — момент і ціна часткового виходу.
+    Стоп у барі перевіряється раніше за ціль (консервативно).
     Повертає поточну угоду (якщо вона відкрита) або останню закриту;
     у ключі "trades" — усі закриті угоди для міток на графіку.
     """
+    frac = partial["frac"] if partial else 0.0
+
+    def result(trade: dict, px: float) -> float:
+        """Результат усієї позиції: зафіксована частка + решта за ціною px."""
+        rest = px / trade["entry"] - 1
+        if trade.get("partial_ts") is None:
+            return rest
+        return frac * (trade["partial_price"] / trade["entry"] - 1) + (1 - frac) * rest
+
     a = atr(h)
     prob = prob.reindex(h.index)
     trade, last_closed_trade, closed = None, None, []
@@ -141,16 +159,22 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
                 if pd.isna(entry) or pd.isna(atr0):
                     continue
                 trade = {"entry_ts": ts, "entry": float(entry), "atr_entry": float(atr0),
-                         "stop": float(entry - k * atr0) if k is not None else None, "high": float(entry)}
+                         "stop": float(entry - k * atr0) if k is not None else None, "high": float(entry),
+                         "target": float(entry + partial["atr"] * atr0) if partial else None,
+                         "partial_ts": None, "partial_price": None}
                 below = 0
             continue
+        stop_hit = trade["stop"] is not None and h.at[ts, "low"] <= trade["stop"]
+        if not stop_hit and trade["target"] is not None and trade["partial_ts"] is None                 and h.at[ts, "high"] >= trade["target"]:
+            trade.update({"partial_ts": ts, "partial_price": trade["target"]})
+            if partial.get("breakeven") and trade["stop"] is not None:
+                trade["stop"] = max(trade["stop"], trade["entry"])      # решта позиції вже не може дати збиток
         trade["high"] = max(trade["high"], float(h.at[ts, "high"]))
         below = below + 1 if p < threshold else 0
-        stop_hit = trade["stop"] is not None and h.at[ts, "low"] <= trade["stop"]
         if below >= exit_bars or stop_hit:
             exit_price = trade["stop"] if stop_hit else float(h.at[ts, "price"])
             trade.update({"exit_ts": ts, "exit": exit_price, "reason": "stop" if stop_hit else "model",
-                          "result_pct": exit_price / trade["entry"] - 1})
+                          "result_pct": result(trade, exit_price)})
             closed.append(dict(trade))
             last_closed_trade, trade = trade, None
             below = 0
@@ -160,7 +184,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
         trade.update({
             "open": True, "below_bars": below,
             "hours": round((last_ts - trade["entry_ts"]) / H + (h.index[1] - h.index[0]) / H, 2) if len(h) > 1 else 1,
-            "result_pct": float(h.at[last_ts, "price"] / trade["entry"] - 1),
+            "result_pct": float(result(trade, float(h.at[last_ts, "price"]))),
         })
         return {**trade, "trades": closed}
     if last_closed_trade is not None:

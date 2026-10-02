@@ -114,6 +114,41 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .steps span { padding: 1px 7px; border-radius: 10px; background: var(--line); color: var(--fg3); }
 .steps .done { background: var(--ok-bg, #173404); color: var(--ok, #97c459); } .steps .now { background: var(--ld-bg, #412402); color: var(--ld-fg, #ef9f27); }
 .stepbar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 4px; } .stepbar i { display: block; height: 100%; background: var(--accent); transition: width .4s; }
+/* підказка панелі «Угоди моделі» */
+.tt { position: absolute; z-index: 20; pointer-events: none; min-width: 180px; background: var(--side); border: 1px solid var(--line2); border-radius: 8px; padding: 8px 10px; font-size: 11.5px; line-height: 1.5; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
+.tt[hidden] { display: none; }
+.tt .tt-h { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 2px; }
+.tt .tt-h b { font-weight: 600; }
+.tt .tt-a { color: var(--link); margin-top: 4px; }
+/* вибір дат у журналі */
+.dpbtn { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); font-size: 12px; text-align: left; }
+.dpbtn[aria-pressed="true"] { border-color: var(--accent); color: var(--warm); background: #2a1a12; }
+.dpic { font-size: 13px; opacity: .8; }
+.dp { position: fixed; z-index: 250; background: var(--card); border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.5); padding: 14px; width: 456px; max-width: calc(100vw - 32px); }
+.dp[hidden] { display: none; }
+.dp-months { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.dp-head { display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; color: var(--fg); height: 26px; margin-bottom: 6px; }
+.dp-nav { width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--fg2); font-size: 16px; }
+.dp-nav:hover { background: var(--line); color: var(--fg); }
+.dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; }
+.dp-wd { font-size: 10px; color: var(--fg3); text-align: center; padding: 4px 0 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.dp-d { height: 28px; border: 0; background: transparent; color: var(--fg); font-size: 12px; font-variant-numeric: tabular-nums; border-radius: 0; }
+.dp-d.out { color: var(--fg3); }
+.dp-d.we { color: var(--fg2); }
+.dp-d.today { color: var(--ok); font-weight: 600; }
+.dp-d.in { background: #2a1a12; }
+.dp-d.edge { background: var(--accent); color: var(--accent-fg); font-weight: 600; border-radius: 6px; }
+.dp-d.fut { color: var(--muted); cursor: default; }
+.dp-d:not(.fut):not(.edge):hover { background: var(--line2); border-radius: 6px; }
+.dp-pre { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 12px 0; margin-top: 10px; border-top: 1px solid var(--line); }
+.dp-pre button { border: 0; background: transparent; color: var(--link); font-size: 12px; padding: 2px 0; }
+.dp-pre button:hover { text-decoration: underline; }
+.dp-foot { display: flex; align-items: center; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.dp-foot input { width: 128px; height: 30px; border-radius: 6px; border: 1px solid var(--line2); background: var(--bg); color: var(--fg); font-size: 12px; padding: 0 8px; color-scheme: dark; }
+.dp-foot .sp { flex: 1; }
+.dp-foot .ghost { height: 30px; padding: 0 10px; border: 0; background: transparent; color: var(--fg); font-size: 12px; font-weight: 600; }
+.dp-foot .btn-primary { height: 30px; }
+@media (max-width: 520px) { .dp-months { grid-template-columns: 1fr; } .dp-months > div:nth-child(2) { display: none; } .dp-foot input { width: 110px; } }
 /* права панель */
 /* сканер ринку: картка-акордеон над списком (бурштинова рамка, як у макеті «B») */
 .scan { border: 1px solid #4a3326; background: #1b1714; border-radius: 10px; transition: border-color .15s; }
@@ -225,6 +260,18 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 </head>
 <body>
 <div id="topbar" aria-hidden="true"><i></i></div>
+<div class="dp" id="dp" role="dialog" aria-label="Вибір дат" hidden>
+  <div class="dp-months"><div id="dpM0"></div><div id="dpM1"></div></div>
+  <div class="dp-pre" id="dpPre">
+    <button data-pre="today">Сьогодні</button><button data-pre="yesterday">Вчора</button><button data-pre="week">Цей тиждень</button>
+    <button data-pre="lastweek">Минулий тиждень</button><button data-pre="month">Цей місяць</button><button data-pre="lastmonth">Минулий місяць</button>
+    <button data-pre="year">Цей рік</button>
+  </div>
+  <div class="dp-foot">
+    <input type="date" id="dpFrom" aria-label="Від"> <span class="dim">—</span> <input type="date" id="dpTo" aria-label="До">
+    <span class="sp"></span><button class="ghost" id="dpClear">Очистити</button><button class="btn-primary" id="dpApply">Застосувати</button>
+  </div>
+</div>
 <div class="app" id="app">
 
   <!-- ================= ЛІВА ПАНЕЛЬ ================= -->
@@ -291,11 +338,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="seg" id="periodSeg" role="group" aria-label="Період">
           <button data-days="7">7 д</button><button data-days="30" aria-pressed="true">30 д</button><button data-days="all">Усе</button>
         </div>
+        <button class="dpbtn" id="dpBtn" aria-haspopup="dialog" aria-expanded="false"><span class="dpic" aria-hidden="true">▦</span><span id="dpLbl">Дати…</span></button>
       </div>
       <div class="group">
         <div class="lbl"><span>Які оцінки рахувати</span><button class="help" data-help="kinds" aria-label="Що це?">?</button></div>
         <div class="seg col" id="kindSeg" role="group" aria-label="Які оцінки рахувати">
-          <button data-kind="live" aria-pressed="true">Лише live</button><button data-kind="hist">+ історія</button><button data-kind="all">+ in-sample</button>
+          <button data-kind="live" aria-pressed="false">Лише live</button><button data-kind="hist" aria-pressed="true">+ історія</button><button data-kind="all">+ in-sample</button>
         </div>
       </div>
       <div class="card">
@@ -465,12 +513,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div id="jRows"></div>
       </section>
       <div class="group" style="gap:16px">
-        <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:10px">
+        <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:10px;position:relative">
           <div class="phead" style="padding:0;border:0"><span class="t">Угоди моделі, % <button class="help" data-help="trades" aria-label="Що це?">?</button></span><span class="small" id="tRule">—</span></div>
-          <svg id="tBars" viewBox="0 0 300 150" width="100%" height="150" role="img" aria-label="Результат кожної угоди у відсотках"></svg>
+          <svg id="tBars" viewBox="0 0 300 170" width="100%" height="170" role="img" aria-label="Результат кожної угоди у відсотках"></svg>
+          <div class="tt" id="tTip" role="tooltip" hidden></div>
           <div class="stat"><span>Прибуткових</span><b id="tWin">—</b></div>
           <div class="stat"><span>Сер. виграш / програш</span><b id="tAvg">—</b></div>
-          <div class="stat"><span>Виходів по стопу</span><b id="tStops">—</b></div>
+          <div class="stat"><span title="Сума виграшів / сума програшів (за модулем). Більше 1 — модель у плюсі в сумі; 1.5+ — добре.">Профіт-фактор · виграш/програш</span><b id="tStops">—</b></div>
         </section>
         <section class="panel" style="padding:14px 18px;display:flex;flex-direction:column;gap:8px">
           <span class="phead" style="padding:0;border:0"><span class="t">За тікерами <button class="help" data-help="tickers" aria-label="Що це?">?</button></span></span>
@@ -531,7 +580,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     view: "forecast", model: LS.get("pd-model2", "tier15"), chartTf: null, ticker: LS.get("pd-ticker", null), days: 3, oiUsd: LS.get("pd-oiusd", false),
     meta: null, data: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])),
     notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), seen: new Set(LS.get("pd-seen", [])),
-    jDays: "30", jKind: "live", jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
+    jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
 
   // ---------- форматування ----------
@@ -593,7 +642,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     model: "«15m + 1h» — основна: 15-хвилинна модель дає ранній сигнал («Кандидат»), годинна його підтверджує («Alert»). LightGBM 1h і Регресія 1h — старі годинні моделі для порівняння. Перемикач змінює всі цифри на обох екранах.",
     prob: "Для «15m + 1h»: P — оцінка 15-хвилинної моделі, що зараз триває імпульс. Вище порогу — «Кандидат» (рано, частіше хибно: перевір стакан). Якщо ще й годинна модель ≥ ¾ свого порогу (рядок «1h» нижче) — «Alert». Число поруч зі статусом — скільки часу поспіль тримається рівень.",
     metrics: "Ключові ознаки, на які дивиться модель: зміна open interest за 4 год (у USD, як бачить модель, без стрибків від лістингів), обсяг відносно звичайного за 7 днів (у σ), частка акаунтів у лонг.",
-    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert, вихід — Alert згас 4 бари поспіль (1 год), стоп — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених імпульсах). Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
+    position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert; половина позиції закривається на цілі +3 ATR, після цього стоп на решту переноситься в беззбиток («Б/з» на графіку); решта виходить, коли Alert згас 4 бари поспіль (1 год), або по стопу — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених імпульсах). Результат угоди — усієї позиції. Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
     insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
     oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
     tf: "Таймфрейм графіка. Модель від цього не змінюється: «15m + 1h» рахує на 15m, годинні — на 1h. На крупнішому ТФ бар показує найвищу оцінку й рівень сигналу за свій час (Alert усередині години не загубиться), на дрібнішому — останню оцінку, відому на момент закриття бару. 5m — для точного входу; оновлюється скринером.",
@@ -604,15 +653,15 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     notify: "Коли на новому live-барі починається Alert — звук і системне сповіщення браузера, навіть якщо вкладка у фоні. Старі й in-sample оцінки мовчать. Дашборд має бути відкритим. Кнопка нижче — також про Кандидатів: 15m-модель уже бачить початок, годинна ще не підтвердила; один тихіший тон замість двох. Раніше на ~15 хв, але хибних ≈ в 1.5 раза більше — перевіряй стаканом.",
     list: "Тікери скринера (watchlist.txt), спершу Alert, потім кандидати. Міні-графік — ймовірність за 24 год з пунктиром порогу. Δ OI 24г — зміна open interest за добу. Клік по заголовку — сортування, ↑/↓ — наступний тікер.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
-    period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду).",
-    kinds: "Live — оцінки в реальному часі на барах, яких модель не бачила: єдина чесна перевірка. Історія — дозаповнення при першому запуску. In-sample — бари з навчання, лише для порівняння.",
+    period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду). Кнопка «Дати…» — конкретний день, тиждень, місяць чи рік (дні UTC, за моментом входу в угоду).",
+    kinds: "Live + історія (за замовчуванням) — усі оцінки на барах, яких модель не бачила: так оцінюється сама модель. Історія — бари, оцінені пізніше (скринер не працював, сканер додав тікер пізніше): рішення моделі на тих самих даних те саме, різниця лише в тому, коли сигнал дійшов до тебе. Лише live — що ти реально міг отримати вчасно. In-sample — бари з навчання, лише для порівняння.",
     rule: "Автоматична перевірка сигналу, коли розмітки ще немає: якщо за вказаний час після входу ціна і OI виросли не менше порогів — «Impulse · авто», інакше «Хибний · авто». Результат попередній: розмітка його перекриває.",
     labels: "Скільки угод у вибраному обсязі вже перевірено твоєю розміткою в label.py. Автоматичні результати варто переглянути: вони грубіші. Фільтр «Авто, перевірити» показує саме їх.",
     system: "Чи все працює: коли скринер востаннє оновив дані, скільки викликів Coinalyze і відповідей 429, яким тікерам бракує 7 днів історії, яка версія моделі активна і з якими налаштуваннями навчена (--fresh-hours: скільки свіжих нерозмічених годин не пішло в навчання).",
     compare: "Як моделі показують себе на вибраних оцінках. «15m + 1h» — угоди за рівнем Alert, «15m кандидат» — за рівнем Кандидат (раніше, але частіше хибно). «З них імпульси» — частка сигналів, що виявились імпульсом (precision). «Імпульсів спіймано» — з розмічених імпульсів. Нижче — валідація на навчанні для порівняння.",
     journal: "Кожна угода вибраної моделі: від першого бару з сигналом до виходу за правилами стопу й виходу — з результатом і відсотком угоди.",
     outcome: "«розмітка» — за твоєю розміткою в label.py, остаточно. «авто» — за автоправилом, попередньо. «Очікує» — горизонт автоправила ще не минув і розмітки немає.",
-    trades: "Результат кожної закритої угоди у % (хронологічно) і підсумки: частка прибуткових, середній виграш і програш, скільки виходів по стопу.",
+    trades: "Кожна угода періоду — стовпчик (хронологічно, пунктир — межа дня UTC). Зелений — плюс, червоний — мінус, темно-червоний — вихід по стопу, заштриховані — відкриті (результат за поточною ціною). Шкала обрізана на ~2× типового результату: більші угоди позначено «↑79%». Наведи — деталі угоди, клікни — відкриється графік тікера на цій угоді. Підсумки нижче — лише закриті угоди: частка прибуткових (win rate), середній виграш і програш, профіт-фактор (сума виграшів / сума програшів; > 1 — у плюсі) і виграш/програш (у скільки разів середній виграш більший за середній програш).",
     tickers: "На яких монетах сигнали частіше виявляються правдою: частка вирішених угод (імпульс або хибний), що виявились імпульсом.",
   };
   const pop = $("pop");
@@ -749,7 +798,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     }
     const kTxt = d.k == null ? "—" : d.k.toFixed(1);
     const exitMin = d.exit_bars * d.bar / 60;
-    $("posRule").textContent = (is15() ? `вихід: Alert згас ${d.exit_bars} бари поспіль (${fmtMin(exitMin)})`
+    $("posRule").textContent = (is15() ? `½ позиції на +3 ATR, далі стоп у беззбиток; решта — Alert згас ${d.exit_bars} бари поспіль (${fmtMin(exitMin)})`
       : `вихід: P нижче ${fmtP(thr)} ${d.exit_bars} години поспіль`) +
       `; стоп ${kTxt} ATR (% від входу)`;
     // плитки: ціна крупно, під нею — відсоток (стоп — від ціни входу)
@@ -757,13 +806,15 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const px = d.price, a = d.atr;
     if (p.open) {
       $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
-      $("posLine").textContent = `Вхід ${fmtTs(p.entry_ts)} · ${fmtPx(p.entry)} · ${fmtMin(p.hours * 60)}`;
+      $("posLine").textContent = `Вхід ${fmtTs(p.entry_ts)} · ${fmtPx(p.entry)} · ${fmtMin(p.hours * 60)}` +
+        (p.partial_ts ? ` · ½ закрито ${fmtPx(p.partial_price)} (${fmtPct(p.partial_price / p.entry - 1)}), стоп у беззбитку`
+          : p.target != null ? ` · ціль ½: ${fmtPx(p.target)} (${fmtPct(p.target / p.entry - 1)})` : "");
       tile("tStop", fmtPx(p.stop), p.stop != null && p.entry ? fmtPct(p.stop / p.entry - 1) : "");
       tile("tExit", p.below_bars > 0 ? `${p.below_bars} бар ↓` : "ні", p.below_bars > 0 ? `з ${d.exit_bars}` : "тримати");
       $("tExit").className = "v " + (p.below_bars > 0 ? "amber" : "ok");
     } else if (p.exit_ts) {
       $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
-      $("posLine").textContent = `Остання: ${fmtTs(p.entry_ts)} → ${fmtTs(p.exit_ts)} (${p.reason === "stop" ? "стоп" : "модель"})`;
+      $("posLine").textContent = `Остання: ${fmtTs(p.entry_ts)} → ${fmtTs(p.exit_ts)} (${p.reason === "stop" ? (p.partial_ts ? "½ на цілі, решта в беззбиток" : "стоп") : p.partial_ts ? "½ на цілі, решта — модель" : "модель"})`;
       tile("tStop", "—"); tile("tExit", "закрита", p.exit != null ? fmtPx(p.exit) : ""); $("tExit").className = "v dim";
     } else {
       // позиції немає: рівні «якщо вхід зараз» — від поточної ціни і поточного ATR
@@ -793,6 +844,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     } catch (e) { st.data = null; show($("fError"), e.message); }
     finally { done(); }
     renderHead(); renderLeft(); renderChart();
+    if (st.focus && st.focus.ticker === st.ticker && chart && st.data) {       // клік по угоді в журналі
+      const f = st.focus; st.focus = null;
+      requestAnimationFrame(() => { try { chart.timeScale().setVisibleRange({ from: f.from, to: f.to }); } catch (e) {} });
+    }
     Live.start();
     // сервер у фоні дозавантажує закриті бари, яких ще немає в базі, — перезапитуємо, щойно вони будуть
     if (st.data && st.data.tail_refresh) { const tk = st.ticker; setTimeout(() => { if (st.ticker === tk) loadTicker(); }, 15000); }
@@ -909,7 +964,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     [...(pos.trades || []), ...(pos.open ? [pos] : [])].forEach((tr) => {
       const h = tr.live === false, sfx = h ? " · іст." : "";
       if (tr.entry_ts >= t0) marks.push({ time: tr.entry_ts, position: "belowBar", shape: "arrowUp", color: h ? dim : warm, text: "Вхід" + sfx });
-      if (tr.exit_ts && tr.exit_ts >= t0) marks.push({ time: tr.exit_ts, position: "aboveBar", shape: "arrowDown", color: h ? dim : fg2, text: `${tr.reason === "stop" ? "Стоп" : "Вихід"} ${fmtPct(tr.result_pct)}${sfx}` });
+      if (tr.partial_ts && tr.partial_ts >= t0 && tr.entry) marks.push({ time: tr.partial_ts, position: "aboveBar", shape: "circle", color: h ? dim : cssVar("--ok"), text: `½ ${fmtPct(tr.partial_price / tr.entry - 1)}${sfx}` });
+      if (tr.exit_ts && tr.exit_ts >= t0) marks.push({ time: tr.exit_ts, position: "aboveBar", shape: "arrowDown", color: h ? dim : fg2, text: `${tr.reason === "stop" ? (tr.partial_ts ? "Б/з" : "Стоп") : "Вихід"} ${fmtPct(tr.result_pct)}${sfx}` });
     });
     // коли сканер з поточними порогами додав би тікер у список (лише авто-тікери) — на бар графіка, що містить цей момент
     (d.scanner_entries || []).forEach((ts) => {
@@ -920,7 +976,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     markersApi.setMarkers(marks.filter((m) => idx.has(m.time)).sort((a, b) => a.time - b.time));
     priceLines.forEach(([ser, l]) => ser.removePriceLine(l)); priceLines = [];
     const line = (ser, price, color, title) => { if (price != null) priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]); };
-    if (pos.open) line(S.candles, pos.stop, warm, "Стоп");
+    if (pos.open) {
+      line(S.candles, pos.stop, warm, pos.partial_ts ? "Стоп · б/з" : "Стоп");
+      if (pos.target != null && !pos.partial_ts) line(S.candles, pos.target, cssVar("--ok"), "Ціль ½");
+    }
     line(S.prob, thr, fg2, is15() ? "поріг 15m" : "поріг");
     if (is15() && d.ctx && d.ctx.thr1h != null) line(S.ctx, d.ctx.share * d.ctx.thr1h, cssVar("--fg3"), "1h ≥");
     const key = `${d.ticker}|${st.model}|${d.tf}`;
@@ -1478,6 +1537,96 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   });
 
   // ---------- Журнал ----------
+  // ---------- «Угоди моделі»: стовпчик = угода; шкала %, роздільники днів, обрізання викидів, підказка, клік → графік ----------
+  const renderTradeBars = (j) => {
+    const svg = $("tBars"), tip = $("tTip"); svg.replaceChildren(); tip.hidden = true;
+    const ns = "http://www.w3.org/2000/svg";
+    const mk = (tag, attrs, parent = svg) => { const e = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); parent.appendChild(e); return e; };
+    const tr = j.rows.filter((r) => r.result_pct != null).slice().sort((a, b) => a.entry_ts - b.entry_ts);
+    const W = Math.max(240, Math.round(svg.clientWidth || svg.parentElement.clientWidth - 36)), Hh = 170;
+    svg.setAttribute("viewBox", `0 0 ${W} ${Hh}`); svg.setAttribute("height", Hh);
+    if (!tr.length) { mk("text", { x: W / 2, y: Hh / 2, "text-anchor": "middle", fill: cssVar("--fg3"), "font-size": 11 }).textContent = "угод у періоді ще немає"; return; }
+    // шкала: межа — не далі ніж ~2× 90-й перцентиль |результату| (мін. 5%), щоб одна угода +79% не стискала решту в рисочки
+    const abs = tr.map((r) => Math.abs(r.result_pct)).sort((a, b) => a - b);
+    const p90 = abs[Math.min(abs.length - 1, Math.floor(abs.length * 0.9))];
+    const cap = Math.max(0.05, Math.min(abs[abs.length - 1], 2 * p90));
+    const hiV = Math.max(0.02, Math.min(cap, Math.max(...tr.map((r) => r.result_pct)))), loV = Math.max(0.02, Math.min(cap, -Math.min(...tr.map((r) => r.result_pct))));
+    const L = 34, R = 4, T = 14, B = 20, plotH = Hh - T - B;
+    const sc = plotH / (hiV + loV), zero = T + hiV * sc, Y = (v) => zero - Math.max(-loV, Math.min(hiV, v)) * sc;
+    const steps = [0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1], step = steps.find((s) => (hiV + loV) / s <= 5) || 1;
+    const grid = cssVar("--line"), fg3 = cssVar("--fg3");
+    for (let v = -Math.floor(loV / step) * step; v <= hiV + 1e-9; v += step) {
+      const y = Y(v);
+      mk("line", { x1: L, x2: W - R, y1: y, y2: y, stroke: Math.abs(v) < 1e-9 ? cssVar("--line3") : grid, "stroke-width": 1 });
+      mk("text", { x: L - 5, y: y + 3.5, "text-anchor": "end", fill: fg3, "font-size": 10 }).textContent = Math.abs(v) < 1e-9 ? "0" : `${v > 0 ? "+" : "−"}${Math.round(Math.abs(v) * 100)}%`;
+    }
+    const n = tr.length, slot = (W - L - R) / n, bw = Math.max(1.5, Math.min(14, slot * 0.72));
+    // роздільники днів (UTC) і підписи; підпис — не частіше ніж раз на ~44 px
+    let prevDay = null, lastLbl = -1e9;
+    tr.forEach((r, i) => {
+      const day = new Date(r.entry_ts * 1000).toISOString().slice(0, 10);
+      if (day !== prevDay) {
+        const x = L + i * slot;
+        if (prevDay) mk("line", { x1: x, x2: x, y1: T - 4, y2: Hh - B + 4, stroke: grid, "stroke-dasharray": "2 3" });
+        if (x - lastLbl >= 44) {
+          const d = new Date(day + "T00:00:00Z");
+          mk("text", { x: x + 2, y: Hh - 5, fill: fg3, "font-size": 10 }).textContent = `${d.getUTCDate()} ${["січ", "лют", "бер", "кві", "тра", "чер", "лип", "сер", "вер", "жов", "лис", "гру"][d.getUTCMonth()]}`;
+          lastLbl = x;
+        }
+        prevDay = day;
+      }
+    });
+    // штрихування для відкритих угод
+    const defs = mk("defs", {});
+    ["ok", "hot"].forEach((c) => {
+      const p = mk("pattern", { id: `hatch-${c}`, width: 4, height: 4, patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" }, defs);
+      mk("rect", { width: 4, height: 4, fill: rgba(cssVar(`--${c}`), 0.25) }, p);
+      mk("line", { x1: 0, y1: 0, x2: 0, y2: 4, stroke: cssVar(`--${c}`), "stroke-width": 2 }, p);
+    });
+    const stopCol = "#a32d2d";
+    const bars = tr.map((r, i) => {
+      const v = r.result_pct, cx = L + i * slot + slot / 2, y0 = Y(Math.max(0, v)), y1 = Y(Math.min(0, v));
+      const h = Math.max(1.5, y1 - y0), up = v >= 0;
+      const fill = r.open ? `url(#hatch-${up ? "ok" : "hot"})` : up ? cssVar("--ok") : r.reason === "stop" ? stopCol : cssVar("--hot");
+      const rect = mk("rect", { x: cx - bw / 2, y: up ? y0 : y1 - h, width: bw, height: h, rx: Math.min(2, bw / 3), fill });
+      if (Math.abs(v) > (up ? hiV : loV) + 1e-9) {                     // обрізаний викид: стрілка і значення
+        mk("text", { x: cx, y: up ? T - 3 : Hh - B + 11, "text-anchor": "middle", fill: up ? cssVar("--ok") : cssVar("--hot"), "font-size": 10, "font-weight": 600 }).textContent = `${up ? "↑" : "↓"}${Math.round(Math.abs(v) * 100)}%`;
+      }
+      // зона наведення — уся висота стовпчика-слоту (ширша за сам стовпчик)
+      const hit = mk("rect", { x: L + i * slot, y: T - 6, width: Math.max(slot, 4), height: plotH + 12, fill: "transparent", style: "cursor:pointer" });
+      return { r, rect, hit, cx };
+    });
+    const OUTN = { pump: "Impulse", fp: "Хибний", wait: "результат ще не відомий" };
+    const dur = (a, b) => { const m = Math.round((b - a) / 60); return m >= 60 ? `${Math.floor(m / 60)} год${m % 60 ? ` ${m % 60} хв` : ""}` : `${m} хв`; };
+    const show = (b) => {
+      bars.forEach((x) => x.rect.setAttribute("opacity", x === b ? 1 : 0.35));
+      const r = b.r, end = r.open ? null : r.exit_ts;
+      tip.replaceChildren();
+      const h = el("div", "tt-h"); h.append(el("b", "", r.ticker), el("span", pctCls(r.result_pct), fmtPct(r.result_pct)));
+      tip.append(h,
+        el("div", "", `${fmtTs(r.entry_ts)} → ${r.open ? "відкрита" : fmtTs(end)} UTC`),
+        el("div", "dim", `${r.open ? "триває" : dur(r.entry_ts, end)} · ${r.open ? "позиція відкрита" : r.reason === "stop" ? "вихід по стопу" : "вихід моделі"}`),
+        el("div", "dim", `${OUTN[r.outcome] || "—"} · ${r.kind === "live" ? "live" : r.kind === "history" ? "історія" : r.kind}`),
+        el("div", "tt-a", "клік — відкрити на графіку"));
+      tip.hidden = false;
+      const box = svg.getBoundingClientRect(), host = tip.offsetParent.getBoundingClientRect();
+      const px = box.left - host.left + (b.cx / W) * box.width;
+      tip.style.left = `${Math.max(4, Math.min(px - tip.offsetWidth / 2, host.width - tip.offsetWidth - 4))}px`;
+      tip.style.top = `${box.top - host.top - tip.offsetHeight - 6}px`;
+    };
+    const hide = () => { bars.forEach((x) => x.rect.setAttribute("opacity", 1)); tip.hidden = true; };
+    bars.forEach((b) => {
+      b.hit.addEventListener("mouseenter", () => show(b));
+      b.hit.addEventListener("click", () => openTrade(b.r));
+    });
+    svg.onmouseleave = hide;
+  };
+  // відкрити угоду на екрані «Прогноз»: тікер + видимий проміжок навколо угоди (після завантаження даних)
+  const openTrade = (r) => {
+    const pad = 6 * 3600, end = r.open || !r.exit_ts ? Date.now() / 1000 : r.exit_ts;
+    st.focus = { ticker: r.ticker, from: r.entry_ts - pad, to: end + pad };
+    selectTicker(r.ticker);
+  };
   const renderJournal = () => {
     const j = st.journal; if (!j) return;
     // порівняння моделей
@@ -1515,22 +1664,19 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       row.append(el("span", "small", r.open ? "позиція відкрита" : `${r.reason === "stop" ? "стоп" : "модель"}, ${r.exit_ts ? fmtTs(r.exit_ts) : "—"}`));
       box.appendChild(row);
     });
-    // угоди: стовпчики
-    const t = j.trades, svg = $("tBars"); svg.replaceChildren();
-    const ns = "http://www.w3.org/2000/svg", res = t.results;
-    const mx = Math.max(0.05, ...res.map(Math.abs)), zero = 75, sc = 68 / mx, w = 300 / Math.max(res.length, 1);
-    const base = document.createElementNS(ns, "line"); [["x1", 0], ["x2", 300], ["y1", zero], ["y2", zero], ["stroke", cssVar("--line2")]].forEach(([k, v2]) => base.setAttribute(k, v2)); svg.appendChild(base);
-    res.forEach((v2, i) => {
-      const r = document.createElementNS(ns, "rect"), hh = Math.max(1, Math.abs(v2) * sc);
-      [["x", i * w + 1.5], ["width", Math.max(1, w - 3)], ["y", v2 >= 0 ? zero - hh : zero], ["height", hh], ["rx", 1.5], ["fill", v2 >= 0 ? cssVar("--ok") : cssVar("--hot")]].forEach(([k, v3]) => r.setAttribute(k, v3));
-      const tt = document.createElementNS(ns, "title"); tt.textContent = fmtPct(v2); r.appendChild(tt); svg.appendChild(r);
-    });
-    if (!res.length) { const tx = document.createElementNS(ns, "text"); tx.setAttribute("x", 150); tx.setAttribute("y", 80); tx.setAttribute("text-anchor", "middle"); tx.setAttribute("fill", cssVar("--fg3")); tx.setAttribute("font-size", "11"); tx.textContent = "закритих угод ще немає"; svg.appendChild(tx); }
+    // угоди: стовпчики — усі угоди періоду хронологічно (відкриті заштриховано), шкала %, дні, підказка, клік → графік
+    renderTradeBars(j);
+    const t = j.trades;
     $("tWin").textContent = t.n ? `${t.win} з ${t.n} · ${Math.round(t.win / t.n * 100)}%` : "—";
     const avg = $("tAvg"); avg.replaceChildren(); avg.append(el("span", "ok", fmtPct(t.avg_win)), " / ", el("span", "red", fmtPct(t.avg_loss)));
-    $("tStops").textContent = String(t.stops);
+    // профіт-фактор = Σ виграшів / |Σ програшів|; виграш/програш = сер. виграш / |сер. програш| — по закритих угодах періоду
+    const cl = j.rows.filter((r) => !r.open && r.result_pct != null).map((r) => r.result_pct);
+    const gw = cl.filter((v) => v > 0).reduce((a, v) => a + v, 0), gl = -cl.filter((v) => v <= 0).reduce((a, v) => a + v, 0);
+    const pf = gl > 0 ? gw / gl : null, rr = t.avg_win != null && t.avg_loss ? t.avg_win / Math.abs(t.avg_loss) : null;
+    const ts = $("tStops"); ts.replaceChildren();
+    ts.append(el("span", pf == null ? "" : pf >= 1 ? "ok" : "red", pf == null ? (gw > 0 ? "∞" : "—") : pf.toFixed(2)), " · ", el("span", "", rr == null ? "—" : `${rr.toFixed(2)}×`));
     const mi2 = modelInfo();
-    $("tRule").textContent = `стоп ${mi2?.risk?.k?.toFixed(1) ?? "—"} ATR · вихід ${mi2?.tf === "15m" ? `${mi2.exit_bars} бари 15m` : "2 бари"}`;
+    $("tRule").textContent = `стоп ${mi2?.risk?.k?.toFixed(1) ?? "—"} ATR · ${mi2?.tf === "15m" ? `½ на +3 ATR · вихід ${mi2.exit_bars} бари 15m` : "вихід 2 бари"}`;
     // за тікерами
     const bt = $("byTk"); bt.replaceChildren();
     if (!j.by_ticker.length) bt.appendChild(el("span", "small", "Вирішених угод ще немає."));
@@ -1546,19 +1692,137 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("lblN").textContent = String(L.label); $("lblOf").textContent = `з ${L.total} угод`;
     $("lblBar").style.width = L.total ? `${L.label / L.total * 100}%` : "0";
     $("lblRest").textContent = `${L.auto} авто · ${L.wait} очікує`;
-    $("jSince").textContent = st.jDays === "all" ? "за весь час" : `за ${st.jDays} днів · ${{ live: "лише live", hist: "live + історія", all: "усі оцінки" }[st.jKind]}`;
+    const scope = { live: "лише live", hist: "live + історія", all: "усі оцінки" }[st.jKind];
+    $("jSince").textContent = `${st.jFrom ? dpLabel(st.jFrom, st.jTo) : st.jDays === "all" ? "за весь час" : `за ${st.jDays} днів`} · ${scope}`;
   };
   const loadJournal = async () => {
     const r = st.rule;
-    const q = `model=${st.model}&days=${st.jDays}&kind=${st.jKind}&horizon=${r.horizon}&price=${r.price / 100}&oi=${r.oi / 100}`;
+    const q = `model=${st.model}&days=${st.jDays}&kind=${st.jKind}&horizon=${r.horizon}&price=${r.price / 100}&oi=${r.oi / 100}`
+      + (st.jFrom ? `&from=${st.jFrom}&to=${st.jTo || st.jFrom}` : "");
     const done = busy($("viewJournal").querySelector(".jsplit"), $("jBusy"), "Рахую журнал…");
     const done2 = busy($("viewJournal").querySelector("section.panel"), null);
     try { st.journal = await api(`/api/journal?${q}`); show($("jError"), ""); } catch (e) { show($("jError"), e.message); return; }
     finally { done(); done2(); }
     renderJournal();
   };
-  document.querySelectorAll("#periodSeg [data-days]").forEach((b) => b.addEventListener("click", () => { st.jDays = b.dataset.days; pressIn("periodSeg", "days", st.jDays); loadJournal(); }));
-  document.querySelectorAll("#kindSeg [data-kind]").forEach((b) => b.addEventListener("click", () => { st.jKind = b.dataset.kind; pressIn("kindSeg", "kind", st.jKind); loadJournal(); }));
+  document.querySelectorAll("#periodSeg [data-days]").forEach((b) => b.addEventListener("click", () => {
+    st.jDays = b.dataset.days; st.jFrom = st.jTo = null; pressIn("periodSeg", "days", st.jDays); renderDpBtn(); loadJournal();
+  }));
+  // ---------- вибір дат: два місяці, діапазон двома кліками, готові періоди; дні UTC ----------
+  const MONTHS = ["Січень", "Лютий", "Березень", "Квітень", "Травень", "Червень", "Липень", "Серпень", "Вересень", "Жовтень", "Листопад", "Грудень"];
+  const MON_S = ["січ", "лют", "бер", "кві", "тра", "чер", "лип", "сер", "вер", "жов", "лис", "гру"];
+  const iso = (d) => d.toISOString().slice(0, 10);
+  const utcDay = (y, m, d) => new Date(Date.UTC(y, m, d));
+  const todayIso = () => iso(new Date());
+  const addDays = (s, n) => { const d = new Date(s + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return iso(d); };
+  const fmtDay = (s) => { const d = new Date(s + "T00:00:00Z"); return `${d.getUTCDate()} ${MON_S[d.getUTCMonth()]}`; };
+  const dpLabel = (a, b) => {
+    b = b || a;
+    if (a === b) return a === todayIso() ? "сьогодні" : `${fmtDay(a)} ${a.slice(0, 4)}`;
+    const da = new Date(a + "T00:00:00Z"), db = new Date(b + "T00:00:00Z");
+    if (da.getUTCFullYear() === db.getUTCFullYear() && da.getUTCMonth() === db.getUTCMonth())
+      return `${da.getUTCDate()}–${db.getUTCDate()} ${MON_S[db.getUTCMonth()]} ${a.slice(0, 4)}`;
+    return `${fmtDay(a)} – ${fmtDay(b)} ${b.slice(0, 4)}`;
+  };
+  const DP = { a: null, b: null, hover: null, view: null };      // view — перший показаний місяць (UTC, 1-ше число)
+  const renderDpBtn = () => {
+    const on = !!st.jFrom;
+    $("dpBtn").setAttribute("aria-pressed", String(on));
+    $("dpLbl").textContent = on ? dpLabel(st.jFrom, st.jTo) : "Дати…";
+    if (on) pressIn("periodSeg", "days", "__none__");      // готові «7 д / 30 д / Усе» не активні, поки вибрано дати
+  };
+  const dpMonth = (box, y, m, nav) => {
+    box.replaceChildren();
+    const head = el("div", "dp-head");
+    const prev = el("button", "dp-nav", "‹"), next = el("button", "dp-nav", "›");
+    prev.setAttribute("aria-label", "Попередній місяць"); next.setAttribute("aria-label", "Наступний місяць");
+    prev.style.visibility = nav === "prev" || nav === "both" ? "visible" : "hidden";
+    next.style.visibility = nav === "next" || nav === "both" ? "visible" : "hidden";
+    prev.onclick = () => { DP.view = utcDay(DP.view.getUTCFullYear(), DP.view.getUTCMonth() - 1, 1); renderDp(); };
+    next.onclick = () => { DP.view = utcDay(DP.view.getUTCFullYear(), DP.view.getUTCMonth() + 1, 1); renderDp(); };
+    head.append(prev, el("span", "", `${MONTHS[m]} ${y}`), next);
+    const grid = el("div", "dp-grid");
+    ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"].forEach((w) => grid.appendChild(el("span", "dp-wd", w)));
+    const shift = (utcDay(y, m, 1).getUTCDay() + 6) % 7;        // тиждень з понеділка
+    const today = todayIso();
+    const hi = DP.b || (DP.a && DP.hover) || DP.a;
+    const [r0, r1] = DP.a ? (DP.a <= hi ? [DP.a, hi] : [hi, DP.a]) : [null, null];
+    for (let i = 0; i < 42; i++) {
+      const d = utcDay(y, m, 1 - shift + i), s = iso(d);
+      if (i >= 35 && d.getUTCMonth() !== m) break;               // шостий рядок — лише якщо в ньому ще цей місяць
+      const b = el("button", "dp-d", String(d.getUTCDate()));
+      if (d.getUTCMonth() !== m) b.classList.add("out");
+      if (d.getUTCDay() === 0 || d.getUTCDay() === 6) b.classList.add("we");
+      if (s === today) b.classList.add("today");
+      if (s > today) b.classList.add("fut");
+      if (r0 && s >= r0 && s <= r1) b.classList.add("in");
+      if (s === r0 || s === r1) b.classList.add("edge");
+      b.onclick = () => {
+        if (s > today) return;
+        if (!DP.a || DP.b) { DP.a = s; DP.b = null; } else { DP.b = s; if (DP.b < DP.a) [DP.a, DP.b] = [DP.b, DP.a]; }
+        renderDp();
+      };
+      b.onmouseenter = () => { if (DP.a && !DP.b && DP.hover !== s) { DP.hover = s; renderDp(); } };
+      grid.appendChild(b);
+    }
+    box.append(head, grid);
+  };
+  const renderDp = () => {
+    const v = DP.view, v2 = utcDay(v.getUTCFullYear(), v.getUTCMonth() + 1, 1);
+    const one = window.matchMedia("(max-width: 520px)").matches;
+    dpMonth($("dpM0"), v.getUTCFullYear(), v.getUTCMonth(), one ? "both" : "prev");
+    dpMonth($("dpM1"), v2.getUTCFullYear(), v2.getUTCMonth(), "next");
+    $("dpFrom").value = DP.a || ""; $("dpTo").value = DP.b || DP.a || "";
+  };
+  const placeDp = () => {
+    const r = $("dpBtn").getBoundingClientRect(), p = $("dp");
+    const w = p.offsetWidth, h = p.offsetHeight;
+    p.style.left = `${Math.max(16, Math.min(r.left, window.innerWidth - w - 16))}px`;
+    p.style.top = `${r.bottom + 6 + h > window.innerHeight ? Math.max(16, r.top - h - 6) : r.bottom + 6}px`;
+  };
+  const openDp = () => {
+    DP.a = st.jFrom; DP.b = st.jTo; DP.hover = null;
+    const base = new Date((st.jFrom || todayIso()) + "T00:00:00Z");
+    // без вибору — минулий і поточний місяці (як на макеті), з вибором — місяць його початку
+    DP.view = utcDay(base.getUTCFullYear(), base.getUTCMonth() - (st.jFrom ? 0 : 1), 1);
+    $("dp").hidden = false; $("dpBtn").setAttribute("aria-expanded", "true");
+    renderDp(); placeDp();
+  };
+  const closeDp = () => { $("dp").hidden = true; $("dpBtn").setAttribute("aria-expanded", "false"); };
+  $("dpBtn").addEventListener("click", (e) => { e.stopPropagation(); if ($("dp").hidden) openDp(); else closeDp(); });
+  $("dp").addEventListener("click", (e) => e.stopPropagation());
+  document.addEventListener("click", () => { if (!$("dp").hidden) closeDp(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("dp").hidden) closeDp(); });
+  window.addEventListener("resize", () => { if (!$("dp").hidden) { renderDp(); placeDp(); } });
+  $("dpPre").addEventListener("click", (e) => {
+    const k = e.target.dataset && e.target.dataset.pre; if (!k) return;
+    const t = todayIso(), d = new Date(t + "T00:00:00Z"), wd = (d.getUTCDay() + 6) % 7;     // понеділок = 0
+    const y = d.getUTCFullYear(), m = d.getUTCMonth();
+    const r = { today: [t, t], yesterday: [addDays(t, -1), addDays(t, -1)], week: [addDays(t, -wd), t],
+      lastweek: [addDays(t, -wd - 7), addDays(t, -wd - 1)], month: [iso(utcDay(y, m, 1)), t],
+      lastmonth: [iso(utcDay(y, m - 1, 1)), iso(utcDay(y, m, 0))], year: [iso(utcDay(y, 0, 1)), t] }[k];
+    DP.a = r[0]; DP.b = r[1];
+    const v = new Date(r[0] + "T00:00:00Z"); DP.view = utcDay(v.getUTCFullYear(), v.getUTCMonth(), 1);
+    renderDp();
+  });
+  const fromInputs = () => {
+    let a = $("dpFrom").value || null, b = $("dpTo").value || null;
+    if (a && b && b < a) [a, b] = [b, a];
+    DP.a = a || b; DP.b = a && b ? b : null;
+    if (DP.a) { const v = new Date(DP.a + "T00:00:00Z"); DP.view = utcDay(v.getUTCFullYear(), v.getUTCMonth(), 1); }
+    renderDp();
+  };
+  $("dpFrom").addEventListener("change", fromInputs); $("dpTo").addEventListener("change", fromInputs);
+  $("dpClear").addEventListener("click", () => {
+    DP.a = DP.b = null; st.jFrom = st.jTo = null; closeDp();
+    pressIn("periodSeg", "days", st.jDays); renderDpBtn(); loadJournal();
+  });
+  $("dpApply").addEventListener("click", () => {
+    if (!DP.a) { closeDp(); return; }
+    st.jFrom = DP.a; st.jTo = DP.b || DP.a; closeDp(); renderDpBtn(); loadJournal();
+  });
+  document.querySelectorAll("#kindSeg [data-kind]").forEach((b) => b.addEventListener("click", () => { st.jKind = b.dataset.kind; LS.set("pd-jkind", st.jKind); pressIn("kindSeg", "kind", st.jKind); loadJournal(); }));
+  pressIn("kindSeg", "kind", st.jKind);          // збережений вибір (localStorage pd-jkind)
   document.querySelectorAll("#outSeg [data-out]").forEach((b) => b.addEventListener("click", () => { st.jOut = b.dataset.out; pressIn("outSeg", "out", st.jOut); renderJournal(); }));
   [["rHorizon", "horizon"], ["rPrice", "price"], ["rOi", "oi"]].forEach(([id, k]) => {
     const inp = $(id); inp.value = st.rule[k];

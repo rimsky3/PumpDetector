@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 
 from features import aggregate, in_pump, load_pumps, load_raw, query_df
-from risk import EXIT_BARS, position_state
+from risk import EXIT_BARS, PARTIAL_EXIT, position_state
 from tiers import BAR_15M, CAND_MODEL, TIER_MODEL, tier_frame
 
 M15 = "lightgbm_15m"          # 15m-модель у таблиці signals
@@ -37,11 +37,21 @@ def is_15m(model: str) -> bool:
     return model in (TIER_MODEL, CAND_MODEL, M15)
 
 
-def first_scores(conn, model: str, share: float = 0.75) -> pd.DataFrame:
+def first_scores(conn, model: str, share: float = 0.75, cache: dict | None = None) -> pd.DataFrame:
     """Перша оцінка кожного бару кожного тікера (серед усіх версій моделі).
-    Для tier15 / cand15 — оцінка рівня: probability = alert_score або s15 (уже нормовані), threshold = 1."""
+    Для tier15 / cand15 — оцінка рівня: probability = alert_score або s15 (уже нормовані), threshold = 1.
+    cache — спільний словник на один перерахунок журналу: однакові запити й ряди не читаються двічі."""
+    if cache is not None:
+        key = ("scores", model, share)
+        if key not in cache:
+            cache[key] = _first_scores(conn, model, share, cache)
+        return cache[key]
+    return _first_scores(conn, model, share, None)
+
+
+def _first_scores(conn, model: str, share: float, cache: dict | None) -> pd.DataFrame:
     if model in (TIER_MODEL, CAND_MODEL):
-        s15, s1h = first_scores(conn, M15), first_scores(conn, CONFIRM_MODEL)
+        s15, s1h = first_scores(conn, M15, cache=cache), first_scores(conn, CONFIRM_MODEL, cache=cache)
         if s15.empty:
             return s15
         t = tier_frame(s15, s1h, share)
@@ -82,30 +92,40 @@ def label_outcome(pumps: pd.DataFrame, base: str, start: pd.Timestamp, end: pd.T
     return None
 
 
-def build_trades(conn, model: str, bundle: dict | None, rule: dict) -> pd.DataFrame:
+def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict | None = None) -> pd.DataFrame:
     """Усі угоди моделі по всіх тікерах з результатом і джерелом результату."""
-    scores = first_scores(conn, model, (bundle or {}).get("confirm", {}).get("share", 0.75))
+    scores = first_scores(conn, model, (bundle or {}).get("confirm", {}).get("share", 0.75), cache)
     tf15 = is_15m(model)
     interval, freq, bar = ("15min", "15min", BAR_15M) if tf15 else ("1hour", "h", H)
     exit_bars = (bundle or {}).get("exit_bars", EXIT_BARS)
     cols = ["ticker", "entry_ts", "exit_ts", "open", "kind", "p_max", "result_pct", "reason", "outcome", "source", "entry", "exit"]
     if scores.empty:
         return pd.DataFrame(columns=cols)
-    pumps = load_pumps(conn)
-    raw = load_raw(conn, sorted(scores["base_asset"].unique()), interval)
+    pumps = cache.setdefault("pumps", load_pumps(conn)) if cache is not None else load_pumps(conn)
+    bases = tuple(sorted(scores["base_asset"].unique()))
+    rkey = ("raw", interval, bases)
+    if cache is not None and rkey not in cache:
+        cache[rkey] = load_raw(conn, list(bases), interval)
+    raw = cache[rkey] if cache is not None else load_raw(conn, list(bases), interval)
     k = (bundle or {}).get("risk", {}).get("k")
     trained = set((bundle or {}).get("tickers", []))
     data_end = (bundle or {}).get("data_end")
     now = pd.Timestamp(datetime.now(timezone.utc))
     rows = []
     for base, g in scores.groupby("base_asset"):
-        h = aggregate(raw, base, freq)
+        if cache is not None:                      # ряд тікера — один на ТФ для всіх моделей
+            hk = ("h", interval, bases, base)
+            if hk not in cache:
+                cache[hk] = aggregate(raw, base, freq)
+            h = cache[hk]
+        else:
+            h = aggregate(raw, base, freq)
         if h.empty:
             continue
         g = g.set_index("ts").sort_index()
         # версії моделі мають різні пороги: нормуємо ймовірність на поріг, тоді «сигнал» = score ≥ 1
         norm = (g["probability"] / g["threshold"]).reindex(h.index)
-        pos = position_state(h, norm, 1.0, k, exit_bars)
+        pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None)
         trades = list(pos.get("trades", [])) + ([pos] if pos.get("open") else [])
         for t in trades:
             start = pd.Timestamp(t["entry_ts"])
@@ -127,16 +147,30 @@ def build_trades(conn, model: str, bundle: dict | None, rule: dict) -> pd.DataFr
 KIND_SCOPE = {"live": {"live"}, "hist": {"live", "history"}, "all": {"live", "history", "in-sample"}}
 
 
-def model_stats(conn, model: str, trades: pd.DataFrame, scores: pd.DataFrame, since, kinds: set) -> dict:
+def prepare(conn, bundles: dict, rule: dict) -> dict:
+    """Угоди й оцінки всіх моделей — найдовша частина журналу (~20 с). Від періоду, дат і обсягу оцінок не залежить:
+    дашборд кешує результат і лише фільтрує його, тож перемикання періоду — миттєве."""
+    cache: dict = {}
+    out = {}
+    for name, bundle in bundles.items():
+        share = (bundle or {}).get("confirm", {}).get("share", 0.75)
+        out[name] = (build_trades(conn, name, bundle, rule, cache), first_scores(conn, name, share, cache))
+    out["_pumps"] = cache.get("pumps")
+    return out
+
+
+def model_stats(conn, model: str, trades: pd.DataFrame, scores: pd.DataFrame, since, kinds: set, until=None,
+                pumps: pd.DataFrame | None = None) -> dict:
+    """Зведені метрики моделі за період [since, until): precision за результатами, спіймані розмічені пампи, хибні на 30 днів."""
     bar = BAR_15M if is_15m(model) else H
-    """Зведені метрики моделі за період: precision за результатами, спіймані розмічені пампи, хибні на 30 днів."""
-    t = trades[(trades["entry_ts"] >= since) & trades["kind"].isin(kinds)]
+    until = until if until is not None else pd.Timestamp("2100-01-01", tz="UTC")
+    t = trades[(trades["entry_ts"] >= since) & (trades["entry_ts"] < until) & trades["kind"].isin(kinds)]
     decided = t[t["outcome"].isin(["pump", "fp"])]
     n_pump = int((decided["outcome"] == "pump").sum())
-    s = scores[(scores["ts"] >= since) & scores["kind"].isin(kinds)] if not scores.empty else scores
+    s = scores[(scores["ts"] >= since) & (scores["ts"] < until) & scores["kind"].isin(kinds)] if not scores.empty else scores
     # розмічені пампи на оцінених тікерах у періоді: чи був сигнал усередині, з якою затримкою
-    pumps = load_pumps(conn)
-    pumps = pumps[(pumps["pattern_type"] == "pump") & (pumps["start_ts"] >= since)]
+    pumps = load_pumps(conn) if pumps is None else pumps
+    pumps = pumps[(pumps["pattern_type"] == "pump") & (pumps["start_ts"] >= since) & (pumps["start_ts"] < until)]
     caught, total, delays = 0, 0, []
     for p in pumps.itertuples():
         hours = s[(s["base_asset"] == p.base_asset) & in_pump(s["ts"], p.start_ts, p.end_ts, bar)] if not s.empty else s
@@ -159,19 +193,29 @@ def model_stats(conn, model: str, trades: pd.DataFrame, scores: pd.DataFrame, si
     }
 
 
-def journal(conn, bundles: dict, model: str, days: int | None, kind: str, rule: dict) -> dict:
+def journal(conn, bundles: dict, model: str, days: int | None, kind: str, rule: dict,
+            date_from: pd.Timestamp | None = None, date_to: pd.Timestamp | None = None, prepared: dict | None = None) -> dict:
+    """date_from / date_to — дні UTC включно (вибір дат у журналі); якщо задано, days не враховується.
+    prepared — результат prepare() (кеш дашборду); без нього угоди рахуються тут."""
+    if prepared is None:
+        prepared = prepare(conn, bundles, rule)
     since = pd.Timestamp(datetime.now(timezone.utc) - timedelta(days=days)) if days else pd.Timestamp("1970-01-01", tz="UTC")
+    until = None
+    if date_from is not None:
+        since = date_from
+        until = (date_to if date_to is not None else date_from) + pd.Timedelta(days=1)
     kinds = KIND_SCOPE.get(kind, KIND_SCOPE["live"])
     per_model, trades_sel = {}, None
-    for name, bundle in bundles.items():
-        trades = build_trades(conn, name, bundle, rule)
-        scores = first_scores(conn, name, (bundle or {}).get("confirm", {}).get("share", 0.75))
-        per_model[name] = model_stats(conn, name, trades, scores, since, kinds)
+    for name in bundles:
+        trades, scores = prepared[name]
+        per_model[name] = model_stats(conn, name, trades, scores, since, kinds, until, prepared.get("_pumps"))
         if name == model:
             trades_sel = trades
     if trades_sel is None:
         trades_sel = pd.DataFrame(columns=["ticker", "entry_ts", "kind", "outcome", "source", "result_pct"])
     t = trades_sel[(trades_sel["entry_ts"] >= since) & trades_sel["kind"].isin(kinds)]
+    if until is not None:
+        t = t[t["entry_ts"] < until]
     closed = t[~t["open"]] if "open" in t else t
     res = closed["result_pct"].dropna()
     by_ticker = []

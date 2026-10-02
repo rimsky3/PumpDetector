@@ -24,3 +24,5 @@ experiments/cache/
 # результати бектестів і згенеровані сторінки експериментів (відтворюються скриптами)
 reports/backtests/
 reports/*.html
+reports/my_trades/
+data/

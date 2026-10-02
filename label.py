@@ -42,8 +42,8 @@ from dotenv import load_dotenv
 
 import fetch_exchange
 from exchanges import INTERVAL
-from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, aggregate, build, build_15m, load_pumps, load_raw, query_df
-from risk import atr, position_state, trade_stats as summarize_trades
+from features import FEATURES, FEATURES_15M, INTRADAY_EXCHANGES, INTERVAL_15M, aggregate, build, build_15m, build_hourly_own, load_pumps, load_raw, query_df
+from risk import PARTIAL_EXIT, atr, position_state, trade_stats as summarize_trades
 from tiers import tier_frame
 import train
 from fetch import (EXCLUDED_FILE, TICKERS_FILE, Coinalyze, collect, collect_liquidations, excluded_tickers,
@@ -111,6 +111,8 @@ def model15(conn, base: str) -> dict:
         if d15.empty:
             raise ValueError(f"для {base} замало 15m-історії: потрібно ≥ 7 днів (кнопка «Завантажити» праворуч)")
         d1 = build(conn, [base], labels=False)
+        if d1.empty:                  # немає 1h Coinalyze (напр., монета з бектесту) — година з власних 15m, як у скринері
+            d1 = build_hourly_own(conn, [base])
         s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[FEATURES_15M])[:, 1],
                                                 threshold=m15["threshold"])
         s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[FEATURES])[:, 1],
@@ -139,7 +141,7 @@ def model15(conn, base: str) -> dict:
     # угоди за правилами дашборду: вхід на Alert, стоп k·ATR(15m), вихід — Alert згас exit_bars барів
     k, exit_bars = m15.get("risk", {}).get("k"), m15.get("exit_bars", 4)
     h = aggregate(load_raw(conn, [base], INTERVAL_15M), base, "15min")
-    pos = position_state(h, t.set_index("ts")["alert_score"], 1.0, k, exit_bars) if not h.empty else {"trades": []}
+    pos = position_state(h, t.set_index("ts")["alert_score"], 1.0, k, exit_bars, PARTIAL_EXIT) if not h.empty else {"trades": []}
     trades = []
     for tr in list(pos.get("trades", [])) + ([pos] if pos.get("open") else []):
         a = pd.Timestamp(tr["entry_ts"])
@@ -269,6 +271,28 @@ def retrain_accept() -> str:
 # ---------------------------------------------------------------- порівняння поточної моделі і кандидата
 
 COMPARE_PAGE = os.path.join(ROOT, "tools", "compare.html")
+REVIEW_PAGE = os.path.join(ROOT, "tools", "review.html")
+_prefetching: set = set()
+
+
+def prefetch_review(db_url: str) -> None:
+    """Фоном — 5m наступних сигналів сліпого перегляду (монетам з бектесту 5m з бірж вантажиться ~30 с)."""
+    import review as R
+
+    def work():
+        try:
+            with psycopg.connect(db_url) as conn:
+                for it in R.upcoming(conn):
+                    if it["id"] in _prefetching:
+                        continue
+                    _prefetching.add(it["id"])
+                    try:
+                        R.bars(conn, it["ticker"], it["entry_ts"], "5m")
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+    threading.Thread(target=work, daemon=True).start()
 _compare_cache: dict = {}
 
 
@@ -815,6 +839,28 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/compare":
                 with open(COMPARE_PAGE, "rb") as f:
                     return self._send(200, f.read(), "text/html; charset=utf-8")
+            if url.path == "/review":
+                with open(REVIEW_PAGE, "rb") as f:
+                    return self._send(200, f.read(), "text/html; charset=utf-8")
+            if url.path.startswith("/api/review/"):
+                import review as R
+                qs = {k: v[0] for k, v in parse_qs(url.query).items()}
+                with psycopg.connect(self.db_url) as conn:
+                    if url.path == "/api/review/next":
+                        res = R.next_item(conn, qs.get("after"))
+                        prefetch_review(self.db_url)
+                        return self._send(200, _json_safe(res))
+                    if url.path == "/api/review/item":
+                        return self._send(200, _json_safe(R.get_item(conn, qs.get("id", ""))))
+                    if url.path == "/api/review/bars":
+                        tf = qs.get("tf", "15m")
+                        if tf not in ("5m", "15m", "1h"):
+                            raise ValueError("ТФ: 5m / 15m / 1h")
+                        tk, ts = qs.get("id", "|").split("|")
+                        return self._send(200, _json_safe(R.bars(conn, tk, int(ts), tf)))
+                    if url.path == "/api/review/summary":
+                        return self._send(200, _json_safe(R.summary(conn)))
+                return self._error(404, "не знайдено")
             if url.path == "/api/compare":
                 with psycopg.connect(self.db_url) as conn:
                     return self._send(200, _json_safe(compare(conn)))
@@ -868,9 +914,17 @@ class Handler(BaseHTTPRequestHandler):
                 new = parse_row(body)
                 rows = self._modify(lambda rows: rows + [new])
                 return self._send(200, {"rows": rows_to_json(rows)})
+            if path == "/api/review":                # рішення сліпого перегляду → reviews.csv
+                import review as R
+                return self._send(200, R.save_review(body))
+            if path == "/api/review/rebuild":
+                import review as R
+                with psycopg.connect(self.db_url) as conn:
+                    pool = R.build_pool(conn)
+                return self._send(200, {"total": len(pool)})
             if path == "/api/load":
                 base = str(body.get("ticker", "")).upper()
-                if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
+                if not re.fullmatch(r"[^\W_]{1,20}", base):
                     raise ValueError("невірна назва тікера")
                 if JOBS.get(base, {}).get("state") not in ("queued", "running"):
                     JOBS[base] = {"state": "queued", "msg": "у черзі", "step": 0, "steps": 3, "stage": "у черзі"}
@@ -939,7 +993,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"rows": rows_to_json(rows)})
             if path == "/api/exclude":        # тікер поза скоупом: не навчання, не скан, не скринер (excluded.txt)
                 base = str(body.get("ticker", "")).upper()
-                if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
+                if not re.fullmatch(r"[^\W_]{1,20}", base):
                     raise ValueError("невірна назва тікера")
                 on = bool(body.get("on"))
                 reason = re.sub(r"[#\r\n]", " ", str(body.get("reason", ""))).strip()[:120]
@@ -950,7 +1004,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})
             if path == "/api/training":
                 base = str(body.get("ticker", "")).upper()
-                if not re.fullmatch(r"[A-Z0-9]{1,20}", base):
+                if not re.fullmatch(r"[^\W_]{1,20}", base):
                     raise ValueError("невірна назва тікера")
                 set_ticker_in_file(TICKERS_PATH, base, bool(body.get("on")), "переглянуто повністю в label.py")
                 return self._send(200, {"training": [t.upper() for t in read_tickers_file(TICKERS_PATH)]})

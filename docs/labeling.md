@@ -128,6 +128,19 @@ the model file from 2026-09-30 on. **Перенавчити** runs `features.py`
 (~7–8 minutes); the new model is only a candidate until you compare it with the live one and press **Прийняти**
 (the live model is backed up) or **Відхилити**. Restart `screener.py` and `dashboard.py` after accepting.
 
+**Blind signal review** (`http://127.0.0.1:8765/review`, link *Сліпий перегляд сигналів* in the header; logic in
+`review.py`). Meta-labeling data: the model's Alert trades on coins outside training (backtest runs plus the screener
+journal, closed trades only, shuffled with a fixed seed) are shown one by one with the chart **cut at the close of the
+signal bar** — the server never sends later bars, the ticker and date are hidden (time is shown relative to the entry)
+until you press *показати тікер і дату*, and the trade result is not shown. For each signal: *Зайшов би* (T) /
+*Пропустив* (S) / *Не можу оцінити* (U), setup (B/P/O), reasons (tags, keys 1–9), an optional stop (click the price
+chart) and a note; Enter saves and opens the next one, → postpones, ← goes back. Decisions go to `reviews.csv` (source
+of truth, like `pumps.csv`). **Результати** compares your "would take" trades with all signals — same exit rules, and
+with your own stop where you set one — and breaks them down by setup and reason. Look at it rarely (every 50–100
+decisions): seeing results changes later decisions. Missing 5m data for backtest coins is fetched from the exchanges
+on demand (only the ~2.5 days the chart shows, a few seconds; the next five signals are prefetched in the background). `python review.py --rebuild` refreshes the pool
+after new backtest runs; `--summary` prints the same summary.
+
 **Comparison page** (`http://127.0.0.1:8765/compare`, link *Детальне порівняння* in the panel): summary cards (new
 value, old value, change marked better/worse) for the Alert or Candidate tier; a **fair comparison** block over tickers
 where both models' scores are out-of-sample (tickers the live model never saw, or its saved out-of-fold predictions);

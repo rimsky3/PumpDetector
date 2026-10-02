@@ -1,0 +1,397 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сліпий перегляд</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Сліпий перегляд сигналів: графік лише до моменту входу, рішення праворуч, результат прихований до «Результатів» */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3ea; --grid: #edf0f4;
+  --fg: #111418; --fg2: #515966; --fg3: #808895;
+  --up: #2e9e5b; --down: #e34948; --oi: #1baf7a; --vol: #aab2bf; --stop: #e34948; --entry: #2a78d6;
+  --take: #2e9e5b; --take-bg: rgba(46,158,91,.12); --skip: #e34948; --skip-bg: rgba(227,73,72,.1); --unsure: #808895;
+  --accent: #2a78d6; --accent-fg: #ffffff; --chip: #eef1f5;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
+  --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --up: #3fb56f; --down: #e66767; --oi: #199e70; --vol: #4a515c; --stop: #e66767; --entry: #3987e5;
+  --take: #3fb56f; --take-bg: rgba(63,181,111,.16); --skip: #e66767; --skip-bg: rgba(230,103,103,.14); --unsure: #7e8794;
+  --accent: #3987e5; --accent-fg: #ffffff; --chip: #23272e; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
+  --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --up: #3fb56f; --down: #e66767; --oi: #199e70; --vol: #4a515c; --stop: #e66767; --entry: #3987e5;
+  --take: #3fb56f; --take-bg: rgba(63,181,111,.16); --skip: #e66767; --skip-bg: rgba(230,103,103,.14); --unsure: #7e8794;
+  --accent: #3987e5; --accent-fg: #ffffff; --chip: #23272e; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--sans); }
+button { font: inherit; cursor: pointer; color: inherit; }
+.app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+header { display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+header h1 { font-size: 15px; font-weight: 600; margin: 0; }
+.prog { display: flex; align-items: center; gap: 8px; color: var(--fg2); font-variant-numeric: tabular-nums; }
+.prog .bar { width: 140px; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.prog .bar i { display: block; height: 100%; background: var(--accent); }
+.sp { flex: 1; }
+.lnk { color: var(--accent); text-decoration: none; font-size: 12px; }
+.btn { height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); font-size: 12px; }
+.btn:hover { border-color: var(--fg3); }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+.chartwrap { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 10px 12px 12px 16px; gap: 8px; }
+.chead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 30px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: transparent; height: 28px; padding: 0 12px; font-size: 12px; color: var(--fg2); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.who { font-family: var(--mono); font-size: 12px; color: var(--fg2); }
+.who b { color: var(--fg); font-family: var(--sans); font-size: 14px; }
+.reveal { border: 0; background: transparent; color: var(--accent); font-size: 12px; padding: 0; }
+#chart { flex: 1; min-height: 360px; position: relative; border-radius: 8px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); }
+.loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg3); background: color-mix(in srgb, var(--panel) 70%, transparent); z-index: 5; }
+.loading[hidden] { display: none; }
+.hint { font-size: 11.5px; color: var(--fg3); }
+aside { border-left: 1px solid var(--line); background: var(--panel); padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.blk { display: flex; flex-direction: column; gap: 8px; }
+.lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); display: flex; justify-content: space-between; }
+.lbl kbd, .kbd { font-family: var(--mono); font-size: 10px; color: var(--fg3); text-transform: none; letter-spacing: 0; }
+.dec { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dec button { height: 44px; border-radius: 9px; border: 1.5px solid var(--line); background: var(--bg); font-size: 14px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
+.dec button small { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--fg3); }
+.dec .take[aria-pressed="true"] { border-color: var(--take); background: var(--take-bg); color: var(--take); }
+.dec .skip[aria-pressed="true"] { border-color: var(--skip); background: var(--skip-bg); color: var(--skip); }
+.dec .unsure { grid-column: span 2; height: 30px; font-size: 12px; font-weight: 500; flex-direction: row; gap: 8px; }
+.dec .unsure[aria-pressed="true"] { border-color: var(--unsure); color: var(--fg); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--line); background: var(--chip); border-radius: 14px; padding: 3px 10px; font-size: 12px; color: var(--fg2); }
+.chips button[aria-pressed="true"] { border-color: var(--accent); color: var(--fg); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+.chips button .n { font-family: var(--mono); font-size: 10px; color: var(--fg3); margin-right: 4px; }
+.chips.dim { opacity: .45; }
+.stopv { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; }
+.stopv b { color: var(--stop); }
+textarea { width: 100%; min-height: 54px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); font: 12px/1.4 var(--sans); padding: 6px 8px; }
+.go { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+.primary { height: 40px; border-radius: 9px; border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 14px; }
+.primary:disabled { opacity: .45; cursor: default; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.err { color: var(--down); font-size: 12px; min-height: 16px; }
+/* підсумок */
+.ov { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: flex-start; justify-content: center; padding: 40px 16px; z-index: 50; overflow-y: auto; }
+.ov[hidden] { display: none; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; width: min(880px, 100%); display: flex; flex-direction: column; gap: 14px; }
+.card h2 { font-size: 16px; margin: 0; }
+.warn { font-size: 12px; color: var(--fg2); background: var(--chip); border-radius: 8px; padding: 8px 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; white-space: normal; }
+th { font-size: 11px; color: var(--fg3); font-weight: 500; }
+.pos { color: var(--up); } .neg { color: var(--down); }
+.tblwrap { overflow-x: auto; }
+@media (max-width: 860px) { main { grid-template-columns: 1fr; } aside { border-left: 0; border-top: 1px solid var(--line); } #chart { min-height: 320px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Сліпий перегляд сигналів</h1>
+    <span class="prog"><span id="progTxt">—</span><span class="bar"><i id="progBar" style="width:0"></i></span></span>
+    <span class="sp"></span>
+    <button class="btn" id="sumBtn">Результати</button>
+    <a class="lnk" href="/">← Розмітка</a>
+  </header>
+  <main>
+    <section class="chartwrap">
+      <div class="chead">
+        <div class="seg" id="tfSeg" role="group" aria-label="Таймфрейм">
+          <button data-tf="5m">5m</button><button data-tf="15m" aria-pressed="true">15m</button><button data-tf="1h">1h</button>
+        </div>
+        <span class="who" id="who">тікер прихований</span>
+        <button class="reveal" id="revealBtn">показати тікер і дату</button>
+        <span class="sp"></span>
+        <span class="hint">Графік обрізано на закритті сигнального бару — далі нічого немає. Клік по ціні — стоп.</span>
+      </div>
+      <div id="chart"><div class="loading" id="loading">Завантажую…</div></div>
+    </section>
+    <aside>
+      <div class="blk">
+        <span class="lbl">Рішення <span class="kbd">T · S · U</span></span>
+        <div class="dec">
+          <button class="take" data-dec="take" aria-pressed="false">Зайшов би<small>T</small></button>
+          <button class="skip" data-dec="skip" aria-pressed="false">Пропустив<small>S</small></button>
+          <button class="unsure" data-dec="unsure" aria-pressed="false">Не можу оцінити <small class="kbd">U</small></button>
+        </div>
+      </div>
+      <div class="blk">
+        <span class="lbl">Сетап <span class="kbd">B · P · O</span></span>
+        <div class="chips" id="setupChips">
+          <button data-setup="breakout">Пробій</button><button data-setup="pullback">Підбір</button><button data-setup="other">Інше</button>
+        </div>
+      </div>
+      <div class="blk">
+        <span class="lbl">Стоп <span class="kbd">клік по графіку ціни</span></span>
+        <div class="stopv"><span id="stopTxt">не поставлено</span><span class="sp"></span><button class="reveal" id="stopClear" hidden>прибрати</button></div>
+      </div>
+      <div class="blk">
+        <span class="lbl">Чому <span class="kbd">1–9</span></span>
+        <div class="chips" id="reasonChips"></div>
+      </div>
+      <div class="blk">
+        <span class="lbl">Нотатка</span>
+        <textarea id="note" placeholder="Що побачив — своїми словами (необов'язково)"></textarea>
+      </div>
+      <div class="go">
+        <div class="err" id="err"></div>
+        <button class="primary" id="saveBtn" disabled>Зберегти й далі <span class="kbd" style="color:inherit;opacity:.7">Enter</span></button>
+        <div class="row2">
+          <button class="btn" id="prevBtn">← Попередній</button>
+          <button class="btn" id="skipBtn">Відкласти →</button>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div class="ov" id="ov" hidden>
+  <div class="card" role="dialog" aria-label="Результати перегляду">
+    <div style="display:flex;align-items:center;gap:12px"><h2>Результати перегляду</h2><span class="sp"></span><button class="btn" id="ovClose">Закрити</button></div>
+    <div class="warn">Результати угод впливають на наступні рішення (починаєш «вгадувати» модель). Дивись рідко — раз на 50–100 рішень.
+      Результат угоди — за поточними правилами (вхід на Alert, вихід — 4 бари без Alert або стоп k·ATR, комісія 0.1%);
+      «зі своїм стопом» — якщо ціна до виходу моделі торкнулась твого стопу, вихід по ньому.</div>
+    <div id="sumBody" class="tblwrap">—</div>
+  </div>
+</div>
+
+<script src="/vendor/lightweight-charts.standalone.production.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const api = async (method, path, body) => {
+    const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    return d;
+  };
+  const LWC = window.LightweightCharts;
+  const st = { item: null, tf: "15m", reasons: {}, draft: null, seen: false, history: [], bars: null, loading: false };
+  const blank = () => ({ decision: null, setup: null, reasons: new Set(), stop: null, note: "" });
+
+  // ---------- графік ----------
+  let chart = null, S = {}, entryLine = null, stopLine = null, markers = null;
+  const makeChart = () => {
+    chart = LWC.createChart($("chart"), {
+      autoSize: true,
+      layout: { background: { type: "solid", color: css("--panel") }, textColor: css("--fg2"), fontFamily: "IBM Plex Sans, system-ui", fontSize: 11,
+        panes: { separatorColor: css("--line"), separatorHoverColor: css("--line") } },
+      grid: { vertLines: { color: css("--grid") }, horzLines: { color: css("--grid") } },
+      rightPriceScale: { borderColor: css("--line") },
+      timeScale: { borderColor: css("--line"), timeVisible: true, secondsVisible: false, rightOffset: 6 },
+      crosshair: { mode: 0 },
+    });
+    S.c = chart.addSeries(LWC.CandlestickSeries, { upColor: css("--up"), downColor: css("--down"), wickUpColor: css("--up"), wickDownColor: css("--down"), borderVisible: false }, 0);
+    markers = LWC.createSeriesMarkers(S.c, []);
+    S.oi = chart.addSeries(LWC.LineSeries, { color: css("--oi"), lineWidth: 2, title: "OI", priceLineVisible: false, lastValueVisible: true,
+      priceFormat: { type: "custom", formatter: fmtUsd } }, 1);
+    S.v = chart.addSeries(LWC.HistogramSeries, { color: css("--vol"), title: "Обсяг", priceLineVisible: false, lastValueVisible: false,
+      priceFormat: { type: "custom", formatter: fmtUsd } }, 2);
+    const p = chart.panes(); [4, 1.6, 1.2].forEach((f, i) => p[i] && p[i].setStretchFactor(f));
+    chart.subscribeClick((prm) => {
+      if (!prm.point || !st.item || (prm.paneIndex != null && prm.paneIndex !== 0)) return;
+      const price = S.c.coordinateToPrice(prm.point.y);
+      if (price == null) return;
+      if (price >= st.item.entry) { $("err").textContent = "Стоп має бути нижче ціни входу."; return; }
+      $("err").textContent = ""; st.draft.stop = price; renderStop();
+    });
+  };
+  const fmtUsd = (v) => { const a = Math.abs(v); return a >= 1e9 ? (v / 1e9).toFixed(2) + "B" : a >= 1e6 ? (v / 1e6).toFixed(1) + "M" : a >= 1e3 ? (v / 1e3).toFixed(0) + "K" : v.toFixed(0); };
+  const decimals = (p) => Math.max(2, Math.min(8, 4 - Math.floor(Math.log10(Math.max(p, 1e-12)))));
+  const pad = (n) => String(n).padStart(2, "0");
+  // поки тікер прихований — час відносно входу (дата могла б нагадати, що було далі)
+  const relTime = (t) => { const m = Math.round((t - st.bars.cutoff) / 60), s = m < 0 ? "−" : "+", a = Math.abs(m); return `${s}${Math.floor(a / 60)}:${pad(a % 60)}`; };
+  const absTime = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  const applyTimeFmt = () => {
+    const f = (t) => (st.seen ? absTime : relTime)(t);
+    chart.applyOptions({ localization: { timeFormatter: f }, timeScale: { tickMarkFormatter: f } });
+  };
+  const draw = () => {
+    const b = st.bars; if (!b) return;
+    if (!chart) makeChart();
+    const dec = decimals(st.item.entry);
+    S.c.applyOptions({ priceFormat: { type: "price", precision: dec, minMove: Math.pow(10, -dec) } });
+    const cs = [], oi = [], v = [];
+    b.t.forEach((t, i) => {
+      if (b.c[i] == null) return;
+      cs.push({ time: t, open: b.o[i], high: b.h[i], low: b.l[i], close: b.c[i] });
+      if (b.oi[i] != null) oi.push({ time: t, value: b.oi[i] });
+      if (b.v[i] != null) v.push({ time: t, value: b.v[i], color: b.c[i] >= b.o[i] ? css("--up") + "88" : css("--down") + "88" });
+    });
+    S.c.setData(cs); S.oi.setData(oi); S.v.setData(v);
+    const last = cs[cs.length - 1];
+    markers.setMarkers(last ? [{ time: last.time, position: "belowBar", color: css("--entry"), shape: "arrowUp", text: "вхід" }] : []);
+    if (entryLine) S.c.removePriceLine(entryLine);
+    entryLine = S.c.createPriceLine({ price: st.item.entry, color: css("--entry"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "вхід" });
+    applyTimeFmt(); renderStop();
+    chart.timeScale().fitContent();
+  };
+  const renderStop = () => {
+    if (!chart) return;
+    if (stopLine) { S.c.removePriceLine(stopLine); stopLine = null; }
+    const s = st.draft?.stop, e = st.item?.entry;
+    if (s != null) {
+      stopLine = S.c.createPriceLine({ price: s, color: css("--stop"), lineWidth: 2, lineStyle: 0, axisLabelVisible: true, title: "стоп" });
+      $("stopTxt").replaceChildren(el("b", "", s.toFixed(decimals(e))), ` · ${((s / e - 1) * 100).toFixed(2)}% від входу`);
+    } else $("stopTxt").textContent = "не поставлено";
+    $("stopClear").hidden = s == null;
+  };
+  const loadBars = async () => {
+    if (!st.item) return;
+    $("loading").hidden = false; $("loading").textContent = st.tf === "5m" ? "Завантажую 5m (для нової монети — до ~30 с)…" : "Завантажую…";
+    try { st.bars = await api("GET", `/api/review/bars?id=${encodeURIComponent(st.item.id)}&tf=${st.tf}`); $("err").textContent = ""; draw(); }
+    catch (e) { $("err").textContent = e.message; }
+    finally { $("loading").hidden = true; }
+  };
+
+  // ---------- рішення ----------
+  const renderReasons = () => {
+    const box = $("reasonChips"); box.replaceChildren();
+    const d = st.draft.decision;
+    const groups = d === "take" ? ["take", "skip"] : ["skip", "take"];     // спершу — причини до вибраного рішення
+    let n = 0;
+    groups.forEach((g, gi) => {
+      (st.reasons[g] || []).forEach((tag) => {
+        const b = el("button");
+        if (gi === 0 && n < 9) b.appendChild(el("span", "n", String(++n)));
+        b.append(tag); b.dataset.tag = tag; b.dataset.key = gi === 0 ? String(n) : "";
+        b.setAttribute("aria-pressed", String(st.draft.reasons.has(tag)));
+        b.style.opacity = gi === 0 || st.draft.reasons.has(tag) ? 1 : 0.6;
+        b.addEventListener("click", () => toggleReason(tag));
+        box.appendChild(b);
+      });
+    });
+  };
+  const toggleReason = (tag) => { const r = st.draft.reasons; r.has(tag) ? r.delete(tag) : r.add(tag); renderReasons(); };
+  const renderDraft = () => {
+    const d = st.draft;
+    document.querySelectorAll("[data-dec]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.dec === d.decision)));
+    document.querySelectorAll("[data-setup]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setup === d.setup)));
+    $("note").value = d.note; $("saveBtn").disabled = !d.decision;
+    renderReasons(); renderStop();
+  };
+  const renderWho = () => {
+    const it = st.item;
+    if (!it) { $("who").textContent = "сигналів не лишилось"; $("revealBtn").hidden = true; return; }
+    $("revealBtn").hidden = st.seen;
+    if (st.seen) {
+      $("who").replaceChildren(el("b", "", it.ticker), ` · вхід ${absTime(it.entry_ts + 900)} UTC · ${it.entry}`);
+    } else $("who").textContent = `тікер прихований · вхід ${it.entry}`;
+  };
+  const renderProg = (done, total) => {
+    $("progTxt").textContent = `${done} з ${total}`;
+    $("progBar").style.width = total ? `${(done / total) * 100}%` : "0";
+  };
+  const show = (res) => {
+    st.reasons = res.reasons || st.reasons;
+    renderProg(res.done, res.total);
+    st.item = res.item;
+    const r = res.review;
+    st.draft = blank();
+    if (r) {                      // уже переглянутий — показати збережене (редагування)
+      st.draft = { decision: r.decision, setup: r.setup || null, reasons: new Set((r.reasons || "").split(";").filter(Boolean)),
+        stop: r.stop_price ? +r.stop_price : null, note: r.note || "" };
+    }
+    st.seen = !!(r && r.ticker_seen);
+    renderWho(); renderDraft();
+    if (st.item) loadBars(); else { $("loading").hidden = false; $("loading").textContent = "Усі сигнали переглянуто. Відкрий «Результати»."; }
+  };
+  const next = async (after) => {
+    try { show(await api("GET", `/api/review/next${after ? `?after=${encodeURIComponent(after)}` : ""}`)); } catch (e) { $("err").textContent = e.message; }
+  };
+  const save = async () => {
+    const d = st.draft; if (!st.item || !d.decision) return;
+    try {
+      await api("POST", "/api/review", { id: st.item.id, decision: d.decision, setup: d.setup, reasons: [...d.reasons],
+        stop_price: d.stop, note: $("note").value.trim(), ticker_seen: st.seen });
+      st.history.push(st.item.id);
+      next();
+    } catch (e) { $("err").textContent = e.message; }
+  };
+
+  document.querySelectorAll("[data-dec]").forEach((b) => b.addEventListener("click", () => { st.draft.decision = b.dataset.dec; renderDraft(); }));
+  document.querySelectorAll("[data-setup]").forEach((b) => b.addEventListener("click", () => {
+    st.draft.setup = st.draft.setup === b.dataset.setup ? null : b.dataset.setup; renderDraft();
+  }));
+  document.querySelectorAll("[data-tf]").forEach((b) => b.addEventListener("click", () => {
+    st.tf = b.dataset.tf; document.querySelectorAll("[data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadBars();
+  }));
+  $("note").addEventListener("input", (e) => { st.draft.note = e.target.value; });
+  $("stopClear").addEventListener("click", () => { st.draft.stop = null; renderStop(); });
+  $("revealBtn").addEventListener("click", () => { st.seen = true; renderWho(); if (chart && st.bars) applyTimeFmt(); });
+  $("saveBtn").addEventListener("click", save);
+  $("skipBtn").addEventListener("click", () => st.item && next(st.item.id));
+  $("prevBtn").addEventListener("click", async () => {
+    const id = st.history.pop(); if (!id) { $("err").textContent = "У цій сесії ще нічого не переглянуто."; return; }
+    try { show(await api("GET", `/api/review/item?id=${encodeURIComponent(id)}`)); } catch (e) { $("err").textContent = e.message; }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "TEXTAREA" || e.ctrlKey || e.metaKey || e.altKey || !$("ov").hidden) {
+      if (e.key === "Escape" && !$("ov").hidden) $("ov").hidden = true;
+      return;
+    }
+    const k = e.key.toLowerCase();
+    const map = { t: "take", е: "take", s: "skip", і: "skip", u: "unsure", г: "unsure" };     // + українська розкладка
+    const setups = { b: "breakout", и: "breakout", p: "pullback", з: "pullback", o: "other", щ: "other" };
+    if (map[k]) { st.draft.decision = map[k]; renderDraft(); e.preventDefault(); }
+    else if (setups[k]) { st.draft.setup = st.draft.setup === setups[k] ? null : setups[k]; renderDraft(); e.preventDefault(); }
+    else if (/^[1-9]$/.test(e.key)) {
+      const b = [...$("reasonChips").children].find((x) => x.dataset.key === e.key); if (b) { toggleReason(b.dataset.tag); e.preventDefault(); }
+    }
+    else if (e.key === "Enter") { save(); e.preventDefault(); }
+    else if (e.key === "ArrowRight") { if (st.item) next(st.item.id); e.preventDefault(); }
+    else if (e.key === "ArrowLeft") { $("prevBtn").click(); e.preventDefault(); }
+  });
+
+  // ---------- підсумок ----------
+  const pct = (v, d = 2) => v == null ? "—" : `${v >= 0 ? "+" : "−"}${Math.abs(v * 100).toFixed(d)}%`;
+  const cls = (v) => v == null ? "" : v > 0 ? "pos" : v < 0 ? "neg" : "";
+  const statRow = (name, s) => {
+    const tr = el("tr"); tr.appendChild(el("td", "", name));
+    if (!s || !s.n) { tr.appendChild(el("td", "", "0")); for (let i = 0; i < 6; i++) tr.appendChild(el("td", "", "—")); return tr; }
+    tr.append(el("td", "", String(s.n)), el("td", "", `${Math.round(s.win * 100)}%`), el("td", cls(s.median), pct(s.median)),
+      el("td", cls(s.mean), pct(s.mean)), el("td", cls(s.sum_wo_top3), pct(s.sum_wo_top3, 0)),
+      el("td", s.pf == null ? "" : s.pf >= 1 ? "pos" : "neg", s.pf == null ? "∞" : s.pf.toFixed(2)));
+    return tr;
+  };
+  const table = (head, rows) => {
+    const t = el("table"), h = el("tr");
+    [head, "угод", "у плюсі", "медіана", "середня", "без топ-3", "PF"].forEach((x) => h.appendChild(el("th", "", x)));
+    t.appendChild(h); rows.forEach((r) => t.appendChild(r)); return t;
+  };
+  $("sumBtn").addEventListener("click", async () => {
+    $("ov").hidden = false; $("sumBody").textContent = "Рахую…";
+    try {
+      const s = await api("GET", "/api/review/summary"), box = $("sumBody"); box.replaceChildren();
+      if (!s.n) { box.textContent = "Ще немає рішень."; return; }
+      const c = s.counts || {};
+      box.appendChild(el("p", "", `Рішень: ${s.n} · зайшов би ${c.take || 0} · пропустив ${c.skip || 0} · не знаю ${c.unsure || 0}` +
+        (s.ticker_seen ? ` · з відкритим тікером ${s.ticker_seen}` : "") + (s.n < 50 ? " — поки замало для висновків (потрібно 50–100+)." : "")));
+      box.appendChild(table("Що рахуємо", [statRow("Усі сигнали моделі (без «не знаю»)", s.all), statRow("Зайшов би — вихід як зараз", s.take),
+        statRow(`Зайшов би — зі своїм стопом (поставлено в ${s.with_stop})`, s.take_own_stop), statRow("Пропустив", s.skip)]));
+      if (s.by_setup?.length) { box.appendChild(el("h3", "", "«Зайшов би» за сетапом")); box.appendChild(table("Сетап", s.by_setup.map((x) => statRow({ breakout: "Пробій", pullback: "Підбір", other: "Інше" }[x.setup] || x.setup, x)))); }
+      if (s.by_reason?.length) { box.appendChild(el("h3", "", "За причинами")); box.appendChild(table("Причина", s.by_reason.map((x) => statRow(`${x.decision === "take" ? "✓" : "✕"} ${x.tag}`, x)))); }
+    } catch (e) { $("sumBody").textContent = e.message; }
+  });
+  $("ovClose").addEventListener("click", () => { $("ov").hidden = true; });
+  $("ov").addEventListener("click", (e) => { if (e.target === $("ov")) $("ov").hidden = true; });
+
+  if (!LWC) { $("chart").textContent = "Бібліотеку графіків не знайдено (app/vendor)."; return; }
+  next();
+})();
+</script>
+</body>
+</html>

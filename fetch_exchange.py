@@ -28,6 +28,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
+import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
@@ -56,10 +57,11 @@ def upsert(conn, table: str, cols: list[str], symbol: str, interval: str, df) ->
     return len(rows)
 
 
-def collect(conn, bases: list[str], tfs: list[str], days: float, log=print, exchanges=None) -> int:
+def collect(conn, bases: list[str], tfs: list[str], days: float, log=print, exchanges=None, until=None) -> int:
     """Завантажити tfs за days днів для ринків Binance/Bybit тікерів bases і записати в базу.
-    Спільне для fetch_exchange.py і кнопки «Завантажити» в label.py. Повертає кількість записаних рядів."""
-    end = int(datetime.now(timezone.utc).timestamp() * 1000)
+    Спільне для fetch_exchange.py і кнопки «Завантажити» в label.py. Повертає кількість записаних рядів.
+    until — кінець вікна (за замовчуванням зараз): сліпий перегляд бере лише кілька днів до сигналу в минулому."""
+    end = int((pd.Timestamp(until) if until is not None else pd.Timestamp(datetime.now(timezone.utc))).timestamp() * 1000)
     start = int(end - days * 24 * MS_H)
     markets = conn.execute("""
         SELECT symbol, base_asset, exchange_name, symbol_on_exchange FROM markets

@@ -218,7 +218,7 @@ td button { padding: 2px 8px; font-size: 12px; }
 <div class="page">
 <div class="wrap">
   <header>
-    <h1>Розмітка імпульсів</h1>
+    <h1 style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap">Розмітка імпульсів <a href="/review" target="_blank" rel="noopener" style="font-size:13px;font-weight:500">Сліпий перегляд сигналів →</a></h1>
     <p class="status" id="status" role="status" aria-live="polite"></p>
     <p class="sub"><span id="srcNote">1h — Coinalyze, усі біржі.</span> За <span id="days">60</span> днів. Ціна — Binance, OI і обсяг — сума по біржах. Час — UTC, бар позначено часом відкриття.</p>
   </header>
@@ -1608,16 +1608,25 @@ td button { padding: 2px 8px; font-size: 12px; }
       const q = encodeURIComponent(tk);
       const [d, pr] = await Promise.all([api("GET", `/api/data?ticker=${q}&tf=${tf}`),
         tf === "1h" ? api("GET", `/api/predictions?ticker=${q}`).catch(() => ({ available: false })) : { available: false }]);
-      if (!d.t.length) { status(`Немає ${tf}-даних для ${tk}. Завантаж: python fetch_exchange.py ${tk}`, true); return false; }
+      if (!d.t.length) {
+        const how = tf === "1h" ? "кнопка «Завантажити» у вкладці «Тікери» (1h — Coinalyze, python fetch.py)"
+                                : "кнопка «Завантажити» у вкладці «Тікери» (python fetch_exchange.py)";
+        status(`Немає ${tf}-даних для ${tk}. Завантаж: ${how} ${tk}`, true); return false;
+      }
       if (pr.available) { d.pred = alignPred(d, pr); enablePredictions(pr); }
       DATA[key] = d; status("");
       return true;
     } catch (e) { status(`Не вдалося завантажити ${tk}: ${e.message}`, true); return false; }
   };
   const setTicker = async (tk) => {
-    if (!(await load(tk, st.tf))) {                      // на цьому ТФ даних немає — пробуємо 1h
-      if (st.tf === "1h" || !(await load(tk, "1h"))) return;
-      setTf("1h", false);
+    // на цьому ТФ даних немає — пробуємо інші (монети з бектесту мають 15m/5m бірж, але не мають 1h Coinalyze)
+    if (!(await load(tk, st.tf))) {
+      const alt = ["15m", "1h", "5m"].filter((x) => x !== st.tf);
+      let got = null;
+      for (const x of alt) if (await load(tk, x)) { got = x; break; }
+      if (!got) return;
+      setTf(got, false);
+      if (!DATA[`${tk}|1h`]) status(`${tk}: немає 1h-даних (Coinalyze) — показую ${got}. Для 1h і годинної моделі: «Завантажити» у вкладці «Тікери»`);
     }
     st.tk = tk; st.a = st.b = null; EDIT.row = null; renderEdit();
     if (typeof renderDrafts === "function") { renderDrafts(); renderDraftNav(); }
@@ -1727,11 +1736,17 @@ td button { padding: 2px 8px; font-size: 12px; }
       fresh.forEach((tk) => status(`${tk} завантажено: ${JOBS[tk].msg}`));
       if (fresh.includes(pendingOpen)) { const tk = pendingOpen; pendingOpen = null; await setTicker(tk); }
     }
+    // дозавантаження ТФ, якого не було (напр., 5m для монети з бектесту): після завершення — одразу на нього
+    if (pendingTf && JOBS[pendingTf.tk] && ["done", "error"].includes(JOBS[pendingTf.tk].state)) {
+      const { tk, tf } = pendingTf; pendingTf = null;
+      Object.keys(DATA).filter((k) => k.startsWith(tk + "|")).forEach((k) => delete DATA[k]);
+      if (JOBS[tk].state === "done" && st.tk === tk && (await load(tk, tf))) { setTf(tf); status(`${tk}: ${tf} завантажено`); }
+    }
     renderList();
     clearTimeout(pollTimer);
     if (active) pollTimer = setTimeout(pollJobs, 2000);
   };
-  let pendingOpen = null;
+  let pendingOpen = null, pendingTf = null;
   const loadTicker = async (tk) => {
     try { JOBS[tk] = await api("POST", "/api/load", { ticker: tk }); pendingOpen = tk; }
     catch (e) { status(e.message, true); return; }
@@ -1793,7 +1808,14 @@ td button { padding: 2px 8px; font-size: 12px; }
   document.querySelectorAll("[data-tf]").forEach((b) => b.addEventListener("click", async () => {
     const tf = b.dataset.tf;
     if (tf === st.tf || !st.tk) return;
-    if (await load(st.tk, tf)) setTf(tf);
+    if (await load(st.tk, tf)) { setTf(tf); return; }
+    // такого ТФ у базі немає — завантажуємо (той самий процес, що кнопка «Завантажити») і перемикаємо, коли готово
+    if (!pendingTf) {
+      pendingTf = { tk: st.tk, tf };
+      await loadTicker(st.tk);
+      pendingOpen = null;
+      status(`${st.tk}: ${tf}-даних не було — завантажую (1h Coinalyze + 15m/5m бірж, ~1 хв), потім перемкну на ${tf}`);
+    }
   }));
 
   document.querySelectorAll("[data-days]").forEach((b) => b.addEventListener("click", () => {
