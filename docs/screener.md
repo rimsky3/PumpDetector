@@ -60,8 +60,9 @@ and Candidates 3 minutes earlier, with no extra false alarms (4.2 → 4.1 per 30
 The left panel's "Режим" dropdown replaces the model buttons: a mode is a model plus trade rules (`strategies.json`):
 "15m + 1h · market" (main), "· limit −0.5 ATR", "· OB ≥ 1", "· OB + limit", "15m · entry on Candidate", and the hourly
 models for comparison. Signals are the same for all 15m modes — the screener runs once; a mode only changes which
-signals become trades and how, so switching is instant. The choice applies to Forecast (position, trade marks, history
-card), Journal (one row per mode) and Backtest (a "Режим" field). For past signals without an order book snapshot the
+signals become trades and how, so switching is instant. Each tab keeps its own mode (Forecast, Journal and Backtest are switched separately): Forecast — position, trade marks,
+history card; Journal — which mode's trades are listed (the table still shows one row per mode); Backtest — the mode of
+the next run (15m modes only). For past signals without an order book snapshot the
 OB filter takes the signal. In Backtest the retrained model waiting for "Прийняти" is called "нова версія" to avoid
 confusion with the Candidate signal tier.
 
@@ -74,8 +75,9 @@ confusion with the Candidate signal tier.
 - The screener records a snapshot for every coin near a signal (15m score ≥ 0.8 × threshold in the last 2 hours) on each
   5-minute and 15-minute cycle into `book_ratio`. The chart shows "OB 1.38" above each Alert start (the first snapshot
   within 12 minutes after the signal bar closed; green ≥ 1, amber < 1); older Alerts have none.
-- The left panel card "Біди / аски ±2%" shows the live value (refreshed every 5 s), the value 15 minutes ago and each
-  exchange separately.
+- Display removed on 2026-10-02 (the left panel card, the "OB" chart marks and OB in notifications): the filter did not
+  hold up over six months, and the owner reads the real order book in the terminal. Snapshots are still recorded for a
+  later live re-test, and the OB modes stay in Journal and Backtest.
 - **Limit hint**: a limit buy at the signal bar's close − 0.5 ATR, valid one hour — a tile "Ліміт" in the position card
   and a dashed "Ліміт" line on the chart while valid. On the backtest it was the only pullback entry that was not worse
   than a market buy in either half of the period. The position simulation still enters at market.

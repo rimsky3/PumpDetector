@@ -442,9 +442,14 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   без відкату — MAGMA, ZRO 02.10). РІШЕННЯ: основне правило — вхід по ринку; risk.position_state(entry=LIMIT_ENTRY) є, але
   використовує лише журнальний рядок tiers.LIMIT_MODEL = tier15_lim («15m + 1h · лімітом») для live-порівняння;
   дашборд — підказка ліміту (limit_hint), OB — інформація (пояснення «?» каже, що фільтр не підтвердився).
+- OB У ДАШБОРДІ ПРИБРАНО (2026-10-02, власник): картку «Біди / аски ±2%», мітки «OB x» над Alert і OB у сповіщеннях —
+  бо як фільтр не підтвердився на 6 міс., а стакан власник бачить у терміналі. Лишилось: запис знімків скринером у book_ratio
+  (для майбутньої live-перевірки з двох бірж), /api/book, режими «OB ≥ 1» / «OB + ліміт» у журналі й бектесті, підказка ліміту.
 - РЕЖИМИ (2026-10-02, власник): strategies.py + strategies.json — режим = модель + правила угод (signal alert/candidate,
   entry market/limit, ob). Список: market (основний), limit, ob, ob_limit, cand, lightgbm, logreg (годинні — порівняння).
-  Дашборд: випадаючий «Режим» замість кнопок моделі (st.strategy, localStorage pd-strategy; st.model = модель режиму),
+  Дашборд: випадаючий «Режим» замість кнопок моделі — ОКРЕМИЙ для кожної вкладки (st.modes.forecast/journal/backtest,
+  localStorage pd-mode-<вкладка>; список показує режим відкритої вкладки; у Бектесті лише 15m-режими, синхронно з полем форми;
+  st.model = модель режиму Прогнозу),
   /api/ticker?strategy= → ticker_15m(strat): позиція з entry_rule і orderbook.allow_fn (OB ≥ 1, невідомо — береться);
   журнал — рядок на кожен режим (journal_bundles → {id: {scores, bundle, strat}}, J.prepare/journal приймають такі spec);
   бектест — поле «Режим» (backtest.py --strategy id; OB з архіву orderbook.archive_allow_fn, кеш data/book_cache/);
