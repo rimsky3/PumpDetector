@@ -83,6 +83,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .head .l { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .tk-name { font-size: 20px; font-weight: 600; } .tk-price { font-size: 18px; font-weight: 500; }
+/* ширина заголовка не залежить від цифр ціни й мітки live — інакше панель інструментів перескакує між рядками */
+.tk-price, #tkChg { font-variant-numeric: tabular-nums; } .tk-price { min-width: 8ch; } #tkChg { min-width: 6.5ch; }
+.live-dot.off { visibility: hidden; }
 .badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line2); color: var(--fg2); }
 .head .r { display: flex; gap: 8px; align-items: center; }
 .ohlc { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 3px 14px; font-size: 11px; color: var(--fg2); height: 36px; overflow: hidden; }
@@ -397,7 +400,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       <div class="l">
         <span class="tk-name" id="tkName">—</span><span class="small" id="tkTf">USDT Perp · 1h</span>
         <span class="tk-price" id="tkPrice">—</span><span id="tkChg">—</span>
-        <span class="live-dot" id="liveDot" title="Жива свічка з бірж" hidden>live</span>
+        <span class="live-dot off" id="liveDot" title="Жива свічка з бірж">live</span>
         <span class="badge" id="tkInSample" hidden>in-sample</span><button class="help" id="tkInSampleHelp" data-help="insample" aria-label="Що це?" hidden>?</button>
       </div>
       <div class="r">
@@ -1071,7 +1074,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const Live = (() => {
     const IV = { "5m": ["5m", "5"], "15m": ["15m", "15"], "1h": ["1h", "60"] };
     let socks = [], timers = [], key = null, bar = null, oi = { bn: null, by: null }, pending = false, alive = 0;
-    const setDot = () => { const dot = $("liveDot"); dot.hidden = !key; dot.classList.toggle("on", alive > 0);
+    const setDot = () => { const dot = $("liveDot"); dot.hidden = false; dot.classList.toggle("off", !key); dot.classList.toggle("on", alive > 0);
       dot.title = alive > 0 ? "Поточна свічка оновлюється з бірж у реальному часі (модель — лише на закритих барах)" : "Підключаюсь до бірж…"; };
     const stop = () => {
       socks.forEach((w) => { w.onclose = null; try { w.close(); } catch (e) {} });
