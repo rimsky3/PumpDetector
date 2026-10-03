@@ -181,8 +181,10 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
                 trade = open_trade(ts, fill, order["atr"], signal_ts=order["sig_ts"], limit=order["px"])
                 order, below, prev_sig = None, 0, sig
                 continue
-        if pd.isna(p):
+        if pd.isna(p) and trade is None:
             continue
+        # відкрита угода: стоп і частковий вихід — на КОЖНОМУ закритому барі, навіть якщо модель його ще не оцінила
+        # (оцінка приходить на кілька хвилин пізніше за бар; VELVET 03.10 00:15 — обвал нижче стопу без оцінки не закрив угоду)
         if trade is None:
             if order is None and sig and (entry is None or not prev_sig) and (allow is None or allow(ts)):
                 px, atr0 = h.at[ts, "price"], a.get(ts)
@@ -195,14 +197,16 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
                                  "until_i": i + entry["bars"], "until": ts + bar * (entry["bars"] + 1)}
             prev_sig = sig
             continue
-        prev_sig = sig
+        if not pd.isna(p):
+            prev_sig = sig
         stop_hit = trade["stop"] is not None and h.at[ts, "low"] <= trade["stop"]
         if not stop_hit and trade["target"] is not None and trade["partial_ts"] is None                 and h.at[ts, "high"] >= trade["target"]:
             trade.update({"partial_ts": ts, "partial_price": trade["target"]})
             if partial.get("breakeven") and trade["stop"] is not None:
                 trade["stop"] = max(trade["stop"], trade["entry"])      # решта позиції вже не може дати збиток
         trade["high"] = max(trade["high"], float(h.at[ts, "high"]))
-        below = below + 1 if p < threshold else 0
+        if not pd.isna(p):
+            below = below + 1 if p < threshold else 0
         if below >= exit_bars or stop_hit:
             exit_price = trade["stop"] if stop_hit else float(h.at[ts, "price"])
             trade.update({"exit_ts": ts, "exit": exit_price, "reason": "stop" if stop_hit else "model",
@@ -211,7 +215,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
             last_closed_trade, trade = trade, None
             below = 0
 
-    last_ts = prob.dropna().index.max() if prob.notna().any() else None
+    last_ts = h["price"].dropna().index.max() if h["price"].notna().any() else None   # останній закритий бар
     pending = {"price": order["px"], "until": order["until"], "signal_ts": order["sig_ts"]} if order else None
     if trade is not None:
         trade.update({

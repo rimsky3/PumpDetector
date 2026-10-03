@@ -212,6 +212,15 @@ Same code serves `/api/profile` in the dashboard and the labeling tool (`app/js/
 ticks: each candle's volume (Binance + Bybit, USD) is spread evenly over its low–high range; the finest timeframe that
 covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown from the POC towards the larger neighbour.
 
+### `experiments/klines1m.py`, `experiments/l_shock.py`, `experiments/profile_levels.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/klines1m.py` | 1m Binance USDT-perp candles from data.binance.vision (Apr–Sep 2026) → `data/klines1m/<coin>.parquet`; reruns fetch only missing months |
+| `python experiments/klines1m.py --months 2026-10 SOON` | given months / coins |
+| `python experiments/l_shock.py` | "liquidation fade" event test on 5m and 1m with controls → `reports/l_shock.md`, `reports/l_shock_trades.csv` (`--no-oi` skips the database) |
+| `python experiments/profile_levels.py` | previous-day POC / VAH / VAL and impulse POC vs random levels → `reports/profile_levels.md` |
+
 ### `experiments/long_backtest.py`
 
 The entry rules (market, order book filter OB ≥ 1, limit −0.5 ATR, both) over 6 months on Bybit data (15m candles and
