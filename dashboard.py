@@ -43,6 +43,7 @@ from screener import (FETCH_DAYS, INTRADAY_DAYS, STATUS_FILE, WATCHLIST_FILE, la
 import fetch_exchange
 import orderbook
 import volume_profile
+import wake
 import strategies
 import scanner
 import journal as J
@@ -200,6 +201,7 @@ def watch_list_15m(conn) -> dict:
     raw = load_raw(conn, sorted(t["base_asset"].unique()), INTERVAL_15M, since=now - timedelta(days=2))
     newest = troll.sort_values("ts").groupby("base_asset").tail(1).set_index("base_asset") if len(troll) else None
     rows, hmap = [], {}
+    woke = wake.last_wake()                    # «прокинулись» за останні 30 хв — фіолетова крапка в списку
     for base, g in t.groupby("base_asset"):
         g = g.sort_values("ts")
         last = g.iloc[-1]
@@ -226,6 +228,7 @@ def watch_list_15m(conn) -> dict:
             "streak": streak, "streak_min": streak * 15, "in_sample": bool(last["in_sample"]), "last_bar": last["ts"],
             "spark": spark.tolist(), "chg_24h": chg, "oi_24h": oi24,
             "p1h": last["p1h"], "thr1h": last["thr1h"], "need1h": share() * last["thr1h"] if pd.notna(last["thr1h"]) else None,
+            "wake": woke.get(base),
         })
     order = {"alert": 0, "candidate": 1, "calm": 2}
     rows.sort(key=lambda r: (order.get(r["status"], 3), -(r["probability"] or 0)))
@@ -250,7 +253,9 @@ def watch_list_15m(conn) -> dict:
     # старт кожного епізоду «Кандидат або Alert» (15m-модель перетнула поріг) — для сповіщень про Кандидатів
     cand = t.assign(signal=t["tier"] != "calm", probability=t["p15"])
     cands = [e for e in episodes(cand, BAR_15M) if e["kind"] == "live" and e["ts"] >= recent_cut]
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands}
+    # «прокидається» за останні 30 хв — для голосового сповіщення («Volume STRK»)
+    wakes = [{"ticker": b, "ts": w["at"], "vol_x": w["vol_x"], "ret15": w["ret15"], "oi1h": w["oi1h"]} for b, w in woke.items()]
+    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands, "wakes": wakes}
 
 
 def watch_list(conn, model: str) -> dict:
@@ -264,6 +269,7 @@ def watch_list(conn, model: str) -> dict:
                         "held": auto.get(r["ticker"], {}).get("held")}
                    for r in res["rows"] if r["ticker"] in keep]
     have = {r["ticker"] for r in res["rows"]}
+    res["wakes"] = [w for w in res.get("wakes", []) if w["ticker"] in keep]
     res["pending"] = [{"ticker": b, "source": "auto" if b in auto else "manual", "reason": auto.get(b, {}).get("reason"),
                        "job": ADD_JOBS.get(b)} for b in manual + sorted(auto) if b not in have]
     return res
@@ -343,7 +349,16 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
     h = h[h.index <= last_closed_15m()]
     f = compute_features(h, 4)
     cur = f.dropna(subset=["oi_chg_4h"]).iloc[-1] if f["oi_chg_4h"].notna().any() else None
-    t = tier_rows(conn, base).set_index("ts").sort_index()
+    t, troll = tier_rows(conn, base, rolling=True)
+    t = t.set_index("ts").sort_index()
+    # остання ковзна оцінка (5-хв цикл для «гарячих»), якщо вона новіша за останній оцінений 15m-бар: з неї приходять
+    # сповіщення, тож графік показує її окремою точкою — інакше «Кандидат 0.87» у сповіщенні і 0.73 на графіку
+    rolling = None
+    if len(troll):
+        rl = troll.sort_values("ts").iloc[-1]
+        if not len(t) or rl["ts"] > t.index.max():
+            rolling = {"ts": rl["ts"], "close": rl["ts"] + pd.Timedelta(minutes=15), "p15": rl["p15"], "thr15": rl["thr15"],
+                       "s15": rl["s15"], "p1h": rl["p1h"], "tier": rl["tier"]}
     k, exit_bars = m15.get("risk", {}).get("k"), m15.get("exit_bars", 4)
     strat = strat or strategies.get(None)
     # стакан — для міток OB і фільтра режиму «OB ≥ 1»
@@ -397,7 +412,9 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
             "oi_chg_4h": math.expm1(cur["oi_chg_4h"]) if cur is not None else None,
             "volume_z_7d": cur["volume_z_7d"] if cur is not None else None,
         },
-        "position": pos, "ob_marks": ob_marks, "limit": lim,
+        "position": pos, "ob_marks": ob_marks, "limit": lim, "rolling": rolling,
+        # «прокидається» (wake.py) на 5m-барах за видимий період: свічка й обсяг на графіку — фіолетові
+        "wake": wake_marks(conn, base, view.index.min() if len(view) else pd.Timestamp(now)),
         "series": {
             "t": list(view.index),
             "open": view["open"].tolist(), "price": view["price"].tolist(),
@@ -415,6 +432,15 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
 
 
 _oi_share_cache: dict = {}
+
+
+def wake_marks(conn, base: str, since: pd.Timestamp) -> list[dict]:
+    try:
+        return wake.history(conn, base, pd.Timestamp(since))
+    except Exception as e:                     # 5m-даних може не бути — графік без міток, а не помилка
+        print(f"! прокидається {base}: {e}")
+        conn.rollback()
+        return []
 
 
 def oi_share(conn, base: str) -> list[dict] | None:
@@ -445,7 +471,7 @@ def scanner_entries(conn, base: str, days: int) -> list:
     if base in manual:
         return []
     cfg = scanner.load_config()
-    since = datetime.now(timezone.utc) - timedelta(days=days + 8)        # +8 днів на 7-денну норму обсягу
+    since = datetime.now(timezone.utc) - timedelta(days=days + scanner.AVG_DAYS + 1)   # + середній оборот за 30 днів
     h = aggregate(load_raw(conn, [base], INTERVAL_15M, since=since, exchanges=["Binance"]), base, "15min")
     if h.empty:
         return []

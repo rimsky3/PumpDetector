@@ -201,6 +201,12 @@ the order book filter reads the Binance `bookDepth` archive there).
 The screener records snapshots for coins near a signal into `book_ratio` (every cycle); the dashboard reads the live value
 (`/api/book`) and the value at each Alert.
 
+### `wake.py`
+
+| Usage | Meaning |
+|---|---|
+| `python wake.py AIN --days 3` | "waking up" events of a coin (5m: 15-min volume ≥ 5× norm, price +2%, 1 h OI +2%) from the database; the screener runs the same rule every cycle → `reports/wake_events.json` |
+
 ### `volume_profile.py`
 
 | Usage | Meaning |
@@ -220,6 +226,24 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 | `python experiments/klines1m.py --months 2026-10 SOON` | given months / coins |
 | `python experiments/l_shock.py` | "liquidation fade" event test on 5m and 1m with controls → `reports/l_shock.md`, `reports/l_shock_trades.csv` (`--no-oi` skips the database) |
 | `python experiments/profile_levels.py` | previous-day POC / VAH / VAL and impulse POC vs random levels → `reports/profile_levels.md` |
+
+### `experiments/wakeup_5m.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/wakeup_5m.py` | "waking up" rule on 5m bars (15-min volume × norm, 15-min price change, optional 1 h OI) on ≥ 20 M$ backtest coins in September: how often a model Candidate / Alert follows, how much earlier, what price does next, against random moments → `reports/wakeup_5m.md`, `.csv` (model tiers cached in `reports/backtests/_wakeup_tiers.pkl`) |
+
+### `experiments/turnover_at_entry.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/turnover_at_entry.py` | backtest trades (Oct 3 runs) vs the coin's 24 h Binance turnover at entry and its 30-day average → `reports/turnover_at_entry.md`, `.csv` |
+
+### `experiments/pullback_grid.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/pullback_grid.py` | pullback (limit) entry after Alert: depth (market, −x ATR, −y%) × order validity (1/2/4 h) × stop (fixed % or k·ATR) on the 6-month Bybit cache (choose on Apr–Jun, check on Jul–Sep) and the September Binance cache → `reports/pullback_grid.md`, `reports/pullback_grid.csv` |
 
 ### `experiments/long_backtest.py`
 

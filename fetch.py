@@ -19,7 +19,9 @@ import argparse
 import collections
 import os
 import sys
+import threading
 import time
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 
 import psycopg
@@ -31,6 +33,7 @@ INTERVAL = "1hour"
 WANTED_EXCHANGES = ["binance", "bybit", "okx", "aster", "hyperliquid", "mexc"]
 QUOTE_ASSETS = {"USDT", "USD", "USDC"}
 RATE_LIMIT_PER_MIN = 40      # кожен символ у запиті = один виклик
+BACKGROUND_HEADROOM = 10     # фонові виклики (годинна частина скринера) лишають стільки з 40/хв терміновим (15m / 5m)
 MAX_SYMBOLS_PER_REQUEST = 20
 TICKERS_FILE = "tickers.txt"
 
@@ -51,26 +54,56 @@ ENDPOINTS = [
 
 
 class Coinalyze:
-    """Клієнт з дотриманням ліміту 40 викликів/хв і обробкою 429 (Retry-After)."""
+    """Клієнт з дотриманням ліміту 40 викликів/хв і обробкою 429 (Retry-After).
+    Потокобезпечний: скринер тягне годинні дані у фоновому потоці (with client.background(): …). Фонові виклики —
+    нижчий пріоритет: беруть лише RATE_LIMIT_PER_MIN − BACKGROUND_HEADROOM і чекають, поки термінові (15m / 5m-цикл)
+    стоять у черзі на ліміт, — тож годинне завантаження не затримує ліквідації для свіжого 15m-бару."""
 
     def __init__(self, api_key: str):
         self.session = requests.Session()
         self.session.headers["api_key"] = api_key
         self._calls = collections.deque()  # моменти спожитих викликів
+        self._lock = threading.Lock()
+        self._local = threading.local()     # .low — цей потік фоновий
+        self._urgent_waiting = 0
         self.calls_made = 0                # лічильники для «Стану системи» в дашборді
         self.rate_limited = 0
 
+    @contextmanager
+    def background(self):
+        """Виклики з цього потоку — фонові (нижчий пріоритет)."""
+        self._local.low = True
+        try:
+            yield self
+        finally:
+            self._local.low = False
+
     def _reserve(self, cost: int) -> None:
-        while True:
-            now = time.monotonic()
-            while self._calls and now - self._calls[0] >= 60:
-                self._calls.popleft()
-            if len(self._calls) + cost <= RATE_LIMIT_PER_MIN:
-                self._calls.extend([now] * cost)
-                return
-            wait = 60 - (now - self._calls[0]) + 0.5
-            print(f"    ліміт API: чекаю {wait:.0f} с…")
-            time.sleep(wait)
+        low = getattr(self._local, "low", False)
+        if not low:
+            with self._lock:
+                self._urgent_waiting += 1
+        told = False
+        try:
+            while True:
+                with self._lock:
+                    now = time.monotonic()
+                    while self._calls and now - self._calls[0] >= 60:
+                        self._calls.popleft()
+                    limit = RATE_LIMIT_PER_MIN - (BACKGROUND_HEADROOM if low else 0)
+                    room = len(self._calls) + cost <= limit
+                    if room and not (low and self._urgent_waiting):
+                        self._calls.extend([now] * cost)
+                        return
+                    wait = (60 - (now - self._calls[0]) + 0.5) if not room and self._calls else 1.0
+                if not low and not told and wait > 2:
+                    print(f"    ліміт API: чекаю {wait:.0f} с…")
+                    told = True
+                time.sleep(min(wait, 2.0))       # перевіряємо часто: термінові могли звільнити чергу
+        finally:
+            if not low:
+                with self._lock:
+                    self._urgent_waiting -= 1
 
     def get(self, path: str, params: dict | None = None, cost: int = 1):
         for _ in range(5):

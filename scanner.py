@@ -5,7 +5,9 @@ scanner.py — сканер ринку: які USDT-перпи Binance «про�
 Фільтр навмисно м'якший за модель: його задача — не пропустити памп; відсіювати зайве — робота моделі.
 
 Правило (пороги — у scan_config.json, набори Суворо / Баланс / Широко / Свій):
-    ліквідність:  оборот за 24 год ≥ min_turnover  і  OI ≤ max_oi (великі монети — не наш скоуп, урок ZEC)
+    ліквідність:  СЕРЕДНІЙ денний оборот за 30 днів ≥ min_turnover  і  OI ≤ max_oi (великі монети — не наш скоуп, урок ZEC)
+                  (з 2026-10-03: за 24 год сканер пропускав ліквідні монети на тихому старті — SYN +51% при 7 млн за добу
+                  і 36 млн у середньому — і брав дрібні, що щойно «розігнались»; experiments/turnover_at_entry.py)
     прокидання:   обсяг за 4 год ≥ vol_x × норми (медіана 4-годинного обсягу за попередні 7 днів) і ціна за 4 год ≥ 0
                   АБО  OI за 4 год ≥ +oi_pct %  і  ціна за 4 год ≥ +price_pct %
 Скан — на закритих 15m-барах (кожні 15 хв); --recall — на годинних даних з бази, вікна ті самі.
@@ -13,6 +15,7 @@ scanner.py — сканер ринку: які USDT-перпи Binance «про�
 
 Дані — публічний API Binance (ключ не потрібен, Coinalyze не витрачаємо): 1 запит на весь ринок
 + 2 на кожен перп, що проходить найм'якшу межу обороту (15m-свічки за 7.5 дня і OI за 4 год). Кожні 15 хв (screener.py).
+Середній оборот — денні свічки за 30 завершених днів, раз на добу для кожного перпа (кеш reports/scan_turnover_avg.json).
 
     python scanner.py              # один скан: хто проходить зараз (авто-список НЕ змінює)
     python scanner.py --apply      # те саме + оновити авто-список (так робить screener.py щогодини)
@@ -35,6 +38,8 @@ CONFIG_FILE = os.path.join(ROOT, "scan_config.json")
 AUTO_FILE = os.path.join(ROOT, "reports", "auto_watchlist.json")
 LAST_FILE = os.path.join(ROOT, "reports", "scan_last.json")
 RECALL_FILE = os.path.join(ROOT, "reports", "scan_recall.json")   # --recall: результат наборів на пампах
+AVG_FILE = os.path.join(ROOT, "reports", "scan_turnover_avg.json")  # середній денний оборот перпів, раз на добу
+AVG_DAYS = 30                      # ліквідність — середній денний оборот за стільки завершених днів
 WORKERS = 6
 SCAN_TF = "15m"                    # скан кожні 15 хв — на закритих 15m-барах (на годинних 3 скани з 4 бачили б те саме)
 BARS_PER_HOUR = 4
@@ -135,8 +140,40 @@ def touch(bases: list[str], reason: str = "сигнал моделі") -> None:
 
 # ---------------------------------------------------------------- метрики з Binance
 
+def _daily_avg(symbol: str) -> float | None:
+    """Середній денний оборот (USDT) за AVG_DAYS завершених днів — денні свічки Binance; поточний день не рахується."""
+    try:
+        k = X.get(X.BINANCE + "/fapi/v1/klines", dict(symbol=symbol, interval="1d", limit=AVG_DAYS + 1))
+    except Exception:
+        return None
+    now = int(datetime.now(timezone.utc).timestamp() * 1000)
+    vols = [float(r[7]) for r in k if int(r[6]) < now][-AVG_DAYS:]
+    return float(np.mean(vols)) if vols else None
+
+
+def turnover_avg(symbols: list[str]) -> dict[str, float]:
+    """Середній денний оборот перпів; рахується раз на добу (UTC) — кеш у файлі, докачуються лише нові символи."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    cache = _read_json(AVG_FILE, {})
+    vals = cache.get("values", {}) if cache.get("date") == today else {}
+    todo = [s for s in symbols if s not in vals]
+    if todo:
+        with ThreadPoolExecutor(WORKERS) as ex:
+            for sym, v in zip(todo, ex.map(_daily_avg, todo)):
+                if v is not None:
+                    vals[sym] = v
+        _write_json(AVG_FILE, {"date": today, "values": vals})
+    return vals
+
+
+def liquidity(m: dict) -> float | None:
+    """Оборот для фільтра ліквідності: середній за AVG_DAYS днів, а якщо його немає — за 24 год."""
+    v = m.get("turnover_avg")
+    return v if v is not None else m.get("turnover")
+
+
 def universe() -> list[dict]:
-    """Усі USDT-перпи Binance, що торгуються, з оборотом за 24 год (два запити на весь ринок)."""
+    """Усі USDT-перпи Binance, що торгуються: оборот за 24 год (два запити на весь ринок) і середній за 30 днів (кеш на добу)."""
     info = X.get(X.BINANCE + "/fapi/v1/exchangeInfo", {})
     day = {t["symbol"]: t for t in X.get(X.BINANCE + "/fapi/v1/ticker/24hr", {})}
     out = []
@@ -145,6 +182,9 @@ def universe() -> list[dict]:
             continue
         t = day.get(s["symbol"], {})
         out.append({"symbol": s["symbol"], "base": s["baseAsset"], "turnover": float(t.get("quoteVolume") or 0)})
+    avg = turnover_avg([u["symbol"] for u in out])
+    for u in out:
+        u["turnover_avg"] = avg.get(u["symbol"])
     return out
 
 
@@ -161,8 +201,11 @@ def metrics_from_bars(h: pd.DataFrame, bph: int = 1) -> dict | None:
     # норма — медіана 4-годинного обсягу за 7 днів ДО останніх 4 год (щоб сплеск не рахував сам себе)
     norm = v4.iloc[:-w].tail(7 * 24 * bph).median()
     oi = h["oi"].dropna() if "oi" in h else pd.Series(dtype=float)
+    tail = vol.tail(AVG_DAYS * 24 * bph)
     return {
         "turnover": float(vol.tail(24 * bph).sum()),
+        # середній денний за наявну історію (до AVG_DAYS днів); живий скан замінює його денними свічками за 30 днів
+        "turnover_avg": float(tail.sum() / (len(tail) / (24 * bph))),
         "vol_x": float(v4.iloc[-1] / norm) if norm and norm > 0 else None,
         "price_pct": float((px.iloc[-1] / px.iloc[-1 - w] - 1) * 100),
         "oi_pct": float((oi.iloc[-1] / oi.iloc[-1 - w] - 1) * 100) if len(oi) > w and oi.iloc[-1 - w] > 0 else None,
@@ -195,7 +238,8 @@ def passes_series(h: pd.DataFrame, p: dict, bph: int = 4) -> pd.Series:
     vol, px, oi = h["volume"], h["price"], h["oi"]
     v4 = vol.rolling(w).sum()
     norm = v4.shift(w).rolling(7 * 24 * bph, min_periods=3 * 24 * bph - w).median()
-    turnover = vol.rolling(24 * bph).sum()
+    # середній денний оборот за AVG_DAYS днів (не менше 7 днів історії) — як ліквідність у живому скані
+    turnover = vol.rolling(AVG_DAYS * 24 * bph, min_periods=7 * 24 * bph).mean() * 24 * bph
     price_pct = (px / px.shift(w) - 1) * 100
     oi_pct = (oi / oi.shift(w) - 1) * 100
     return (turnover >= p["min_turnover"]) & ~(oi > p["max_oi"]) & (
@@ -204,7 +248,8 @@ def passes_series(h: pd.DataFrame, p: dict, bph: int = 4) -> pd.Series:
 
 def passes(m: dict, p: dict) -> tuple[bool, str]:
     """Чи проходить тікер фільтр і чому (текст причини — для дашборду)."""
-    if m.get("turnover") is None or m["turnover"] < p["min_turnover"]:
+    liq = liquidity(m)
+    if liq is None or liq < p["min_turnover"]:
         return False, ""
     if m.get("oi") is not None and m["oi"] > p["max_oi"]:
         return False, ""
@@ -215,7 +260,8 @@ def passes(m: dict, p: dict) -> tuple[bool, str]:
         why.append(f"OI {m['oi_pct']:+.0f}%")
     if not why:
         return False, ""
-    why.append(f"ціна {m['price_pct']:+.1f}% за 4 год · оборот {m['turnover'] / 1e6:.0f} млн $")
+    why.append(f"ціна {m['price_pct']:+.1f}% за 4 год · оборот {m['turnover'] / 1e6:.0f} млн $ за добу, "
+               f"сер. {liq / 1e6:.0f} млн")
     return True, " · ".join(why)
 
 
@@ -238,6 +284,8 @@ def _symbol_metrics(u: dict) -> dict | None:
     m = metrics_from_bars(h, BARS_PER_HOUR)
     if m:
         m.update(symbol=u["symbol"], base=u["base"], last_bar=h.index[-1].isoformat())
+        if u.get("turnover_avg") is not None:
+            m["turnover_avg"] = u["turnover_avg"]
     return m
 
 
@@ -247,7 +295,7 @@ def scan(log=print) -> dict:
     cfg = load_config()
     floor = min([p["min_turnover"] for p in PRESETS.values()] + [cfg["custom"]["min_turnover"]])
     uni = universe()
-    cand = [u for u in uni if u["turnover"] >= floor * 0.8]      # 24h ticker — ковзне вікно, беремо із запасом
+    cand = [u for u in uni if (liquidity(u) or 0) >= floor * 0.8]      # із запасом
     with ThreadPoolExecutor(WORKERS) as ex:
         rows = [m for m in ex.map(_symbol_metrics, cand) if m]
     res = {"at": t0.isoformat(timespec="seconds"), "universe": len(uni), "checked": len(rows),
@@ -289,7 +337,8 @@ def apply(last: dict, manual: set[str], log=print) -> dict:
             new.append(b)
         auto[b] = {"added": auto.get(b, {}).get("added", now.isoformat(timespec="minutes")),
                    "last_hit": now.isoformat(timespec="minutes"), "expires": (now + ttl).isoformat(timespec="minutes"),
-                   "reason": m["reason"], "vol_x": m.get("vol_x"), "oi_pct": m.get("oi_pct"), "turnover": m["turnover"]}
+                   "reason": m["reason"], "vol_x": m.get("vol_x"), "oi_pct": m.get("oi_pct"), "turnover": m["turnover"],
+                   "turnover_avg": m.get("turnover_avg")}
     if len(auto) > cfg["max_auto"]:        # стеля: лишаємо найсвіжіші спрацювання
         keep = sorted(auto, key=lambda b: (auto[b]["last_hit"], auto[b].get("vol_x") or 0), reverse=True)[:int(cfg["max_auto"])]
         auto = {b: auto[b] for b in keep}
@@ -312,7 +361,7 @@ def preview(p: dict, manual: set[str]) -> dict:
 def recall(conn, p: dict, lookback_h: float = 48) -> dict:
     """Як фільтр спрацював би на розмічених пампах: скільки разів він додав би тікер до старту імпульсу
     (тікер живе в списку ttl_hours, тож рахується спрацювання за lookback_h до старту), скільки — лише під час, скільки — ніколи.
-    Дані — годинні з бази (сума бірж Coinalyze), тож оборот трохи більший, ніж лише Binance."""
+    Дані — годинні з бази (сума бірж Coinalyze), тож оборот трохи більший, ніж лише Binance; середній оборот — за 8 днів вікна."""
     from features import aggregate, load_pumps, load_raw
     pumps = load_pumps(conn)
     pumps = pumps[pumps["pattern_type"] == "pump"]

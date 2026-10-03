@@ -27,14 +27,17 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 import psycopg
+import queue
+import threading
 from dotenv import load_dotenv
 
 import fetch_exchange
 import orderbook
+import wake
 import scanner
 from features import (INTRADAY_EXCHANGES, build, build_15m, build_from_raw, build_hourly_own, load_raw, oi_seen_share,
                       roll_intraday, short_features)
-from fetch import Coinalyze, collect, collect_liquidations, read_tickers_file
+from fetch import Coinalyze, collect, collect_liquidations, find_markets, read_tickers_file, upsert_markets
 from tiers import ROLL_MODEL
 from train import M15_NAME, PROBA_MODELS, load_model, model_path
 
@@ -145,13 +148,15 @@ def score_15m(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, pd.Times
 
 
 def hot_bases(conn, bases: list[str], hours: int = 2) -> list[str]:
-    """Тікери, де 15m-модель за останні hours годин була ≥ HOT_SHARE порогу: їм 5m-ліквідації й оцінка кожні 5 хв."""
+    """Тікери, де 15m-модель за останні hours годин була ≥ HOT_SHARE порогу, або що «прокинулись» (wake.py) за останні
+    wake.HOT_HOURS: їм 5m-ліквідації й оцінка кожні 5 хв."""
     if not bases:
         return []
     rows = conn.execute("""SELECT DISTINCT base_asset FROM signals
                            WHERE model = ANY(%s) AND base_asset = ANY(%s) AND ts > now() - make_interval(hours => %s)
                              AND probability >= %s * threshold""", ([M15_NAME, ROLL_MODEL], bases, hours, HOT_SHARE)).fetchall()
-    return sorted(r[0] for r in rows)
+    woke = set(wake.last_wake(minutes=wake.HOT_HOURS * 60)) & set(bases)
+    return sorted({r[0] for r in rows} | woke)
 
 
 def score_15m_rolling(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, pd.Timestamp | None]:
@@ -185,8 +190,15 @@ def score_15m_rolling(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, 
 
 
 def quick_cycle(conn, client: Coinalyze | None, bases: list[str], m15: dict, fetch: bool) -> None:
-    """Швидкий цикл між 15-хвилинними: лише «гарячі» тікери — хвіст 5m з бірж, 5m-ліквідації, оцінка ковзного бару."""
+    """Швидкий цикл між 15-хвилинними: хвіст 5m з бірж для всього списку → «прокидається» (wake.py; хто прокинувся —
+    одразу «гарячий») → для гарячих 5m-ліквідації й оцінка ковзного бару."""
     started = datetime.now(timezone.utc)
+    if fetch:                 # хвіст 5m усім (біржі напряму, без Coinalyze): правилу «прокидається» потрібен щойно закритий бар
+        fetch_exchange.collect(conn, bases, ["5m"], 0.1, log=lambda m: None, exchanges=list(INTRADAY_EXCHANGES))
+    try:
+        wake.check(conn, bases)
+    except Exception as e:
+        print(f"  ! прокидається: {e}")
     hot = hot_bases(conn, bases)
     if not hot:
         print(f"[{started:%H:%M} UTC] 5-хв цикл: гарячих тікерів немає")
@@ -200,8 +212,6 @@ def quick_cycle(conn, client: Coinalyze | None, bases: list[str], m15: dict, fet
         short = [b for b in hot if b not in start or start[b] > pd.Timestamp(started) - pd.Timedelta(days=8, hours=6)]
         if short:
             fetch_exchange.collect(conn, short, ["5m"], 9, log=lambda m: None, exchanges=list(INTRADAY_EXCHANGES))
-        fetch_exchange.collect(conn, [b for b in hot if b not in short], ["5m"], 0.1, log=lambda m: None,
-                               exchanges=list(INTRADAY_EXCHANGES))
         if client is not None:
             collect_liquidations(client, conn, hot, ["5m"], LIQ5_DAYS, log=lambda m: None)
     s, open_ = score_15m_rolling(conn, hot, m15)
@@ -218,14 +228,18 @@ def quick_cycle(conn, client: Coinalyze | None, bases: list[str], m15: dict, fet
     bar = f"ковзний бар {open_:%H:%M}" if open_ is not None else "вирівняний бар — пропуск"
     print(f"[{started:%H:%M} UTC] 5-хв цикл: гарячі {', '.join(hot)}; {bar}, оцінено {len(s)}"
           + (f"; вище порогу: {', '.join(sig)}" if sig else "") + f" · {took} с")
-    write_status(**{**screener_status_file(), "cycle_5m_at": started.isoformat(timespec="seconds"), "hot_5m": hot})
+    write_status(cycle_5m_at=started.isoformat(timespec="seconds"), hot_5m=hot)
+
+
+_score_lock = threading.Lock()      # моделі оцінюють і основний цикл, і фоновий потік — по черзі
 
 
 def score(df: pd.DataFrame, models: list[dict]) -> pd.DataFrame:
     """Ймовірності всіх моделей для кожного рядка ознак."""
     out = []
     for m in models:
-        p = m["model"].predict_proba(df[m["features"]])[:, 1]
+        with _score_lock:
+            p = m["model"].predict_proba(df[m["features"]])[:, 1]
         # in_sample: ця година цього тікера була в навчанні моделі — оцінка не є чесним передбаченням
         seen = df["base_asset"].isin(m["tickers"]).to_numpy() & (df["ts"] <= m["data_end"]).to_numpy()
         for base, a, b in m.get("in_sample_extra", []):     # свіжі розмічені інтервали теж були в навчанні
@@ -289,10 +303,63 @@ def score_bases_own(conn, bases: list[str], models: list[dict]) -> tuple[pd.Data
     return scored, last_closed
 
 
+_status_lock = threading.Lock()
+
+
 def write_status(**fields) -> None:
+    """Оновити reports/screener_status.json: нові поля поверх наявних (пишуть і основний цикл, і фоновий годинний
+    потік — під замком, щоб не затирати одне одного). Успішний цикл (ok=True) знімає стару помилку."""
     os.makedirs(os.path.dirname(STATUS_FILE), exist_ok=True)
-    with open(STATUS_FILE, "w", encoding="utf-8") as f:
-        json.dump({"updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), **fields}, f, ensure_ascii=False)
+    if fields.get("ok") is True:
+        fields.setdefault("error", None)
+    with _status_lock:
+        prev = screener_status_file()
+        with open(STATUS_FILE, "w", encoding="utf-8") as f:
+            json.dump({**prev, "updated": datetime.now(timezone.utc).isoformat(timespec="seconds"), **fields}, f, ensure_ascii=False)
+
+
+class Background:
+    """Фоновий потік для довгих завантажень з Coinalyze (годинні дані, історія нових тікерів, тікери навчання поза
+    списком): 15m- і 5m-цикли більше не чекають їх (AIN 03.10: годинна частина тривала 27 хв — 15m-цикл стояв).
+    Свій конект до бази; виклики Coinalyze — з нижчим пріоритетом (Coinalyze.background). Завдання з однаковим
+    ключем, що вже в черзі чи виконується, не дублюються."""
+
+    def __init__(self, db_url: str, client: Coinalyze):
+        self.db_url, self.client = db_url, client
+        self.q: queue.Queue = queue.Queue()
+        self.keys: set = set()
+        self.lock = threading.Lock()
+        threading.Thread(target=self._run, daemon=True, name="screener-background").start()
+
+    def submit(self, key: str, fn, *args) -> bool:
+        with self.lock:
+            if key in self.keys:
+                return False
+            self.keys.add(key)
+        self.q.put((key, fn, args))
+        return True
+
+    def busy(self, key: str) -> bool:
+        with self.lock:
+            return key in self.keys
+
+    def _run(self) -> None:
+        while True:
+            key, fn, args = self.q.get()
+            t0 = datetime.now(timezone.utc)
+            try:
+                with psycopg.connect(self.db_url) as conn, self.client.background():
+                    fn(conn, *args)
+                print(f"  [фон] {key}: готово за {(datetime.now(timezone.utc) - t0).seconds} с")
+            except Exception as e:
+                print(f"  ! [фон] {key}: {type(e).__name__}: {e}")
+            finally:
+                with self.lock:
+                    self.keys.discard(key)
+
+
+BG: Background | None = None      # створюється в main() у режимі --loop; без нього все — як раніше, послідовно
+_onboarding: dict = {}             # тікер → коли його завели без годинної історії (вона докачується у фоні)
 
 
 def onboard(conn, client: Coinalyze, bases: list[str], models: list[dict], m15: dict | None, all15: bool = False) -> list[str]:
@@ -304,23 +371,47 @@ def onboard(conn, client: Coinalyze, bases: list[str], models: list[dict], m15: 
     sql = """SELECT m.base_asset FROM ohlcv o JOIN markets m USING (symbol)
              WHERE o.interval = '1hour' AND m.base_asset = ANY(%s) GROUP BY 1 HAVING max(o.ts) >= %s"""
     have = {r[0] for r in conn.execute(sql, (bases, cutoff))}
-    fresh = [b for b in bases if b not in have and b not in NO_COINALYZE]
+    now = datetime.now(timezone.utc)
+    recent = {b for b, t in _onboarding.items() if now - t < timedelta(hours=3)}   # уже заведені, історія — у фоні
+    fresh = [b for b in bases if b not in have and b not in NO_COINALYZE and b not in recent]
     if all15 and m15 is not None and not fresh:      # від сканера: годинні дані свіжі, але 15m ще не рахували
         update_15m(conn, client, bases)
         score_15m(conn, bases, m15)
     if not fresh:
         return []
-    collect(client, conn, fresh, FETCH_DAYS, verbose=False)
-    got = {r[0] for r in conn.execute(sql, (fresh, cutoff))}
-    NO_COINALYZE.update(set(fresh) - got)     # не знайдено в Coinalyze — не питати щоциклу (до перезапуску)
-    fresh = [b for b in fresh if b in got]
-    if fresh:
-        score_bases(conn, fresh, models)
-        if m15 is not None:
-            b15 = bases if all15 else fresh
-            update_15m(conn, client, b15)
-            score_15m(conn, b15, m15)
-        print(f"  нові тікери: дані й оцінки — {', '.join(fresh)}")
+    if BG is None:                                   # без фонового потоку — як раніше: годинна історія одразу
+        collect(client, conn, fresh, FETCH_DAYS, verbose=False)
+        got = {r[0] for r in conn.execute(sql, (fresh, cutoff))}
+        NO_COINALYZE.update(set(fresh) - got)     # не знайдено в Coinalyze — не питати щоциклу (до перезапуску)
+        fresh = [b for b in fresh if b in got]
+        if fresh:
+            score_bases(conn, fresh, models)
+            if m15 is not None:
+                b15 = bases if all15 else fresh
+                update_15m(conn, client, b15)
+                score_15m(conn, b15, m15)
+        return fresh
+    # контракти бірж — двома викликами на весь список (без них 15m з бірж не завантажаться), далі 15m-дані, 15m- і
+    # годинна оцінка з власних 15m — одразу; годинна історія Coinalyze (~23 виклики на тікер) — у фоні
+    markets = find_markets(client, fresh)
+    found = {m["base_asset"].upper() for m in markets}
+    NO_COINALYZE.update(set(fresh) - found)
+    fresh = [b for b in fresh if b in found]
+    if not fresh:
+        return []
+    upsert_markets(conn, markets)
+    for b in fresh:
+        _onboarding[b] = now
+    if m15 is not None:
+        b15 = bases if all15 else fresh
+        update_15m(conn, client, b15)
+        score_15m(conn, b15, m15)
+        try:
+            score_bases_own(conn, fresh, models)
+        except Exception as e:
+            print(f"  ! годинна з власних 15m для нових: {e}")
+    BG.submit(f"історія нових: {', '.join(fresh)}", coin_history, fresh, models)
+    print(f"  нові тікери: {', '.join(fresh)} — 15m одразу, годинна історія Coinalyze у фоні")
     return fresh
 
 
@@ -334,6 +425,10 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
     if m15 is not None:
         if fetch:
             update_15m(conn, client, bases)
+            try:
+                wake.check(conn, bases)        # 5m щойно оновлено для всього списку
+            except Exception as e:
+                print(f"  ! прокидається: {e}")
             hot5 = hot_bases(conn, bases)
             if hot5 and client is not None:
                 collect_liquidations(client, conn, hot5, ["5m"], LIQ5_DAYS, log=lambda m: None)
@@ -355,18 +450,31 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
             print(f"  ! стакан: {e}")
     fresh = onboard(conn, client, bases, models, m15) if fetch and client is not None else []
     if not hourly:
-        prev = screener_status_file()
-        write_status(**{**prev, **info15, "ok": True, "cycle_15m_at": started.isoformat(timespec="seconds"),
-                        "api_calls_15m": (client.calls_made - calls0) if client else 0})
+        write_status(**info15, ok=True, cycle_15m_at=started.isoformat(timespec="seconds"),
+                     api_calls_15m=(client.calls_made - calls0) if client else 0)
         return
 
-    # годинне підтвердження з власних 15m — одразу, до будь-якого збору Coinalyze
+    # годинне підтвердження з власних 15m — одразу, до будь-якого збору Coinalyze (секунди)
     own, coin = split_hourly(conn, bases)
     scored_own = pd.DataFrame()
     if own:
         scored_own, _ = score_bases_own(conn, own, models)
         print(f"  годинна оцінка з власних 15m: {len(own)} тікерів за {(datetime.now(timezone.utc) - started).seconds} с"
               + (f"; з Coinalyze (покриття < {OWN_HOURLY_MIN_SHARE:.0%}): {', '.join(coin)}" if coin else ""))
+    if BG is not None:
+        # збір Coinalyze і годинна оцінка решти — у фоні: наступні 15m- і 5m-цикли не чекають
+        if not BG.submit("годинна частина (Coinalyze)", hourly_coinalyze, bases, models, fetch, client, own, coin, hot, fresh,
+                         started, scored_own, calls0, limited0, info15, m15 is not None):
+            print("  годинна частина ще триває з минулого разу — цю годину пропускаємо")
+        return
+    hourly_coinalyze(conn, bases, models, fetch, client, own, coin, hot, fresh, started, scored_own, calls0, limited0,
+                     info15, m15 is not None)
+
+
+def hourly_coinalyze(conn, bases, models, fetch, client, own, coin, hot, fresh, started, scored_own, calls0, limited0,
+                     info15, has15) -> None:
+    """Годинні дані Coinalyze (тікери з покриттям Binance+Bybit < 70% OI — щогодини, решта — раз на 6 год) і годинна
+    оцінка з них; звіт у консоль і статус. У режимі --loop — у фоновому потоці (Background)."""
     if fetch:
         # зазвичай 10 днів; після довгого простою — увесь пропуск (Coinalyze тримає ~60 днів; ліміт — за символами, не днями)
         last1h = conn.execute("""SELECT min(t) FROM (SELECT m.base_asset, max(o.ts) AS t FROM ohlcv o JOIN markets m USING (symbol)
@@ -427,7 +535,9 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
                  hourly_own=len(own), hourly_coinalyze=coin,
                  api_calls=(client.calls_made - calls0) if client else 0,
                  api_429=(client.rate_limited - limited0) if client else 0, fetched=fetch,
-                 cycle_15m_at=started.isoformat(timespec="seconds") if m15 is not None else None, **info15)
+                 cycle_15m_at=started.isoformat(timespec="seconds") if has15 else None, **info15)
+
+
 
 
 def screener_status_file() -> dict:
@@ -455,6 +565,17 @@ def next_hourly(now: datetime) -> datetime:
 
 def watch_bases() -> list[str]:
     return [t.upper() for t in read_tickers_file(WATCHLIST_FILE)]
+
+
+def coin_history(conn, bases: list[str], models: list[dict]) -> None:
+    """Фон: годинна історія Coinalyze нових тікерів (графік 1h, частка OI бірж) і годинна оцінка з неї."""
+    if BG is None:
+        return
+    collect(BG.client, conn, bases, FETCH_DAYS, verbose=False)
+    have = {r[0] for r in conn.execute("""SELECT DISTINCT m.base_asset FROM ohlcv o JOIN markets m USING (symbol)
+                                          WHERE o.interval = '1hour' AND m.base_asset = ANY(%s)""", (bases,))}
+    if have:
+        score_bases(conn, sorted(have), models)
 
 
 def cycle_bases() -> list[str]:
@@ -488,6 +609,9 @@ def main() -> None:
     if m15 is None:
         print("15m-моделі немає (python train.py) — працює лише годинний контур")
     client = None if args.no_fetch else Coinalyze(api_key)
+    global BG
+    if args.loop and client is not None:
+        BG = Background(db_url, client)
 
     last_hour, last_bg, last_full15 = None, None, None
     while True:
@@ -529,7 +653,9 @@ def main() -> None:
                 if not args.no_fetch and (last_bg is None or now_bg - last_bg >= timedelta(hours=BACKGROUND_HOURS)):
                     bg = [t.upper() for t in read_tickers_file("tickers.txt") if t.upper() not in set(cycle_bases())]
                     try:
-                        if bg:
+                        if bg and BG is not None:
+                            BG.submit("історія тікерів навчання", lambda c, b: update_15m(c, BG.client, b, log=lambda m: None), bg)
+                        elif bg:
                             update_15m(conn, client, bg, log=lambda m: None)
                             print(f"  історія бірж для тікерів навчання поза списком: {len(bg)}")
                         last_bg = now_bg

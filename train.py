@@ -405,6 +405,15 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
         d = build_15m(conn, bases, pumps)
         raw15 = load_raw(conn, bases, INTERVAL_15M)
         risk15 = stop_multiplier(conn, "15min")      # довідково: від розміченого старту
+    # 15m-історія тікера — не раніше за його годинну: розмітка показує цей період (годинна модель має ту саму межу).
+    # Інакше довга 15m-історія лише з Bybit (з довгого бектесту, напр. MON / ZRO з 26.03) іде в навчання як
+    # «переглянуто, імпульсів немає», хоча ти її не бачив, а на стику бірж стрибає сума обсягу.
+    first_1h = df1h.groupby("base_asset")["ts"].min()
+    cut = d["base_asset"].map(first_1h)
+    dropped = int((d["ts"] < cut).sum())
+    d = d[d["ts"] >= cut]
+    if dropped:
+        print(f"  відкинуто {dropped} барів 15m раніше за годинну історію тікера")
     d["reviewed"] = d["base_asset"].isin(reviewed)
     d = d[d["reviewed"] | d["pattern_type"].notna()]
     if cutoff is not None:
@@ -461,7 +470,7 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
             "risk": risk15, "exit_bars": EXIT_BARS_15M,
             "confirm": {"model": "lightgbm", "share": CONFIRM_SHARE},
             "settings": {"fresh_hours": args.fresh_hours, "bars": int(len(d)), "tickers": int(groups.nunique()),
-                         "n_features": len(FEATURES_15M)},
+                         "n_features": len(FEATURES_15M), "from_1h_start": True, "dropped_before_1h": dropped},
         }
         bundle["labels_fp"] = labels_fp or {}
         os.makedirs(out_dir, exist_ok=True)

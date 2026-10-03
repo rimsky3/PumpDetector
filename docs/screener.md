@@ -16,10 +16,19 @@ train.py ──saves──▶ models/logreg.joblib, models/lightgbm.joblib      
 
 screener.py, every 15 minutes (HH:02/17/32/47 UTC):
     15m bars from Binance/Bybit + 15m liquidations from Coinalyze → features.build_15m() → 15m model → signals
-    once an hour, also: Coinalyze 1h for the last 10 days → features.build() → hourly models → signals
-    in between, every 5 minutes (:07, :12, :22, …): "hot" coins only (15m score ≥ 0.8 × threshold in the last 2 h)
+    once an hour, also: hourly model from our own 15m data (seconds) → signals; Coinalyze 1h for the coins that need it
+      → hourly models → signals — in a BACKGROUND thread (see below)
+    in between, every 5 minutes (:07, :12, :22, …): 5m tail for the whole list → "waking up" (wake.py) →
+    "hot" coins (15m score ≥ 0.8 × threshold in the last 2 h, or woke up in the last 2 h):
     5m bars + 5m liquidations → rolling 15m bar that just closed (offset 5 or 10 min) → same 15m model
     → signals as model lightgbm_15m_roll
+
+background thread (--loop): the slow Coinalyze downloads never hold up the 15m and 5m cycles —
+    the hourly Coinalyze part, the 1h history of coins the scanner just added (they get exchange contracts with two
+    calls, 15m data, a 15m score and an hourly score from own 15m right away), the 3-hourly history of training coins
+    outside the list. Background Coinalyze calls have lower priority (fetch.Coinalyze.background: they leave 10 of the
+    40 calls/min and wait while urgent 15m / 5m calls queue). On 2026-10-03 the hourly part took 27 minutes and AIN's
+    first 15m bar was scored 9 minutes late; now the main cycle returns in ~25 s.
 
 tiers.py (at read time): 15m score + last closed hourly score → Candidate / Alert
 
@@ -51,7 +60,9 @@ and Candidates 3 minutes earlier, with no extra false alarms (4.2 → 4.1 per 30
   the OI for a 5m bar after it closes, and a half-built bar looks like an OI crash to the model.
 - Rolling scores are stored as a separate model, `lightgbm_15m_roll`. The **watchlist** shows the newest score
   (status and P), and **notifications** start an episode from it. The journal, the position card, chart marks and the
-  backtest stay on the regular 15m bars, the same bars the model was trained and validated on.
+  backtest stay on the regular 15m bars, the same bars the model was trained and validated on. When the newest rolling
+  score is more recent than the last scored regular bar, the chart shows it as a separate point on the P pane (axis
+  label "5m", colored by its level) and the info row adds "P 5m", so a notification never disagrees with the chart.
 - 5m liquidations for hot coins are always fetched for 10 days. Coinalyze counts calls per symbol, not per day, so this
   costs the same as a short tail and fills any gap from the time the coin was "cold".
 
@@ -97,14 +108,42 @@ The screener writes raw data for watchlist coins into the same tables. If unlabe
 training set, every hour on them would count as "no pump" and silently bias the model. That is why
 `features.py` builds the training table from `tickers.txt` only.
 
+## "Waking up" (5-minute early warning)
+
+`wake.py` flags a coin from the list that has just started to move, before the model reacts: over the last 15 minutes
+volume is ≥ 5× its norm (the median 15-minute volume of the previous 7 days) and ≥ 2× the median of the last 4 hours
+(so a coin that is already moving does not "wake up" again — AIN 2026-10-03 18:05 was ×188 against its dead weekly norm
+but half of its last 4 hours; in the backtest this drops 9% of events with the same quality), price is up ≥ 2%, and open interest
+(Binance + Bybit, chained index) is up ≥ 2% over the last hour; then 4 hours of silence for that coin. It is not a model
+signal and not an entry: in September backtests (86 coins ≥ 20 M$, outside training, `experiments/wakeup_5m.py`) a
+Candidate followed within 2 hours in 46% of cases (6% after a random moment), and for 37% of Alerts the warning came
+~30 minutes earlier; price afterwards had no edge either way.
+
+- Every cycle (15-minute and 5-minute) the screener pulls the 5m tail for the whole list straight from the exchanges
+  (~40 s for 40 coins, no Coinalyze calls) and checks the bar that just closed. Events go to `reports/wake_events.json`
+  (7 days).
+- A coin that woke up is **hot** for 2 hours: it gets 5m liquidations and a rolling 15m score every 5 minutes right
+  away, instead of waiting for the regular 15m bar to cross the hot threshold.
+- Dashboard: the candle and its volume bar are drawn violet with "×N" (volume vs norm) under the candle, on any
+  chart timeframe (the bar that contains the 5m bar); the info row shows volume, price and OI change; in the ticker
+  list a calm coin's dot is violet for 30 minutes after it woke up (hover for the numbers). Optional voice (the "Volume 5m"
+  bell button; Alert, Candidate and Volume 5m are three independent buttons in one row): the browser says "Volume S T R K" (speech synthesis, ticker spelled) for each
+  new event while the page is open; like the other sounds it needs one click on the page after a reload.
+- `python wake.py AIN --days 3` lists a coin's events from the database.
+
 ## Market scanner
 
 `scanner.py` fills the list automatically. Every 15-minute screener cycle it takes all Binance USDT perps (one request)
-and, for those with at least 5 M$ of 24h turnover (~240 of ~530), fetches 7.5 days of closed 15m candles and 4 hours
-of open interest (Binance public API, no Coinalyze calls; ~50 s). A coin added mid-hour gets its hourly Coinalyze
+and, for those with at least 5 M$ of average daily turnover (~300 of ~530), fetches 7.5 days of closed 15m candles and
+4 hours of open interest (Binance public API, no Coinalyze calls; ~50 s). The 30-day average daily turnover comes from daily
+candles, fetched once per UTC day for every perp (`reports/scan_turnover_avg.json`; the first scan of the day takes ~75 s). A coin added mid-hour gets its hourly Coinalyze
 data in the same cycle, so Alert (which needs the hourly model) works right away. A coin enters the auto-list when
 
-- **liquidity**: 24h turnover ≥ `min_turnover` and open interest ≤ `max_oi` (large caps are out of scope), and
+- **liquidity**: average daily turnover over the last 30 complete days ≥ `min_turnover` and open interest ≤ `max_oi`
+  (large caps are out of scope). Until 2026-10-03 this was the 24 h turnover; backtest trades showed that a liquid coin
+  often starts its move on a quiet day (SYN +51% with 7 M$ of 24 h turnover against a 36 M$ average), while small coins
+  that just spiked above the floor do worse (`experiments/turnover_at_entry.py`). The 24 h turnover is still shown in the
+  reason text. And
 - **waking up**: the last 4 hours of volume are ≥ `vol_x` × the 7-day median of 4-hour volume while price is not
   falling, **or** open interest is up ≥ `oi_pct` % and price ≥ `price_pct` % over 4 hours.
 
@@ -141,7 +180,8 @@ would have been in the list before the impulse started):
 | Wide | 5 M$ | 2 / 6 / 1 | 47 | 9 | 0 |
 
 The turnover floor costs most: many targets are quiet small coins until the pump starts (10 M$ with the Balance
-triggers gives 37/56). At the first live scan the presets passed 3 / 5 / 9 coins.
+triggers gives 37/56). At the first live scan the presets passed 3 / 5 / 9 coins. (The recall table was computed with the
+24 h turnover; `--recall` now uses the average over its 8-day hourly window.)
 
 The dashboard's **Сканер** card previews any preset against the last scan before saving, lists the auto coins,
 and adds a coin by hand (**＋ у watchlist**: validated against Binance, written to `watchlist.txt`, data fetched at once).
