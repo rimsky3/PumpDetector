@@ -227,6 +227,12 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 | `python experiments/l_shock.py` | "liquidation fade" event test on 5m and 1m with controls → `reports/l_shock.md`, `reports/l_shock_trades.csv` (`--no-oi` skips the database) |
 | `python experiments/profile_levels.py` | previous-day POC / VAH / VAL and impulse POC vs random levels → `reports/profile_levels.md` |
 
+### `experiments/time_of_day.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/time_of_day.py` | trades of the current rule by hour of day (UTC and Kyiv), 4-hour blocks and weekday: 6-month cache + September with the current model → `reports/time_of_day.md` |
+
 ### `experiments/wakeup_5m.py`
 
 | Usage | Meaning |

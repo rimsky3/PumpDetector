@@ -921,7 +921,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- графік: TradingView Lightweight Charts (app/vendor) ----------
   const LWC = window.LightweightCharts;
   const chartEl = $("chart"), ohlcEl = $("ohlc");
-  let chart = null, S = {}, priceLines = [], markersApi = null, idx = new Map(), rangeKey = null;
+  let chart = null, S = {}, priceLines = [], markersApi = null, probMarkers = null, idx = new Map(), rangeKey = null;
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
   const fmtDur = (hrs) => { const d = Math.floor(Math.abs(hrs) / 24), h = Math.abs(hrs) % 24; return (hrs < 0 ? "−" : "") + (d ? `${d} д ${h} год` : `${h} год`); };
   const signed = (v) => (v >= 0 ? "+" : "−") + fmtPx(Math.abs(v));
@@ -970,6 +970,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     S.vol = chart.addSeries(LWC.HistogramSeries, { ...noLast, title: "Обсяг", color: C.muted, priceFormat: { type: "custom", formatter: fmtUsd, minMove: 1 } }, 2);
     S.prob = chart.addSeries(LWC.HistogramSeries, { title: "P", priceLineVisible: false, priceFormat: { type: "price", precision: 2, minMove: 0.01 },
       autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) }, 3);
+    probMarkers = LWC.createSeriesMarkers(S.prob, []);      // ковзні (5-хв) Кандидат / Alert на панелі P
     // годинний контекст для «15m + 1h»: оцінка останньої закритої години
     S.ctx = chart.addSeries(LWC.LineSeries, { title: "1h", color: C.fg2, lineWidth: 1, lineType: 1, priceLineVisible: false, lastValueVisible: false,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 }, autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 1 } }) }, 3);
@@ -1037,6 +1038,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // «прокидається»: 5m-бар спрацювання → бар графіка, що його містить
     const wakeCol = cssVar("--wake"), tfs = d.bar || 900;
     st.wakeAt = new Map((is15() ? d.wake || [] : []).map((w) => [Math.floor(w.ts / tfs) * tfs, w]));
+    // ковзні 5-хв Кандидат / Alert → бар графіка, що містить кінець вікна (найсильніший, якщо кілька)
+    const rollAt = new Map();
+    (is15() ? d.rolling_sig || [] : []).forEach((r) => {
+      const tt = Math.floor((r.close - 1) / tfs) * tfs, prev = rollAt.get(tt), rank = (x) => (x.tier === "alert" ? 2 : 1) * 10 + x.p15;
+      if (!prev || rank(r) > rank(prev)) rollAt.set(tt, r);
+    });
     const candles = [], zones = [], oi = [], vol = [], prob = [];
     s.t.forEach((time, i) => {
       const ok = s.open[i] != null && s.high[i] != null && s.low[i] != null && s.price[i] != null;
@@ -1044,7 +1051,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const cnd = ok ? { time, open: s.open[i], high: s.high[i], low: s.low[i], close: s.price[i] } : { time };
       if (ok && wk) Object.assign(cnd, { color: wakeCol, borderColor: wakeCol, wickColor: wakeCol });
       candles.push(cnd);
-      if (tier) zones.push(tier[i] ? { time, value: 1, color: zoneCol[tier[i]] } : { time });
+      const rs = rollAt.get(time);
+      if (tier) zones.push(tier[i] ? { time, value: 1, color: zoneCol[tier[i]] }
+        : rs ? { time, value: 1, color: rgba(rs.tier === "alert" ? hot : amber, 0.07) } : { time });
       else zones.push(pr[i] != null && pr[i] >= thr ? { time, value: 1 } : { time });
       const [o, hh, l, c] = st.oiUsd ? [s.usdO[i], s.usdH[i], s.usdL[i], s.oi[i]] : [s.coinO[i], s.coinH[i], s.coinL[i], s.coin[i]];
       oi.push(o != null && c != null ? { time, open: o, high: Math.max(hh ?? c, o, c), low: Math.min(l ?? c, o, c), close: c } : { time });
@@ -1053,6 +1062,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       prob.push(pr[i] != null ? { time, value: pr[i], color: pc } : { time });
     });
     S.candles.setData(candles); S.zones.setData(zones); S.oi.setData(oi); S.vol.setData(vol); S.prob.setData(prob);
+    probMarkers.setMarkers([...rollAt].filter(([time]) => idx.has(time)).sort((a, b) => a[0] - b[0]).map(([time, r]) =>
+      ({ time, position: "aboveBar", shape: "circle", color: r.tier === "alert" ? hot : amber, text: `5m ${fmtP(r.p15)}` })));
     // ковзна оцінка: на бар графіка, що містить кінець її 15-хв вікна (на 5m — бар, що закривається разом з вікном)
     const rl = is15() ? d.rolling : null;
     if (rl) {

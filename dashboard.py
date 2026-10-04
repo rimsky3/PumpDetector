@@ -413,6 +413,11 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
             "volume_z_7d": cur["volume_z_7d"] if cur is not None else None,
         },
         "position": pos, "ob_marks": ob_marks, "limit": lim, "rolling": rolling,
+        # Кандидат / Alert, що були ЛИШЕ на ковзних вікнах 5-хв циклу (з них приходили сповіщення): на графіку — бліда зона і
+        # кружечок «5m» на панелі P, щоб сигнал не зникав, коли звичайний 15m-бар оцінено нижче порогу (VIRTUAL 04.10 16:55)
+        "rolling_sig": [{"ts": r.ts, "close": r.ts + pd.Timedelta(minutes=15), "p15": r.p15, "tier": r.tier}
+                        for r in troll.itertuples() if r.tier in ("candidate", "alert") and len(view) and r.ts >= view.index.min()]
+        if len(troll) else [],
         # «прокидається» (wake.py) на 5m-барах за видимий період: свічка й обсяг на графіку — фіолетові
         "wake": wake_marks(conn, base, view.index.min() if len(view) else pd.Timestamp(now)),
         "series": {

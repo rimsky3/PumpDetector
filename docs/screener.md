@@ -63,6 +63,9 @@ and Candidates 3 minutes earlier, with no extra false alarms (4.2 → 4.1 per 30
   backtest stay on the regular 15m bars, the same bars the model was trained and validated on. When the newest rolling
   score is more recent than the last scored regular bar, the chart shows it as a separate point on the P pane (axis
   label "5m", colored by its level) and the info row adds "P 5m", so a notification never disagrees with the chart.
+  Candidates and Alerts that existed only on rolling windows stay on the chart's history too: a faint zone on the price
+  pane and a "5m 0.90" dot above the P column of the bar that contains the window's end (VIRTUAL 2026-10-04 16:55 was an
+  Alert only on the 16:55–17:10 window; both regular bars around it scored 0.80).
 - 5m liquidations for hot coins are always fetched for 10 days. Coinalyze counts calls per symbol, not per day, so this
   costs the same as a short tail and fills any gap from the time the coin was "cold".
 
