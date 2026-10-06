@@ -1170,7 +1170,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (ruler) ruler.redraw();
       if (vp) vp.reload();
       renderOhlc(null);
-      live.draw();                 // setData прибирає незакриту свічку — повертаємо її
+      live.redraw();               // setData прибирає бари, яких ще немає в базі, і незакриту свічку — повертаємо їх
     };
 
     // ---------- жива свічка: WebSocket Binance / Bybit напряму з браузера ----------
@@ -1185,9 +1185,50 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const stop = () => {
         socks.forEach((w) => { w.onclose = null; try { w.close(); } catch (e) {} });
         timers.forEach(clearInterval);
-        socks = []; timers = []; key = null; bar = null; oi = { bn: null, by: null }; alive = 0; setDot();
+        socks = []; timers = []; key = null; bar = null; oi = { bn: null, by: null }; alive = 0; fill = []; setDot();
       };
       const full = () => P.data && (P.data.tf === "5m" || P.data.tf === "15m");
+      // Закриті бари, яких ще немає в базі (скринер пише 5m/15m із запізненням на кілька хвилин): без них жива свічка
+      // стояла після «дірки» і виглядала як розрив (BR 06.10 19:10 на 5m: бару 19:05 ще не було в базі). Беремо їх з REST
+      // бірж при відкритті і зберігаємо щойно закриту живу свічку, поки база не наздожене — лише для показу (2026-10-06).
+      let fill = [], gapBusy = false;
+      const dbLast = () => { const t = P.data?.series.t; return t && t.length ? t[t.length - 1] : 0; };
+      const drawFill = () => {
+        const last = dbLast();
+        fill = fill.filter((b) => b.time > last);          // база наздогнала — свої бари більше не потрібні
+        fill.forEach((b) => {
+          if (bar && b.time >= bar.time) return;
+          S.candles.update({ time: b.time, open: b.o, high: b.h, low: b.l, close: b.c });
+          if (full() && b.v != null) S.vol.update({ time: b.time, value: b.v });
+        });
+      };
+      const gapFill = async () => {
+        const d = P.data; if (!d || !d.live || !d.live.price_exchange || !IV[d.tf] || gapBusy) return;
+        const tfs = d.bar || 900, cur = Math.floor(Date.now() / 1000 / tfs) * tfs, last = dbLast();
+        const have = fill.length ? Math.max(last, fill[fill.length - 1].time) : last;
+        if (!last || cur - have <= tfs) return;            // бракує лише поточного (живого) бару
+        gapBusy = true;
+        try {
+          const L = d.live, iv = IV[d.tf], from = (last + tfs) * 1000, rows = new Map();
+          const get = async (u) => { try { return await (await fetch(u)).json(); } catch (e) { return null; } };
+          const [bn, by] = await Promise.all([
+            L.binance ? get(`https://fapi.binance.com/fapi/v1/klines?symbol=${L.binance}&interval=${iv[0]}&startTime=${from}&limit=200`) : null,
+            L.bybit ? get(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${L.bybit}&interval=${iv[1]}&start=${from}&limit=200`) : null]);
+          const put = (src, ms, o, h, l, c, quote) => {
+            const time = Math.floor(ms / 1000); if (time >= cur || time <= last) return;
+            const r = rows.get(time) || { time, o: null, h: null, l: null, c: null, v: 0 };
+            if (src === L.price_exchange) Object.assign(r, { o, h, l, c });
+            r.v += quote || 0; rows.set(time, r);           // обсяг — сума бірж, як у базі
+          };
+          (Array.isArray(bn) ? bn : []).forEach((k) => put("Binance", +k[0], +k[1], +k[2], +k[3], +k[4], +k[7]));
+          ((by && by.result && by.result.list) || []).forEach((k) => put("Bybit", +k[0], +k[1], +k[2], +k[3], +k[4], +k[6]));
+          const got = [...rows.values()].filter((r) => r.c != null);
+          if (P.data !== d || !got.length) return;
+          const known = new Set(fill.map((b) => b.time));
+          fill = fill.concat(got.filter((b) => !known.has(b.time))).sort((a, b) => a.time - b.time);
+          P.renderChart();                                  // вставити бари перед живою свічкою
+        } finally { gapBusy = false; }
+      };
       const draw = () => {
         pending = false;
         const d = P.data; if (!d || !bar || bar.c == null || !S.candles) return;
@@ -1213,7 +1254,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const onKline = (src, startMs, o, h, l, c, quote) => {
         const d = P.data; if (!d || !d.live) return;
         const time = Math.floor(startMs / 1000);
-        if (!bar || time > bar.time) bar = { time, o: null, h: null, l: null, c: null, bnQ: 0, byT: 0, oiO: null, oiH: null, oiL: null };
+        if (!bar || time > bar.time) {
+          // попередня жива свічка закрилась — тримаємо її на графіку, поки скринер не запише бар у базу
+          if (bar && bar.c != null && bar.time > dbLast() && !fill.some((b) => b.time === bar.time))
+            fill.push({ time: bar.time, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: full() ? bar.bnQ + bar.byT : null });
+          bar = { time, o: null, h: null, l: null, c: null, bnQ: 0, byT: 0, oiO: null, oiH: null, oiL: null };
+        }
         if (time < bar.time) return;
         if (src === d.live.price_exchange) { bar.o = o; bar.h = h; bar.l = l; bar.c = c; }
         if (src === "Binance") bar.bnQ = quote; else bar.byT = quote;
@@ -1256,7 +1302,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           timers.push(setInterval(() => socks.forEach((w) => { if (w.readyState === 1 && w.url.includes("bybit")) w.send('{"op":"ping"}'); }), 20000));
         }
       };
-      return { start, stop, draw };
+      return { start, stop, draw, gapFill, redraw: () => { if (S.candles && P.data) { drawFill(); draw(); } } };
     })();
 
     // заголовок вікна: тікер, ціна, зміна за добу, статус, P, позиція і стоп (останні — лише з «Повна інфо»)
@@ -1301,6 +1347,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         requestAnimationFrame(() => { try { chart.timeScale().setVisibleRange({ from: f.from, to: f.to }); } catch (e) {} });
       }
       live.start();
+      live.gapFill();
       // сервер у фоні дозавантажує закриті бари, яких ще немає в базі, — перезапитуємо, щойно вони будуть
       if (P.data && P.data.tail_refresh) setTimeout(() => { if (P.ticker === tk) load(); }, 15000);
     };
