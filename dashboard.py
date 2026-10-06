@@ -207,8 +207,12 @@ def watch_list_15m(conn) -> dict:
         g = g.sort_values("ts")
         last = g.iloc[-1]
         # статус і P — з найсвіжішої оцінки: ковзний бар 5-хв циклу новіший за останній звичайний 15m-бар
+        # статус і P — офіційного 15m-бару, як на графіку, в заголовку вікна і в позиції (SYN 06.10: список показував
+        # ковзну 0.46, а графік — Alert 0.91 на барі). Ковзна 5-хв оцінка, якщо новіша, — окремим полем roll (підпис «5m»)
+        roll = None
         if newest is not None and base in newest.index and newest.at[base, "ts"] > last["ts"]:
-            last = newest.loc[base]
+            n = newest.loc[base]
+            roll = {"p15": n["p15"], "tier": n["tier"], "close": n["ts"] + BAR_15M}
         streak = 0
         for x in reversed(g["tier"].tolist()):
             if x != last["tier"] or x == "calm":
@@ -229,7 +233,7 @@ def watch_list_15m(conn) -> dict:
             "streak": streak, "streak_min": streak * 15, "in_sample": bool(last["in_sample"]), "last_bar": last["ts"],
             "spark": spark.tolist(), "chg_24h": chg, "oi_24h": oi24,
             "p1h": last["p1h"], "thr1h": last["thr1h"], "need1h": share() * last["thr1h"] if pd.notna(last["thr1h"]) else None,
-            "wake": woke.get(base),
+            "wake": woke.get(base), "roll": roll,
         })
     order = {"alert": 0, "candidate": 1, "calm": 2}
     rows.sort(key=lambda r: (order.get(r["status"], 3), -(r["probability"] or 0)))

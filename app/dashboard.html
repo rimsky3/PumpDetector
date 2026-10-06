@@ -129,6 +129,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .persel { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg2); }
 .persel select { height: 30px; background: var(--card); color: var(--fg); border: 1px solid var(--line2); border-radius: 7px; padding: 0 8px; font: inherit; }
 .trow.other { box-shadow: inset 2px 0 0 var(--line3); }
+.trow .roll { font-size: 10px; margin-left: 6px; font-weight: 400; white-space: nowrap; }
 /* ліва панель згортається у смугу (кнопка ‹ або клавіша [) */
 .app { --side-w: 248px; grid-template-columns: var(--side-w) minmax(0, 1fr) 392px; }
 .app.journal { grid-template-columns: var(--side-w) minmax(0, 1fr); }
@@ -1472,6 +1473,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (r.status === "calm" && r.wake) dot.title = `Прокидається ${r.wake.minutes} хв тому: обсяг ×${r.wake.vol_x.toFixed(1)}, ціна ${fmtPct(r.wake.ret15)} за 15 хв, OI ${fmtPct(r.wake.oi1h)} за год`;
       name.append(dot, r.ticker);
       if (r.source === "auto") { const t = el("span", "tag-auto", "АВТО"); name.appendChild(t); }
+      // ковзна 5-хв оцінка, новіша за офіційний бар: сірим, кольоровим — якщо вона вже Кандидат / Alert
+      if (r.roll && Math.abs(r.roll.p15 - (r.probability ?? 0)) >= 0.05) {
+        const rr = el("span", "roll " + (r.roll.tier === "alert" ? "hot" : r.roll.tier === "candidate" ? "amber" : "dim"), `5m ${fmtP(r.roll.p15)}`);
+        rr.title = `Ковзне 5-хв вікно до ${fmtTs(r.roll.close).slice(-5)} UTC: P ${fmtP(r.roll.p15)} · ${STATUS[r.roll.tier] || r.roll.tier}. Колонка P — останній звичайний 15m-бар, як на графіку.`;
+        name.appendChild(rr);
+      }
       const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
       const oi = el("span", "num " + (r.oi_24h >= 0.15 ? "warm" : r.oi_24h < 0 ? "dim" : ""), fmtPct(r.oi_24h));
       const chg = el("span", "num " + pctCls(r.chg_24h), fmtPct(r.chg_24h));
