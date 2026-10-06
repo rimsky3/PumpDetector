@@ -30,3 +30,4 @@ reports/backtests/
 reports/*.html
 reports/my_trades/
 data/
+reports/signals_stamp

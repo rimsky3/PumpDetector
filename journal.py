@@ -94,6 +94,24 @@ def label_outcome(pumps: pd.DataFrame, base: str, start: pd.Timestamp, end: pd.T
     return None
 
 
+SERIES_WARMUP = pd.Timedelta(days=5)      # історія до першої оцінки: ATR(14) Уайлдера встигає «забути» старт
+
+
+def _series(conn, base: str, interval: str, freq: str, cache: dict) -> pd.DataFrame:
+    """Зведений ряд тікера (ціна, OI…) для симуляції угод — один на ТФ для всіх моделей журналу.
+    Сирі дані беремо ПО ОДНОМУ тікеру і лише з першої оцінки (мінус SERIES_WARMUP), у кеші — лише зведений ряд:
+    раніше журнал вантажив повну історію всіх тікерів одразу (~1.4 ГБ піку; сервер з 2 ГБ RAM цього не витримав)."""
+    hk = ("h", interval, base)
+    if hk not in cache:
+        if "first_ts" not in cache:            # перша оцінка кожного тікера будь-якою моделлю
+            cache["first_ts"] = {b: pd.Timestamp(t) for b, t in
+                                 conn.execute("SELECT base_asset, min(ts) FROM signals GROUP BY 1").fetchall()}
+        first = cache["first_ts"].get(base)
+        raw = load_raw(conn, [base], interval, since=None if first is None else (first - SERIES_WARMUP).to_pydatetime())
+        cache[hk] = aggregate(raw, base, freq)
+    return cache[hk]
+
+
 def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict | None = None,
                  strat: dict | None = None) -> pd.DataFrame:
     """Усі угоди моделі по всіх тікерах з результатом і джерелом результату.
@@ -106,24 +124,14 @@ def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict 
     if scores.empty:
         return pd.DataFrame(columns=cols)
     pumps = cache.setdefault("pumps", load_pumps(conn)) if cache is not None else load_pumps(conn)
-    bases = tuple(sorted(scores["base_asset"].unique()))
-    rkey = ("raw", interval, bases)
-    if cache is not None and rkey not in cache:
-        cache[rkey] = load_raw(conn, list(bases), interval)
-    raw = cache[rkey] if cache is not None else load_raw(conn, list(bases), interval)
+    cache = cache if cache is not None else {}
     k = (bundle or {}).get("risk", {}).get("k")
     trained = set((bundle or {}).get("tickers", []))
     data_end = (bundle or {}).get("data_end")
     now = pd.Timestamp(datetime.now(timezone.utc))
     rows = []
     for base, g in scores.groupby("base_asset"):
-        if cache is not None:                      # ряд тікера — один на ТФ для всіх моделей
-            hk = ("h", interval, bases, base)
-            if hk not in cache:
-                cache[hk] = aggregate(raw, base, freq)
-            h = cache[hk]
-        else:
-            h = aggregate(raw, base, freq)
+        h = _series(conn, base, interval, freq, cache)
         if h.empty:
             continue
         g = g.set_index("ts").sort_index()

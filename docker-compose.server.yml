@@ -1,0 +1,66 @@
+# Сервер (AWS Lightsail, 2 ГБ RAM): база + скринер 24/7 + дашборд.
+# На сервері, з папки ~/pd:
+#   docker compose -f docker-compose.server.yml up -d --build     — зібрати образ і запустити все
+#   docker compose -f docker-compose.server.yml logs -f screener  — лог скринера наживо
+#   docker compose -f docker-compose.server.yml restart screener  — після оновлення коду чи моделі
+# Секрети — у ~/pd/.env (лише COINALYZE_API_KEY і POSTGRES_PASSWORD). Опис — docs/server.md.
+# Локальна база на ноутбуці — як і раніше, docker-compose.yml.
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?заповни POSTGRES_PASSWORD у .env}
+      POSTGRES_DB: pump_detector
+    # пам'ять бази під 2-ГБ сервер: кеш сторінок 256 МБ, решту віддаємо скринеру й дашборду
+    command: >
+      postgres -c shared_buffers=256MB -c effective_cache_size=768MB -c work_mem=16MB
+               -c maintenance_work_mem=128MB -c max_connections=60
+    # порт 5432 НЕ відкриваємо: до бази ходять лише контейнери цієї мережі (за ім'ям db)
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d pump_detector"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 700m
+
+  screener:
+    build: .
+    image: pump-detector
+    restart: unless-stopped
+    command: python screener.py --loop
+    working_dir: /app
+    volumes:
+      - ./:/app                     # код, models/, reports/, списки тікерів — з папки на сервері
+    environment:
+      # має пріоритет над .env (load_dotenv не перезаписує наявні змінні): база — контейнер db
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pump_detector
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 1g
+
+  dashboard:
+    build: .
+    image: pump-detector
+    restart: unless-stopped
+    command: python dashboard.py --host 0.0.0.0 --no-browser
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pump_detector
+    # лише 127.0.0.1 сервера: з інтернету не видно, доступ — SSH-тунелем
+    ports:
+      - "127.0.0.1:8766:8766"
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 900m
+
+volumes:
+  pgdata:

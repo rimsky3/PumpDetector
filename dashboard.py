@@ -1026,7 +1026,10 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Дашборд Pump Detector")
-    parser.add_argument("--port", type=int, default=8766, help="порт на 127.0.0.1")
+    parser.add_argument("--port", type=int, default=8766, help="порт")
+    parser.add_argument("--host", default="127.0.0.1",
+                        help="адреса, на якій слухати (у Docker-контейнері на сервері — 0.0.0.0; назовні порт однаково "
+                             "прив'язаний лише до 127.0.0.1 сервера, див. docker-compose.server.yml)")
     parser.add_argument("--no-browser", action="store_true", help="не відкривати браузер автоматично")
     args = parser.parse_args()
 
@@ -1046,7 +1049,7 @@ def main() -> None:
     # Вимикаємо його, щоб повторний запуск одразу казав, що порт зайнятий.
     ThreadingHTTPServer.allow_reuse_address = False
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = ThreadingHTTPServer((args.host, args.port), Handler)
     except OSError:
         sys.exit(f"Порт {args.port} зайнятий: мабуть, уже запущено інший екземпляр. "
                  f"Зупини його (Ctrl+C у тому терміналі) або запусти з --port 8767.")

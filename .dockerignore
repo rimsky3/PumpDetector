@@ -1,0 +1,3 @@
+# Образ будується лише з requirements.lock.txt — решта папки в контекст збірки не потрібна
+*
+!requirements.lock.txt

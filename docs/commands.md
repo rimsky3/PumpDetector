@@ -14,9 +14,37 @@ options straight from the code. Run everything from the project folder with the 
 | Let the market fill the list | the **Сканер** card in the dashboard: pick Суворо / Баланс / Широко / Свій → **Зберегти**; `python scanner.py --recall` refreshes the "on time on labeled pumps" numbers |
 | Fix a label | edit it in `python label.py` (or `pumps.csv` + `python load_pumps.py`) → `python features.py` → `python train.py` |
 | Weekly data refresh | `python fetch.py` (all tickers; extends history, which the provider keeps for ~2 months) |
-| Daily operation | `python screener.py --loop` and `python dashboard.py` in two terminals |
+| Daily operation | since 2026-10-06 the screener and dashboard run on the server (docs/server.md): double-click `tools/server_dashboard.cmd`. Do **not** start `screener.py` on the laptop as well (shared Coinalyze limit) |
+| Ship code / a new model to the server | `bash tools/deploy.sh --restart` / `bash tools/deploy.sh --models --restart` |
 
 Before retraining, label fresh signals on training tickers if they were pumps (see `--fresh-hours`).
+
+## Server
+
+### `tools/deploy.sh` — laptop → server (Git Bash)
+
+| Option | What it does |
+|---|---|
+| (none) | copy the code: files tracked by git + new non-ignored ones; skips `watchlist.txt` and `scan_config.json` (the server's dashboard edits them) and never copies `.env` |
+| `--models` | also `models/` |
+| `--restart` | restart the `screener` and `dashboard` containers afterwards |
+| `--labels` | only the labels and lists (`pumps.csv`, `tickers.txt`, `excluded.txt`, `reviews.csv`), then on the server `load_pumps.py` and `fetch.py --new` (hourly history for new training tickers) |
+| `--backtests` | also `reports/backtests/*.json` (shown in the dashboard's Backtest tab) |
+| `--first` | initial deploy: also `models/`, the lists, scanner / wake JSON state and backtest runs |
+
+### `tools/pull_db.sh` — server database → laptop (Git Bash)
+
+Dumps the server database, restores it into the **local** database (replacing its contents) and reloads `pumps.csv`
+into the `pumps` table. Run before labeling, training or backtests (~4–5 min); Docker Desktop must be running and
+`label.py` closed.
+
+### `tools/server_dashboard.cmd`
+
+Double-click: SSH tunnel (laptop port 8766 → server port 8766) and the browser on `http://localhost:8766/`. Closing the window closes the tunnel.
+
+### `dashboard.py --host`
+
+Address to listen on (default `127.0.0.1`). In the server container it is `0.0.0.0`; Compose still publishes the port on the server's `127.0.0.1` only.
 
 ## Data
 

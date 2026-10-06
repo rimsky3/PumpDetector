@@ -521,6 +521,16 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   (ssh.socket.d/ports.conf; правило файрволу Lightsail TCP 2222). Встановлено: swap 2 ГБ, Docker 29 + Compose v2, fail2ban.
   Біржі з сервера доступні (Binance/Bybit/OKX 200). Далі: Docker Compose (база + скринер + дашборд), перенесення бази,
   доступ до дашборду (спершу SSH-тунель, потім HTTPS з паролем). На сервер — лише COINALYZE_API_KEY і пароль бази, ключ Binance НЕ потрібен.
+- СИСТЕМА НА СЕРВЕРІ (2026-10-06, docs/server.md): Dockerfile (python:3.14-slim + requirements.lock.txt — точні версії .venv, моделі joblib
+  прив'язані до них) + docker-compose.server.yml (db postgres:17 під 2 ГБ, screener --loop, dashboard --host 0.0.0.0 на 127.0.0.1:8766;
+  код змонтовано ./:/app — оновлення без перебудови). Код — bash tools/deploy.sh [--models] [--restart] [--first] (tar через ssh, без GitHub;
+  watchlist.txt і scan_config.json не перезаписує — їх змінює дашборд на сервері). Дашборд — tools/server_dashboard.cmd (SSH-тунель).
+  База перенесена pg_dump -Fc (355 МБ) → pg_restore. Скринер і дашборд на НОУТБУЦІ БІЛЬШЕ НЕ ЗАПУСКАТИ (спільний ліміт Coinalyze);
+  Головна база — на сервері; локальна — копія: bash tools/pull_db.sh (дамп сервера → локальна база, --clean, + load_pumps.py; ~4.5 хв).
+  Розмітка: pull_db → label.py → deploy.sh --labels (pumps.csv/tickers.txt/excluded.txt/reviews.csv + на сервері load_pumps.py і
+  fetch.py --new). Модель: «Прийняти» в label.py → deploy.sh --models --restart. Бектест — на ноутбуці, --backtests показує в дашборді.
+  Інструкція для власника українською — notes/how_to_work.md. .cmd-файли — лише ASCII + CRLF (UTF-8 + chcp 65001 ламав запуск ssh).
+  Журнал з'їдав 1.4 ГБ (повна історія всіх тікерів) → journal._series: по тікеру з першої оцінки − 5 днів: 307 МБ, 81 с замість 6 хв, угоди ті самі.
 - далі: більше розмічених тікерів; метрики ранньої фази пампу (ret_24h домінує — модель частково «бачить, що вже виросло»);
   Telegram; деплой на VPS (Docker Compose: база + screener --loop + dashboard).
 
