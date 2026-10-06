@@ -211,13 +211,23 @@ def main() -> None:
     ap.add_argument("--check", action="store_true", help="перевірити дозволи ключа")
     ap.add_argument("--fetch", action="store_true", help="завантажити угоди")
     ap.add_argument("--days", type=int, default=180, help="скільки днів назад (Binance віддає ~6 міс.)")
+    ap.add_argument("--update", action="store_true",
+                    help="лише нові угоди: від останньої в fills.parquet (мінус доба) і злити зі збереженими; хвилини замість годин")
     args = ap.parse_args()
     b = client()
-    if args.check or not args.fetch:
+    if args.check or not (args.fetch or args.update):
         print(json.dumps(check(b), ensure_ascii=False, indent=2))
-    if args.fetch:
+    if args.fetch or args.update:
         os.makedirs(OUT_DIR, exist_ok=True)
-        tr = fetch(b, args.days)
+        fills_path, old, days = os.path.join(OUT_DIR, "fills.parquet"), None, args.days
+        if args.update and os.path.exists(fills_path):
+            old = pd.read_parquet(fills_path)
+            days = max(1, int(np.ceil((pd.Timestamp.now(tz="UTC") - old["time"].max()) / pd.Timedelta(days=1))) + 1)
+            print(f"збережено по {old['time'].max():%Y-%m-%d %H:%M} UTC — дотягую {days} дн.")
+        tr = fetch(b, days)
+        if old is not None:
+            tr = (pd.concat([old, tr], ignore_index=True) if len(tr) else old)
+            tr = tr.drop_duplicates("id").sort_values(["time", "id"]).reset_index(drop=True)
         if tr.empty:
             sys.exit("угод не знайдено")
         tr.to_parquet(os.path.join(OUT_DIR, "fills.parquet"))

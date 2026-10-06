@@ -38,7 +38,7 @@ def last_atr(h: pd.DataFrame) -> float | None:
     """Поточний ATR(14) на барах h — для стопу «якщо вхід зараз»."""
     a = atr(h).dropna()
     return float(a.iloc[-1]) if len(a) else None
-from screener import (FETCH_DAYS, INTRADAY_DAYS, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
+from screener import (FETCH_DAYS, INTRADAY_DAYS, SIGNALS_STAMP, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
                       load_models, next_hourly, next_run, score_15m, score_bases, update_15m)
 import fetch_exchange
 import orderbook
@@ -970,6 +970,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(404, {"error": "не знайдено"})
             with open(path, "rb") as f:
                 return self._send(200, f.read(), "text/javascript; charset=utf-8")
+        if url.path == "/api/pulse":
+            # дешева перевірка «чи є нове» (без бази): mtime мітки нових оцінок скринера і подій «прокидається»
+            mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else 0      # noqa: E731
+            return self._send(200, {"sig": mt(SIGNALS_STAMP), "wake": mt(wake.EVENTS_FILE)})
         if url.path == "/api/meta":
             return self._route(meta)
         if url.path == "/api/list":

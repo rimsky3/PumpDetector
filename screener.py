@@ -43,6 +43,8 @@ from train import M15_NAME, PROBA_MODELS, load_model, model_path
 
 WATCHLIST_FILE = "watchlist.txt"
 STATUS_FILE = os.path.join("reports", "screener_status.json")   # читає дашборд, блок «Стан системи»
+# мітка «є нові оцінки»: дашборд перевіряє її mtime кожні 5 с (/api/pulse) і одразу оновлює список і графік
+SIGNALS_STAMP = os.path.join(os.path.dirname(os.path.abspath(__file__)), "reports", "signals_stamp")
 FETCH_DAYS = 10          # 7 днів базового вікна + доба + запас
 BACKFILL_HOURS = 7 * 24  # скільки годин історії оцінювати, якщо їх ще немає в signals
 RUN_MINUTE = 5           # (застаріле) хвилина годинного циклу — лишено для сумісності
@@ -263,6 +265,11 @@ def save_signals(conn, scored: pd.DataFrame, last_closed: pd.Timestamp) -> int:
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (base_asset, ts, model, model_version) DO NOTHING""", rows)
     conn.commit()
+    try:
+        with open(SIGNALS_STAMP, "w") as f:
+            f.write(datetime.now(timezone.utc).isoformat())
+    except OSError:
+        pass
     return len(rows)
 
 
@@ -422,17 +429,37 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
     print(f"\n[{started:%Y-%m-%d %H:%M} UTC] цикл: {len(bases)} тікерів" + ("" if hourly else " (15m)"))
 
     info15, hot = {}, []
+    own, coin = split_hourly(conn, bases) if hourly else ([], [])
+    scored_own, own_done = pd.DataFrame(), set()
     if m15 is not None:
+        # ГАРЯЧІ ПЕРШИМИ (2026-10-06, RLC: Alert бару 10:45 з'явився лише о 11:11): тікери біля порогу за 2 год або ті, що
+        # «прокинулись», — свіжі дані, 15m-оцінка і годинне підтвердження з власних 15m ДО решти списку. Раніше всі чекали
+        # збору 15m-ліквідацій Coinalyze на весь список (~200 викликів, 40/хв) — оцінка була на ~7–9 хв після закриття бару.
+        first = hot_bases(conn, bases)
+        groups = [g for g in (first, [b for b in bases if b not in set(first)]) if g]
+        parts, last15 = [], last_closed_15m()
+        for group in groups:
+            if fetch:
+                update_15m(conn, client, group)
+            s, last15 = score_15m(conn, group, m15)
+            parts.append(s)
+            mine = [b for b in group if b in own]
+            if mine:                           # годинна оцінка щойно закритої години — одразу, щоб Alert не чекав решти
+                so, _ = score_bases_own(conn, mine, models)
+                scored_own = pd.concat([d for d in (scored_own, so) if len(d)], ignore_index=True) if len(so) else scored_own
+                own_done |= set(mine)
+            if group is first and len(groups) > 1:
+                print(f"  гарячі першими ({', '.join(first)}): оцінено за {(datetime.now(timezone.utc) - started).seconds} с")
+        parts = [p for p in parts if len(p)]
+        s15 = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
         if fetch:
-            update_15m(conn, client, bases)
             try:
                 wake.check(conn, bases)        # 5m щойно оновлено для всього списку
             except Exception as e:
                 print(f"  ! прокидається: {e}")
             hot5 = hot_bases(conn, bases)
-            if hot5 and client is not None:
+            if hot5 and client is not None:    # для наступних 5-хв циклів; 15m-оцінці не потрібні
                 collect_liquidations(client, conn, hot5, ["5m"], LIQ5_DAYS, log=lambda m: None)
-        s15, last15 = score_15m(conn, bases, m15)
         latest15 = s15[s15["ts"] == last15] if len(s15) else s15
         info15 = {"last_closed_15m": last15.isoformat(), "scored_15m": int(latest15["base_asset"].nunique()),
                   "missing_15m": sorted(set(bases) - set(latest15["base_asset"])) if len(s15) else bases}
@@ -454,11 +481,12 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
                      api_calls_15m=(client.calls_made - calls0) if client else 0)
         return
 
-    # годинне підтвердження з власних 15m — одразу, до будь-якого збору Coinalyze (секунди)
-    own, coin = split_hourly(conn, bases)
-    scored_own = pd.DataFrame()
+    # годинне підтвердження з власних 15m — до будь-якого збору Coinalyze (секунди); гарячим уже пораховано вище
+    left = [b for b in own if b not in own_done]
+    if left:
+        so, _ = score_bases_own(conn, left, models)
+        scored_own = pd.concat([d for d in (scored_own, so) if len(d)], ignore_index=True) if len(so) else scored_own
     if own:
-        scored_own, _ = score_bases_own(conn, own, models)
         print(f"  годинна оцінка з власних 15m: {len(own)} тікерів за {(datetime.now(timezone.utc) - started).seconds} с"
               + (f"; з Coinalyze (покриття < {OWN_HOURLY_MIN_SHARE:.0%}): {', '.join(coin)}" if coin else ""))
     if BG is not None:

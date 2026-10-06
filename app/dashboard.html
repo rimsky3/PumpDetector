@@ -311,6 +311,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="bar"><i id="probBar" style="width:0"></i><b id="probThr" style="left:80%"></b></div>
         <div class="scale"><span>0</span><span id="probThrTxt">поріг —</span><span>1</span></div>
         <div class="small" id="probCtx" hidden></div>
+        <div class="small" id="probRoll" hidden></div>
         <div class="small" id="probVer">—</div>
       </div>
       <div class="card" id="retrainNote" hidden style="border-color:var(--cand-bg)">
@@ -808,22 +809,28 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const renderLeft = () => {
     const d = st.data; if (!d) return;
     const c = d.cards, p = d.position, thr = d.threshold;
-    // ковзна 5-хв оцінка «гарячого» тікера новіша за останній звичайний 15m-бар — картка показує її, як список і сповіщення
+    // велике число — офіційний 15m-бар (як стовпчик P на графіку, позиція й журнал); ковзна 5-хв оцінка, якщо новіша, —
+    // окремим рядком нижче (з неї приходять сповіщення). Раніше картка брала ковзну — LYN 04.10: картка 0.57, графік 0.84
     const rl = is15() ? d.rolling : null;
-    const status = rl ? rl.tier : c.status, prob = rl ? rl.p15 : c.probability;
+    const status = c.status, prob = c.probability;
     const cls = status === "alert" ? "hot" : status === "candidate" ? "amber" : "";
     $("probVal").textContent = fmtP(prob); $("probVal").className = "big " + cls;
     const pill = $("probPill"); pill.className = "pill " + status;
-    pill.textContent = STATUS[status] + (!rl && (status === "alert" || (is15() && status === "candidate")) && d.streak > 0 ? ` · ${fmtMin(d.streak_min)}` : "");
+    pill.textContent = STATUS[status] + ((status === "alert" || (is15() && status === "candidate")) && d.streak > 0 ? ` · ${fmtMin(d.streak_min)}` : "");
     $("probCard").classList.toggle("alert", status === "alert");
     const bar = $("probBar"); bar.style.width = `${Math.round((prob || 0) * 100)}%`;
     bar.style.background = status === "alert" ? cssVar("--hot") : status === "candidate" ? cssVar("--amber") : cssVar("--muted");
     $("probThr").style.left = `calc(${(thr * 100).toFixed(1)}% - 1px)`; $("probThrTxt").textContent = `поріг ${fmtP(thr)}`;
     const mi = modelInfo();
-    $("probVer").textContent = (mi ? `${mi.title} · модель від ${mi.trained_at.slice(5, 16)} UTC` : "")
-      + (rl ? ` · P з ковзної 5-хв оцінки (вікно до ${fmtTs(rl.close).slice(-5)} UTC); останній 15m-бар — ${fmtP(c.probability)}` : "");
+    $("probVer").textContent = mi ? `${mi.title} · модель від ${mi.trained_at.slice(5, 16)} UTC` : "";
+    const rEl = $("probRoll"); rEl.hidden = !rl;
+    if (rl) {
+      const rc = rl.tier === "alert" ? "hot" : rl.tier === "candidate" ? "amber" : "";
+      rEl.replaceChildren("Ковзна 5-хв: ", el("b", rc, `${fmtP(rl.p15)} · ${STATUS[rl.tier] || rl.tier}`),
+        ` (вікно до ${fmtTs(rl.close).slice(-5)} UTC, новіша за бар)`);
+    }
     // годинний контекст: скільки годинній моделі бракує до підтвердження Alert
-    const cx = rl ? { ...d.ctx, p1h: rl.p1h ?? d.ctx?.p1h } : d.ctx, ctxEl = $("probCtx");
+    const cx = d.ctx, ctxEl = $("probCtx");
     ctxEl.hidden = !cx;
     if (cx) {
       const need = cx.thr1h != null ? cx.share * cx.thr1h : null, ok = cx.p1h != null && need != null && cx.p1h >= need;
@@ -857,7 +864,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       $("hNote").className = "small" + (hs.trained ? " amber" : "");
     }
     const kTxt = d.k == null ? "—" : d.k.toFixed(1);
-    const exitMin = d.exit_bars * d.bar / 60;
+    // вихід рахується на барах МОДЕЛІ (15m), а не графіка: на 5m-графіку d.bar = 5 хв → було «4 бари (20 хв)» замість 1 год
+    const modelBar = { "5m": 300, "15m": 900, "1h": 3600 }[d.native_tf || d.tf] || d.bar;
+    const exitMin = d.exit_bars * modelBar / 60;
     $("posRule").textContent = (is15() ? `½ позиції на +3 ATR, далі стоп у беззбиток; решта — Alert згас ${d.exit_bars} бари поспіль (${fmtMin(exitMin)})`
       : `вихід: P нижче ${fmtP(thr)} ${d.exit_bars} години поспіль`) +
       `; стоп ${kTxt} ATR (% від входу)`;
@@ -875,7 +884,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         (p.partial_ts ? ` · ½ закрито ${fmtPx(p.partial_price)} (${fmtPct(p.partial_price / p.entry - 1)}), стоп у беззбитку`
           : p.target != null ? ` · ціль ½: ${fmtPx(p.target)} (${fmtPct(p.target / p.entry - 1)})` : "");
       tile("tStop", fmtPx(p.stop), p.stop != null && p.entry ? fmtPct(p.stop / p.entry - 1) : "");
-      tile("tExit", p.below_bars > 0 ? `${p.below_bars} бар ↓` : "ні", p.below_bars > 0 ? `з ${d.exit_bars}` : "тримати");
+      const mtf = d.native_tf || d.tf || "1h";
+      tile("tExit", p.below_bars > 0 ? `${p.below_bars} бар ↓` : "ні", p.below_bars > 0 ? `з ${d.exit_bars} (${mtf})` : "тримати");
       $("tExit").className = "v " + (p.below_bars > 0 ? "amber" : "ok");
     } else if (p.exit_ts) {
       $("posRes").textContent = fmtPct(p.result_pct); $("posRes").className = pctCls(p.result_pct);
@@ -900,11 +910,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     pressIn("tfSeg", "tf", d.tf || "1h");
   };
 
-  const loadTicker = async () => {
+  const loadTicker = async (opts = {}) => {           // opts.quiet — фонове оновлення (нові оцінки): без «Оновлюю…»
     if (!st.ticker) return;
-    const done = busy(document.querySelector(".chart-card"), null);
+    const done = opts.quiet ? () => {} : busy(document.querySelector(".chart-card"), null);
     try {
-      st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&strategy=${st.modes.forecast}&days=30${st.chartTf ? "&tf=" + st.chartTf : ""}`);
+      st.data = await api(`/api/ticker?symbol=${encodeURIComponent(st.ticker)}&model=${st.model}&strategy=${st.modes.forecast}&days=30${st.chartTf ? "&tf=" + st.chartTf : ""}`, { quiet: !!opts.quiet });
       show($("fError"), "");
     } catch (e) { st.data = null; show($("fError"), e.message); }
     finally { done(); }
@@ -2002,6 +2012,21 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     addEventListener("hashchange", route);
     setInterval(async () => { try { st.meta = await api("/api/meta", { quiet: true }); } catch (e) { return; } renderSystem(); checkRetrain(); refreshAll(); }, 60000);
     setInterval(renderStatus, 1000);
+    // нові оцінки скринера → список (сповіщення) і графік відкритого тікера за ≤ 5 с, а не за хвилину
+    let pulseKey = null, pulseBusy = false;
+    setInterval(async () => {
+      if (pulseBusy) return;
+      pulseBusy = true;
+      try {
+        const p = await api("/api/pulse", { quiet: true }), k = `${p.sig}|${p.wake}`;
+        if (pulseKey !== null && k !== pulseKey) {
+          await loadList();
+          if (st.view !== "journal") loadTicker({ quiet: true });
+        }
+        pulseKey = k;
+      } catch (e) { /* сервер недоступний — спробуємо за 5 с */ }
+      pulseBusy = false;
+    }, 5000);
   };
   init();
 })();

@@ -149,6 +149,7 @@ The review page itself is served by `label.py` at `/review` (see [labeling.md](l
 |---|---|
 | `--check` | show the API key permissions (must be read-only) |
 | `--fetch` | download Binance USDⓈ-M trades (`--days`, default 180) → fills and positions with tilt flags in `reports/my_trades/` (not in git) |
+| `--update` | only new trades: from the last saved fill (minus a day), merged with the saved ones — about a minute instead of hours |
 
 The key lives in `.env` (`BINANCE_API_KEY`, `BINANCE_API_SECRET`) and must be read-only; it is never written anywhere else.
 

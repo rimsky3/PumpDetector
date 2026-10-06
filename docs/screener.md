@@ -158,11 +158,17 @@ and `rolling_confirm.py` showed the same decisions (98.6% of hours, same Alert e
 elsewhere (Hyperliquid, OKX) keep the Coinalyze path; hourly Coinalyze data for the others is refreshed every 6 hours
 (1h chart, history).
 
-**Cycle order (latency).** Each 15-minute cycle first scores the list (15m data → 15m model), then onboards new
-tickers, then — once an hour — collects hourly Coinalyze data, starting with tickers whose 15m model is above its
-threshold so that their hourly confirmation (needed for Alert) is ready in ~1–2 minutes instead of after the whole
-list (~23 calls per ticker at 40 per minute). The market scan runs last; coins it adds are onboarded at once
-(hourly data, both models). A Candidate therefore appears ~3–5 minutes after the 15m bar closes.
+**Cycle order (latency).** Each 15-minute cycle handles the **hot coins first** (since 2026-10-06): fresh 15m data and
+15m liquidations for them only, the 15m score and — at the top of the hour — the hourly confirmation from our own 15m
+data; then the same for the rest of the list. Before, every coin waited for the 15m liquidations of the whole list
+(~200 Coinalyze calls at 40 per minute), so a bar was scored ~7–9 minutes after it closed and an Alert that needed the
+new hour's confirmation appeared ~11 minutes after the close (RLC, 2026-10-06 10:45 bar → 11:11). Then new tickers are
+onboarded, and once an hour the hourly Coinalyze part runs in the background, hot tickers first. The market scan runs
+last; coins it adds are onboarded at once.
+
+**Dashboard refresh.** Every `save_signals` touches `reports/signals_stamp`; the dashboard polls `/api/pulse` (file
+mtimes only, no database) every 5 seconds and, when the stamp or `reports/wake_events.json` changes, reloads the list
+(notifications) and quietly reloads the open chart. The full refresh (meta, scan, journal) stays once a minute.
 
 **Training tickers outside the list.** Every 3 hours the screener also refreshes 15m/5m exchange data (Binance, Bybit,
 OKX) and 15m liquidations for `tickers.txt` coins that are not in the list. They are not scored; the point is history
