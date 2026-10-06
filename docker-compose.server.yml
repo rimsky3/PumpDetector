@@ -98,6 +98,23 @@ services:
       - dashboard
     mem_limit: 150m
 
+  # Telegram-бот: сповіщення про сигнали і результати журналу кнопками (tg_bot.py); дані бере в дашборда всередині
+  # Docker-мережі, токен — TELEGRAM_BOT_TOKEN у .env. Запуск: docker compose -f docker-compose.server.yml up -d tgbot
+  tgbot:
+    build: .
+    image: pump-detector
+    restart: unless-stopped
+    command: python tg_bot.py
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DASH_URL: http://dashboard:8766
+      PUBLIC_URL: https://${PD_HOST}
+    depends_on:
+      - dashboard
+    mem_limit: 200m
+
 volumes:
   pgdata:
   caddy_data:

@@ -546,6 +546,11 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   Перевірка UI без людини: data/cdp_shot.py (Edge headless через DevTools — дії JS, помилки консолі, знімки).
   Жива свічка: бари між останнім у базі і живим (база 5m/15m відстає на кілька хв) — з REST бірж (gapFill: Binance klines +
   Bybit kline, OHLC з біржі ціни, обсяг — сума) + щойно закрита жива свічка тримається (fill), поки база не наздожене.
+- TELEGRAM (2026-10-06, docs/telegram.md): tg_bot.py, контейнер tgbot — клієнт дашборда (DASH_URL=http://dashboard:8766):
+  /api/pulse → /api/list (alerts / cands / wakes) → повідомлення (Alert з /api/ticker: P, 1h, OI 4h, вхід, стоп %, ціль ½,
+  ліміт); кнопки 📈 Графік (PUBLIC_URL/#forecast/TK), 🔕 2 год, 📌 у watchlist (авто); меню 📋 Статус, 📊 Результати
+  (/api/journal from/to: сьогодні/вчора/тиждень/місяць), ⚙️ Налаштування (alert / cand(вимк.) / wake). Власник — перший /start
+  або TELEGRAM_CHAT_ID; стан reports/tg_state.json; при старті епізоди лише запам'ятовує, старші 45 хв від закриття бару — не шле.
 - DEPLOY ПІСЛЯ КОМІТУ (2026-10-06, власник): deploy.sh перевіряє git status — незакомічені зміни → список + питання
   (без терміналу — скасування; --yes — не питати; --labels не перевіряє). Я сам не комічу: прошу власника закомітити, потім деплой.
 - ДАШБОРД ЗА ПОСИЛАННЯМ (2026-10-06): https://45-76-90-13.sslip.io — сервіс caddy (Caddyfile: basic_auth + reverse_proxy

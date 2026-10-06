@@ -49,6 +49,15 @@ Dumps the server database, restores it into the **local** database (replacing it
 into the `pumps` table. Run before labeling, training or backtests (~4–5 min); Docker Desktop must be running and
 `label.py` closed.
 
+### `tg_bot.py` — Telegram bot (server container `tgbot`)
+
+| Option | What it does |
+|---|---|
+| (none) | run the bot: signal notifications (Alert / Candidate / Volume 5m) and buttons (status, journal results, settings) |
+| `--check` | check the token and the dashboard connection without sending anything |
+
+Needs `TELEGRAM_BOT_TOKEN` in `.env`; `DASH_URL` and `PUBLIC_URL` come from docker-compose. See docs/telegram.md.
+
 ### `tools/server_dashboard.cmd`
 
 Double-click: SSH tunnel (laptop port 8766 → server port 8766) and the browser on `http://localhost:8766/`. Closing the window closes the tunnel.
