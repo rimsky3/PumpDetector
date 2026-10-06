@@ -259,6 +259,17 @@ cut-off is in-sample: a high probability there means the model remembers the pum
 no extra dependencies. `#forecast/NMR` opens a ticker, `#journal` the journal. Every block has a **?** button
 with a short explanation.
 
+**One or two chart windows (since 2026-10-06).** The toolbar above the chart has ▢ / ▢▢ (one window or two side by
+side), **Full info** and **Period ▾** (1d / 3d / 7d / 30d). The *active* window (orange frame; click it or press Tab)
+takes the ticker clicked in the list and ↑/↓, and is the one the left panel describes; the list marks the other
+window's ticker faintly. Each window's header shows ticker, price, 24 h change, status, P and — with Full info — the
+open position and its stop. **Full info off** asks the server for a light response (`/api/ticker?light=1`: no position
+simulation, order book, wake-up history, scanner marks or OI share), about 2–3× faster; the left panel then says that
+the position needs Full info. The left panel collapses to a 56 px rail (‹ button or `[`): section icons plus the
+active window's ticker, P, status dot and position; the state is remembered per layout (collapsed by default with two
+windows). `/api/ticker` responses are cached until the next screener scores (and at most 30 s), so switching back and
+forth between tickers is instant.
+
 **Forecast** — three columns:
 
 - *left*: model switch; pump probability with a threshold bar and the signal's age in hours; OI change over

@@ -294,6 +294,7 @@
     }, sig);
     window.addEventListener("keydown", (ev) => {
       if (ev.target.closest && ev.target.closest("input, select, textarea")) return;
+      if (opts.keys && !opts.keys()) return;     // кілька графіків на сторінці: клавіші — лише активному (opts.keys)
       if (ev.key === "Escape" && mode !== "off") { ta = tb = null; setMode("off"); redraw(); return; }
       if ((ev.key === "Delete" || ev.key === "Backspace") && hover >= 0 && mode === "off") { ev.preventDefault(); removeFrag(hover); return; }
       if (ev.ctrlKey || ev.metaKey || ev.altKey) return;

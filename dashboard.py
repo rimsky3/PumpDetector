@@ -426,8 +426,10 @@ def limit_hint(h: pd.DataFrame, ts: pd.Timestamp) -> dict | None:
     return {"price": float(h.at[ts, "price"] - LIMIT_ATR * a), "until": pd.Timestamp(ts) + BAR_15M + LIMIT_VALID}
 
 
-def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
-    """Екран тікера для 15m + 1h: 15m-свічки, P 15m-моделі, годинний контекст, рівні сигналу, позиція."""
+def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: bool = False) -> dict:
+    """Екран тікера для 15m + 1h: 15m-свічки, P 15m-моделі, годинний контекст, рівні сигналу, позиція.
+    light=True («Повна інфо» вимкнена, 2026-10-06): без позиції / угод, стакану, «прокидається» — лише свічки, OI,
+    обсяг, P, зони сигналу і картки ймовірності; помітно швидше."""
     m15 = State.m15
     now = datetime.now(timezone.utc)
     raw = load_raw(conn, [base], INTERVAL_15M, since=now - timedelta(days=days + INTRADAY_DAYS))
@@ -435,7 +437,9 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
     if h.empty:
         raise ValueError(f"немає 15m-даних для {base}: натисни «Refresh» або дочекайся циклу скринера")
     h = h[h.index <= last_closed_15m()]
-    f = compute_features(h, 4)
+    # ознаки потрібні лише для останнього бару (картки): найдовше вікно — 24 год + 7 днів, тож 10 днів дають той самий
+    # результат, що й уся історія (+10 днів запасу), а рахуються в рази швидше
+    f = compute_features(h.iloc[-10 * 96:], 4)
     cur = f.dropna(subset=["oi_chg_4h"]).iloc[-1] if f["oi_chg_4h"].notna().any() else None
     t, troll = tier_rows(conn, base, rolling=True)
     t = t.set_index("ts").sort_index()
@@ -450,15 +454,19 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
     k, exit_bars = m15.get("risk", {}).get("k"), m15.get("exit_bars", 4)
     strat = strat or strategies.get(None)
     # стакан — для міток OB і фільтра режиму «OB ≥ 1»
-    try:
-        book_rows = orderbook.history(conn, base, (h.index.min() if len(h) else pd.Timestamp(now)).to_pydatetime())
-    except Exception:
-        conn.rollback()
-        book_rows = []
+    book_rows = []
+    if not light:
+        try:
+            book_rows = orderbook.history(conn, base, (h.index.min() if len(h) else pd.Timestamp(now)).to_pydatetime())
+        except Exception:
+            conn.rollback()
     # позиція за режимом: сигнал (Alert / Кандидат), вхід (ринок / ліміт), фільтр OB; вихід спільний (частковий)
     score = t["s15"] if strat.get("signal") == "candidate" and len(t) else (t["alert_score"] if len(t) else None)
-    pos = position_state(h, score, 1.0, k, exit_bars, PARTIAL_EXIT, strategies.entry_rule(strat),
-                         orderbook.allow_fn(book_rows) if strat.get("ob") else None) if len(t) else {"open": False}
+    if light or not len(t):
+        pos = {"open": False, "trades": []}
+    else:
+        pos = position_state(h, score, 1.0, k, exit_bars, PARTIAL_EXIT, strategies.entry_rule(strat),
+                             orderbook.allow_fn(book_rows) if strat.get("ob") else None)
     last = t.iloc[-1] if len(t) else None
     streak = 0
     if last is not None:
@@ -476,8 +484,8 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
     live = t["live"].astype(bool) if "live" in t else pd.Series(False, index=t.index)
     for tr in list(pos.get("trades", [])) + ([pos] if pos.get("open") else []):
         tr["live"] = bool(live.get(tr["entry_ts"], False))
-    history = {**trade_stats(pos.get("trades", [])), "trained": trained,
-               "days": round((t.index.max() - t.index.min()) / pd.Timedelta(days=1), 1) if len(t) else 0}
+    history = None if light else {**trade_stats(pos.get("trades", [])), "trained": trained,
+                                  "days": round((t.index.max() - t.index.min()) / pd.Timedelta(days=1), 1) if len(t) else 0}
     # стакан (біди / аски ±2%) на початках Alert — зі знімків скринера; ліміт −0.5 ATR, поки дійсний
     starts = [s for s in alert_starts(t) if s >= view.index.min()]
     ob_marks = [{"ts": s, "v": v} for s in starts if (v := ob_at_signal(book_rows, s)) is not None]
@@ -507,7 +515,8 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None) -> dict:
                         for r in troll.itertuples() if r.tier in ("candidate", "alert") and len(view) and r.ts >= view.index.min()]
         if len(troll) else [],
         # «прокидається» (wake.py) на 5m-барах за видимий період: свічка й обсяг на графіку — фіолетові
-        "wake": wake_marks(conn, base, view.index.min() if len(view) else pd.Timestamp(now)),
+        "wake": [] if light else wake_marks(conn, base, view.index.min() if len(view) else pd.Timestamp(now)),
+        "light": light,
         "series": {
             "t": list(view.index),
             "open": view["open"].tolist(), "price": view["price"].tolist(),
@@ -670,7 +679,29 @@ def live_symbols(conn, base: str) -> dict:
             "price_exchange": "Binance" if "Binance" in rows else ("Bybit" if "Bybit" in rows else None)}
 
 
-def ticker(conn, base: str, model: str, days: int, tf: str | None = None, strategy: str | None = None) -> dict:
+_ticker_cache: dict = {}                    # (тікер, модель, дні, ТФ, режим, light) → (стан, час, відповідь)
+TICKER_CACHE_SEC = 30
+
+
+def ticker(conn, base: str, model: str, days: int, tf: str | None = None, strategy: str | None = None,
+           light: bool = False) -> dict:
+    """Дані графіка тікера. Кеш: та сама відповідь до нових оцінок скринера (signals_stamp) і не довше 30 с —
+    перемикання між двома вікнами і назад відкриває тікер миттєво (2026-10-06)."""
+    key = (base, model, days, tf, strategy, light)
+    state = _list_key()
+    c = _ticker_cache.get(key)
+    if c is not None and c[0] == state and time.time() - c[1] < TICKER_CACHE_SEC:
+        return c[2]
+    res = _ticker(conn, base, model, days, tf, strategy, light)
+    if not res.get("tail_refresh"):             # дані ще дозавантажуються — не кешуємо
+        if len(_ticker_cache) > 64:
+            _ticker_cache.clear()
+        _ticker_cache[key] = (state, time.time(), res)
+    return res
+
+
+def _ticker(conn, base: str, model: str, days: int, tf: str | None = None, strategy: str | None = None,
+            light: bool = False) -> dict:
     strat = strategies.get(strategy) if strategy else None
     if strat is not None:                       # режим задає модель: 15m-режими — tier15, решта — годинні
         model = T.TIER_MODEL if strategies.is15(strat) else strat["model"]
@@ -679,14 +710,14 @@ def ticker(conn, base: str, model: str, days: int, tf: str | None = None, strate
     if model == T.TIER_MODEL:
         if State.m15 is None:
             raise ValueError("15m-моделі немає: python train.py")
-        res = ticker_15m(conn, base, days, strat)
+        res = ticker_15m(conn, base, days, strat, light)
     else:
         res = ticker_1h(conn, base, model, days)
     res = rebar(conn, res, base, tf, days) if tf else res
     res["live"] = live_symbols(conn, base)
     res["tail_refresh"] = refreshing
-    res["oi_share"] = oi_share(conn, base)
-    res["scanner_entries"] = scanner_entries(conn, base, days)
+    res["oi_share"] = None if light else oi_share(conn, base)
+    res["scanner_entries"] = [] if light else scanner_entries(conn, base, days)
     return res
 
 
@@ -1118,7 +1149,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(lambda c: volume_profile.api(c, q))
         if url.path == "/api/ticker":
             days = max(1, min(60, int(q.get("days", 30))))
-            return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days, q.get("tf"), q.get("strategy")))
+            return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days, q.get("tf"), q.get("strategy"),
+                                                q.get("light") == "1"))
         return self._send(404, {"error": "не знайдено"})
 
     def do_POST(self):
