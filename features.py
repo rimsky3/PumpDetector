@@ -144,8 +144,25 @@ def chained_log_index(w: pd.DataFrame) -> pd.Series:
     return step.fillna(0).cumsum().where(w.notna().any(axis=1))
 
 
-def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h") -> pd.DataFrame:
-    """Усі біржі тікера → один ряд на регулярній сітці (freq: "h" — години; "15min" — для експериментів)."""
+def split_raw(raw: dict[str, pd.DataFrame]) -> dict[str, dict[str, pd.DataFrame]]:
+    """Сирі ряди багатьох тікерів → {тікер: сирі ряди лише цього тікера} одним проходом (groupby).
+    aggregate(raw, base) сам відбирає рядки тікера, але по ВСІХ рядках raw — у циклі по десятках тікерів це
+    квадратична робота (список дашборду, 2026-10-06). Результат aggregate той самий."""
+    empty = {k: v.iloc[0:0] for k, v in raw.items()}
+    out: dict[str, dict[str, pd.DataFrame]] = {}
+    for k, v in raw.items():
+        if "base_asset" not in v:
+            continue
+        for b, g in v.groupby("base_asset", sort=False):
+            out.setdefault(b, dict(empty))[k] = g
+    return out
+
+
+def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h", light: bool = False) -> pd.DataFrame:
+    """Усі біржі тікера → один ряд на регулярній сітці (freq: "h" — години; "15min" — для експериментів).
+    light=True — лише ціна (open/high/low/price), обсяг і OI (oi, oi_log_idx): для списку тікерів дашборду, де потрібні
+    тільки зміни за 24 год і ATR для підказки ліміту. Ті самі значення, що й у повному ряді, але без свічок OI,
+    funding, ліквідацій і L/S (повний ряд для ~64 тікерів — ~16 с на сервері, 2026-10-06)."""
     part = {k: v[v["base_asset"] == base] for k, v in raw.items() if k != "liq_coverage"}
     ohlcv = part["ohlcv"].copy()
     if ohlcv.empty:
@@ -157,7 +174,14 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h") -> pd.Da
         """Рядки — години, колонки — контракти."""
         if df.empty:
             return pd.DataFrame(index=grid)
-        return df.pivot_table(index="ts", columns="market", values=col, aggfunc="last").reindex(grid)
+        # те саме, що pivot_table(aggfunc="last"), але в ~10× швидше (pivot_table — найповільніше місце списку
+        # дашборду, 2026-10-06): дублікати (ts, контракт) — лишаємо останнє НЕпорожнє значення; контракти без
+        # жодного значення прибираємо (pivot_table з dropna=True робить так само)
+        d = df[["ts", "market", col]]
+        if d.duplicated(["ts", "market"]).any():
+            d = d.dropna(subset=[col]).drop_duplicates(["ts", "market"], keep="last")
+        w = d.pivot(index="ts", columns="market", values=col).dropna(axis=1, how="all")
+        return w.reindex(grid)
 
     # обсяг буває в монетах — переводимо в USD через ціну закриття
     in_coins = ohlcv["volume_denominated"] == "BASE_ASSET"
@@ -171,12 +195,6 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h") -> pd.Da
     px = ohlcv[ohlcv["market"] == px_market].set_index("ts").reindex(grid)
 
     oi_w = wide(part["oi"], "c")
-    # OI у монетах. Coinalyze переводить OI у USD за ціною закриття години — усі o/h/l/c свічки одразу.
-    # Тому в USD OI «стрибає» між годинами разом із ціною, хоча позиції не змінювались.
-    # Ділимо на close того самого контракту: отримуємо чисту кількість відкритих позицій у монетах
-    # (розрив між годинами ≈ 0.01% замість 0.5–2.6%). Сума по біржах коректна: одиниця — монета.
-    close_w = wide(ohlcv, "c").reindex(columns=oi_w.columns).ffill(limit=2)
-    coins = {k: wide(part["oi"], k) / close_w for k in ("o", "h", "l", "c")}
     h = pd.DataFrame(index=grid)
     h.index.name = "ts"
     h["price"] = px["c"].ffill(limit=2)          # поодинокі пропуски заповнюємо попереднім значенням
@@ -184,6 +202,16 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h") -> pd.Da
     h["high"] = px["h"]
     h["low"] = px["l"]
     h["volume"] = wide(ohlcv, "v_usd").sum(axis=1, min_count=1)
+    if light:
+        h["oi"] = oi_w.sum(axis=1, min_count=1)
+        h["oi_log_idx"] = chained_log_index(oi_w)
+        return h
+    # OI у монетах. Coinalyze переводить OI у USD за ціною закриття години — усі o/h/l/c свічки одразу.
+    # Тому в USD OI «стрибає» між годинами разом із ціною, хоча позиції не змінювались.
+    # Ділимо на close того самого контракту: отримуємо чисту кількість відкритих позицій у монетах
+    # (розрив між годинами ≈ 0.01% замість 0.5–2.6%). Сума по біржах коректна: одиниця — монета.
+    close_w = wide(ohlcv, "c").reindex(columns=oi_w.columns).ffill(limit=2)
+    coins = {k: wide(part["oi"], k) / close_w for k in ("o", "h", "l", "c")}
     h["buy_volume"] = wide(ohlcv, "bv_usd").sum(axis=1, min_count=1)
     # частка покупок — лише по ринках, де buy volume є (у 15m/5m-свічок Bybit його немає; на 1h є скрізь)
     h["volume_bv"] = wide(ohlcv.assign(v_bv=ohlcv["v_usd"].where(ohlcv["bv"].notna())), "v_bv").sum(axis=1, min_count=1)

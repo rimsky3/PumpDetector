@@ -116,3 +116,25 @@ CREATE TABLE IF NOT EXISTS book_ratio (
     bybit      DOUBLE PRECISION,
     PRIMARY KEY (base_asset, ts)
 );
+
+-- Ліквідації напряму з бірж через WebSocket (liq_recorder.py, з 2026-10-06): кожна подія + періоди живих з'єднань.
+CREATE TABLE IF NOT EXISTS liq_events (
+    exchange  TEXT NOT NULL,              -- Binance / Bybit / OKX (як markets.exchange_name)
+    symbol    TEXT NOT NULL,              -- символ на біржі (markets.symbol_on_exchange): BTCUSDT, BTC-USDT-SWAP
+    ts        TIMESTAMPTZ NOT NULL,       -- час ліквідації (біржовий, мс)
+    side      TEXT NOT NULL,              -- long / short — чию позицію закрито
+    qty       DOUBLE PRECISION,           -- у монетах
+    price     DOUBLE PRECISION,
+    usd       DOUBLE PRECISION,
+    recv_at   TIMESTAMPTZ NOT NULL DEFAULT now()   -- коли повідомлення прийшло (затримка потоку = recv_at − ts)
+);
+CREATE INDEX IF NOT EXISTS liq_events_sym_ts ON liq_events (exchange, symbol, ts);
+CREATE INDEX IF NOT EXISTS liq_events_ts ON liq_events (ts);
+CREATE TABLE IF NOT EXISTS liq_ws_coverage (
+    exchange  TEXT NOT NULL,
+    conn      TEXT NOT NULL,              -- з'єднання (у Bybit їх кілька: bybit#0, bybit#1 …)
+    started   TIMESTAMPTZ NOT NULL,       -- підключились і підписались
+    last_seen TIMESTAMPTZ NOT NULL,       -- з'єднання ще живе станом на цей момент
+    symbols   INTEGER,                    -- на скільки символів підписані (Binance/OKX — увесь ринок, NULL)
+    PRIMARY KEY (exchange, conn, started)
+);

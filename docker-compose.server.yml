@@ -1,4 +1,4 @@
-# Сервер (AWS Lightsail, 2 ГБ RAM): база + скринер 24/7 + дашборд.
+# Сервер (Vultr, Франкфурт, 2 vCPU / 4 ГБ RAM, з 2026-10-06): база + скринер 24/7 + дашборд + записувач ліквідацій.
 # На сервері, з папки ~/pd:
 #   docker compose -f docker-compose.server.yml up -d --build     — зібрати образ і запустити все
 #   docker compose -f docker-compose.server.yml logs -f screener  — лог скринера наживо
@@ -13,10 +13,10 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?заповни POSTGRES_PASSWORD у .env}
       POSTGRES_DB: pump_detector
-    # пам'ять бази під 2-ГБ сервер: кеш сторінок 256 МБ, решту віддаємо скринеру й дашборду
+    # пам'ять бази під 4-ГБ сервер: кеш сторінок 512 МБ, решту віддаємо скринеру й дашборду
     command: >
-      postgres -c shared_buffers=256MB -c effective_cache_size=768MB -c work_mem=16MB
-               -c maintenance_work_mem=128MB -c max_connections=60
+      postgres -c shared_buffers=512MB -c effective_cache_size=1536MB -c work_mem=32MB
+               -c maintenance_work_mem=256MB -c max_connections=60
     # порт 5432 НЕ відкриваємо: до бази ходять лише контейнери цієї мережі (за ім'ям db)
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -26,7 +26,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
-    mem_limit: 700m
+    mem_limit: 1200m
 
   screener:
     build: .
@@ -42,7 +42,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    mem_limit: 1g
+    mem_limit: 1500m
 
   dashboard:
     build: .
@@ -54,13 +54,51 @@ services:
       - ./:/app
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pump_detector
+      JOURNAL_WARMER: "1"           # фоновий прогрів журналу (на Lightsail з 20% CPU був вимкнений; Vultr — без кредитів)
     # лише 127.0.0.1 сервера: з інтернету не видно, доступ — SSH-тунелем
     ports:
       - "127.0.0.1:8766:8766"
     depends_on:
       db:
         condition: service_healthy
-    mem_limit: 900m
+    mem_limit: 1200m
+
+  # ліквідації з бірж через WebSocket → liq_events (liq_recorder.py); легкий, ~50–100 МБ
+  liqrec:
+    build: .
+    image: pump-detector
+    restart: unless-stopped
+    command: python liq_recorder.py
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pump_detector
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 250m
+
+  # HTTPS + логін/пароль перед дашбордом: https://<PD_HOST> з будь-якого пристрою (Caddyfile; значення — у .env)
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PD_HOST: ${PD_HOST:?заповни PD_HOST у .env}
+      PD_USER: ${PD_USER:?заповни PD_USER у .env}
+      PD_PASS_HASH: ${PD_PASS_HASH:?заповни PD_PASS_HASH у .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data                # сертифікати — переживають перезапуск
+      - caddy_config:/config
+    depends_on:
+      - dashboard
+    mem_limit: 150m
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:

@@ -29,7 +29,7 @@ import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
-from features import INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, compute_features, load_raw, query_df
+from features import INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, compute_features, load_raw, query_df, split_raw
 from fetch import Coinalyze, collect, read_tickers_file
 from risk import EXIT_BARS, PARTIAL_EXIT, atr, position_state, trade_stats
 
@@ -199,6 +199,7 @@ def watch_list_15m(conn) -> dict:
         return {"rows": [], "recent": [], "alerts": []}
     now = datetime.now(timezone.utc)
     raw = load_raw(conn, sorted(t["base_asset"].unique()), INTERVAL_15M, since=now - timedelta(days=2))
+    parts = split_raw(raw)                      # сирі ряди по тікерах — один раз, а не фільтр усього raw на кожен тікер
     newest = troll.sort_values("ts").groupby("base_asset").tail(1).set_index("base_asset") if len(troll) else None
     rows, hmap = [], {}
     woke = wake.last_wake()                    # «прокинулись» за останні 30 хв — фіолетова крапка в списку
@@ -213,7 +214,7 @@ def watch_list_15m(conn) -> dict:
             if x != last["tier"] or x == "calm":
                 break
             streak += 1
-        h = aggregate(raw, base, "15min")
+        h = aggregate(parts.get(base, raw), base, "15min", light=True)   # лише ціна й OI: зміни за 24 год, ATR для ліміту
         hmap[base] = h
         lt = g["ts"].iloc[-1]                     # спарклайн і зміни за 24 год — на звичайних 15m-барах
         h = h[h.index <= lt] if not h.empty else h
@@ -258,10 +259,97 @@ def watch_list_15m(conn) -> dict:
     return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands, "wakes": wakes}
 
 
+# ---- список тікерів: важка частина рахується у фоні в окремому процесі одразу після нових оцінок (2026-10-06) ----
+# Раніше кожен запит /api/list (сторінка, кожна нова оцінка, щохвилини з кожної вкладки) рахував ~7 с на сервері, а
+# сповіщення чекали цього розрахунку. Тепер list_warmer помічає нові оцінки (mtime signals_stamp / wake_events.json)
+# і одразу перераховує; запит віддає готове. Нові оцінки → запит чекає свіжий розрахунок (сповіщення мають бути
+# актуальні); лише «застаріло за часом» (LIST_MAX_AGE, бо «N хв тому» і 6-год вікна зсуваються) → віддаємо наявне
+# і оновлюємо у фоні.
+LIST_MAX_AGE = 60
+LIST_WARM_MODELS = (T.TIER_MODEL,)          # основна модель списку — гріємо завжди; решта — за запитом, з кешем
+_list_pool = None
+_list_lock = threading.Lock()
+_list_cache: dict = {}                      # модель → {"key", "at", "data"}
+_list_futures: dict = {}                    # модель → (key, future)
+
+
+def _list_key() -> tuple:
+    mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else 0      # noqa: E731
+    return mt(SIGNALS_STAMP), mt(wake.EVENTS_FILE)
+
+
+def _watch_list_in_child(db_url: str, model: str) -> dict:
+    """_watch_list в окремому процесі (моделі читає сам, один раз): не тримає процес дашборду."""
+    if not State.models and State.m15 is None:
+        State.models, State.m15 = load_models(), load_model_15m()
+    with psycopg.connect(db_url) as conn:
+        return _watch_list(conn, model)
+
+
+def _list_store(model: str, key: tuple, fut) -> None:
+    try:
+        data = fut.result()
+    except Exception as e:
+        print(f"  ! список ({model}) у фоні: {type(e).__name__}: {e}")
+        return
+    with _list_lock:
+        _list_cache[model] = {"key": key, "at": time.time(), "data": data}
+
+
+def _list_future(model: str, key: tuple):
+    """Запустити розрахунок списку для стану key (або взяти вже запущений для того самого стану)."""
+    global _list_pool
+    with _list_lock:
+        f = _list_futures.get(model)
+        if f is not None and f[0] == key and not f[1].done():
+            return f[1]
+        if _list_pool is None:
+            from concurrent.futures import ProcessPoolExecutor
+            _list_pool = ProcessPoolExecutor(max_workers=1)
+        fut = _list_pool.submit(_watch_list_in_child, State.db_url, model)
+        _list_futures[model] = (key, fut)
+    fut.add_done_callback(lambda ff, m=model, k=key: _list_store(m, k, ff))
+    return fut
+
+
+def _watch_list_cached(conn, model: str) -> dict:
+    key = _list_key()
+    c = _list_cache.get(model)
+    if c is not None and c["key"] == key:
+        if time.time() - c["at"] >= LIST_MAX_AGE:
+            _list_future(model, key)              # застаріло лише за часом — віддаємо наявне, оновлюємо у фоні
+        return c["data"]
+    try:
+        fut = _list_future(model, key)
+        data = fut.result(timeout=180)
+        _list_store(model, key, fut)              # колбек міг ще не спрацювати — кладемо в кеш одразу
+        return data
+    except Exception as e:                        # процес не стартував / впав — рахуємо як раніше, тут
+        print(f"  ! список в окремому процесі: {type(e).__name__}: {e} — рахую тут")
+        global _list_pool
+        _list_pool = None
+        return _watch_list(conn, model)
+
+
+def list_warmer() -> None:
+    """Щойно скринер записав нові оцінки або «прокидається» — перерахувати список основної моделі у фоні."""
+    while True:
+        try:
+            key = _list_key()
+            for model in LIST_WARM_MODELS:
+                c = _list_cache.get(model)
+                if c is None or c["key"] != key or time.time() - c["at"] >= LIST_MAX_AGE:
+                    _list_future(model, key)
+        except Exception as e:
+            print(f"  ! список (фон): {e}")
+        time.sleep(2)
+
+
 def watch_list(conn, model: str) -> dict:
     """Права панель: лише тікери з watchlist.txt і живого авто-списку сканера (прострочені авто — геть),
-    з позначкою джерела: source manual / auto, причина і до коли тікер у списку."""
-    res = _watch_list(conn, model)
+    з позначкою джерела: source manual / auto, причина і до коли тікер у списку.
+    Важка частина (_watch_list) — з кешу, що гріється у фоні; джерела й «додається…» — свіжі на кожен запит."""
+    res = dict(_watch_list_cached(conn, model))
     manual, auto = list_sources()
     keep = set(manual) | set(auto)
     res["rows"] = [r | {"source": "auto" if r["ticker"] in auto else "manual",
@@ -292,7 +380,7 @@ def _watch_list(conn, model: str) -> dict:
             if not x:
                 break
             streak += 1
-        h = aggregate(raw, base)
+        h = aggregate(raw, base, light=True)
         h = h[h.index <= last["ts"]] if not h.empty else h
         spark = g.set_index("ts")["probability"].reindex(pd.date_range(last["ts"] - pd.Timedelta(hours=SPARK_HOURS - 1), last["ts"], freq="h"))
         chg = oi24 = None
@@ -878,17 +966,48 @@ def journal_bundles() -> dict:
 
 
 def journal_version(conn) -> tuple:
-    """Коли журнал треба перерахувати: нові оцінки (без ковзних 5-хв — вони в журнал не йдуть) або змінена розмітка."""
-    last = conn.execute("SELECT max(scored_at) FROM signals WHERE model <> %s", (T.ROLL_MODEL,)).fetchone()[0]
+    """Коли журнал треба перерахувати: оцінено НОВИЙ бар (без ковзних 5-хв — вони в журнал не йдуть) або змінена розмітка.
+    Ключ — останній оцінений бар і скільки тікерів на ньому, а не max(scored_at): скринер постійно дописує дооцінки
+    (нові тікери, історія, годинна частина), і журнал на сервері (~80 с на 2 vCPU) перераховувався майже без перерви —
+    дашборд їв ~60% процесора і гальмував скринер (2026-10-06)."""
+    last = conn.execute("""SELECT ts, count(*) FROM signals
+                           WHERE model <> %s AND ts = (SELECT max(ts) FROM signals WHERE model <> %s) GROUP BY ts""",
+                        (T.ROLL_MODEL, T.ROLL_MODEL)).fetchone()
     p = os.path.join(ROOT, "pumps.csv")
     return last, os.path.getmtime(p) if os.path.exists(p) else 0
+
+
+_journal_pool = None
+
+
+def _prepare_in_child(db_url: str, rule: dict) -> dict:
+    """J.prepare в окремому процесі: важкий pandas-розрахунок журналу (до хвилини на сервері) інакше тримає GIL
+    процесу дашборду, і графік тікера чи список, запитані в цей момент, чекали в черзі (2026-10-06).
+    Моделі дочірній процес читає сам — один раз (дашборд теж читає їх лише при старті)."""
+    if not State.models and State.m15 is None:
+        State.models, State.m15 = load_models(), load_model_15m()
+    with psycopg.connect(db_url) as conn:
+        return J.prepare(conn, journal_bundles(), rule)
+
+
+def _prepare(conn, rule: dict) -> dict:
+    global _journal_pool
+    try:
+        if _journal_pool is None:
+            from concurrent.futures import ProcessPoolExecutor
+            _journal_pool = ProcessPoolExecutor(max_workers=1)
+        return _journal_pool.submit(_prepare_in_child, State.db_url, dict(rule)).result()
+    except Exception as e:                    # процес не стартував / впав — рахуємо як раніше, у цьому ж процесі
+        print(f"  ! журнал в окремому процесі: {type(e).__name__}: {e} — рахую тут")
+        _journal_pool = None
+        return J.prepare(conn, journal_bundles(), rule)
 
 
 def prepared_for(conn, rule: dict) -> tuple[dict, tuple]:
     key = (tuple(rule.values()),) + journal_version(conn)
     with _prepared_lock:                      # фоновий прогрів і запит не рахують одне й те саме двічі
         if _prepared["key"] != key:
-            _prepared["data"] = J.prepare(conn, journal_bundles(), rule)
+            _prepared["data"] = _prepare(conn, rule)
             _prepared["key"] = key
         _prepared["rule"] = dict(rule)
         return _prepared["data"], key
@@ -1043,7 +1162,12 @@ def main() -> None:
     if State.m15 is None:
         print("15m-моделі немає (python train.py) — показую лише годинні моделі")
     threading.Thread(target=rescore_on_start, daemon=True).start()
-    threading.Thread(target=journal_warmer, daemon=True).start()
+    # фоновий прогрів журналу — лише якщо не вимкнено: на сервері з 20% базової потужності CPU (Lightsail) він
+    # з'їдав кредити процесора; там журнал рахується при відкритті вкладки (JOURNAL_WARMER=0 у docker-compose.server.yml)
+    if os.getenv("JOURNAL_WARMER", "1") != "0":
+        threading.Thread(target=journal_warmer, daemon=True).start()
+    if os.getenv("LIST_WARMER", "1") != "0":
+        threading.Thread(target=list_warmer, daemon=True).start()
 
     # На Windows SO_REUSEADDR дозволяє двом процесам зайняти один порт: другий «стартує», але запитів не отримує.
     # Вимикаємо його, щоб повторний запуск одразу казав, що порт зайнятий.

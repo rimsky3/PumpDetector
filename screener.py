@@ -373,11 +373,20 @@ def onboard(conn, client: Coinalyze, bases: list[str], models: list[dict], m15: 
     """Нові тікери (сканер, «＋ у watchlist»): годинні дані Coinalyze (заодно заводять біржові контракти в markets —
     без них 15m-дані з бірж не завантажаться), годинна оцінка, 15m-дані й 15m-оцінка — одразу, не чекаючи
     годинної частини циклу, інакше до кінця години є лише «Кандидат» без Alert.
-    «Новий» = годинних даних немає або вони старші за 2 год (напр., тікер колись вантажили в розмітці)."""
-    cutoff = pd.Timestamp(datetime.now(timezone.utc)).floor("h") - pd.Timedelta(hours=2)
+    «Новий» = немає ні свіжих 15m-даних бірж (2 год), ні годинних Coinalyze (COINALYZE_OWN_REFRESH_H + 2 год; напр.,
+    тікер колись вантажили в розмітці). Раніше — лише «годинні старші за 2 год»: тікери з годинною оцінкою з власних
+    15m оновлюють Coinalyze раз на 6 год, тож 4 години з 6 виглядали «новими» і раз на 3 год заново тягнули всю
+    історію (на сервері 06.10 — 19 тікерів, цикл 25 хв замість кількох, пропущені 15m-бари)."""
+    now_h = pd.Timestamp(datetime.now(timezone.utc)).floor("h")
+    cutoff = now_h - pd.Timedelta(hours=2)                                   # для перевірки після збору (BG is None)
     sql = """SELECT m.base_asset FROM ohlcv o JOIN markets m USING (symbol)
              WHERE o.interval = '1hour' AND m.base_asset = ANY(%s) GROUP BY 1 HAVING max(o.ts) >= %s"""
-    have = {r[0] for r in conn.execute(sql, (bases, cutoff))}
+    from features import INTRADAY_EXCHANGES
+    have = {r[0] for r in conn.execute(sql, (bases, now_h - pd.Timedelta(hours=COINALYZE_OWN_REFRESH_H + 2)))}
+    have |= {r[0] for r in conn.execute("""
+        SELECT m.base_asset FROM ohlcv o JOIN markets m USING (symbol)
+        WHERE o.interval = '15min' AND m.base_asset = ANY(%s) AND m.exchange_name = ANY(%s) AND o.ts >= %s
+        GROUP BY 1""", (bases, list(INTRADAY_EXCHANGES), cutoff))}
     now = datetime.now(timezone.utc)
     recent = {b for b, t in _onboarding.items() if now - t < timedelta(hours=3)}   # уже заведені, історія — у фоні
     fresh = [b for b in bases if b not in have and b not in NO_COINALYZE and b not in recent]

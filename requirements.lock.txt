@@ -11,3 +11,4 @@ scikit-learn==1.9.1
 lightgbm==4.7.0
 joblib==1.6.0
 pyarrow==25.0.1
+websockets==17.2

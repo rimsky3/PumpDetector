@@ -169,6 +169,8 @@ last; coins it adds are onboarded at once.
 **Dashboard refresh.** Every `save_signals` touches `reports/signals_stamp`; the dashboard polls `/api/pulse` (file
 mtimes only, no database) every 5 seconds and, when the stamp or `reports/wake_events.json` changes, reloads the list
 (notifications) and quietly reloads the open chart. The full refresh (meta, scan, journal) stays once a minute.
+The dashboard itself watches the same files and recomputes the list in a background worker process right after new
+scores, so the browser's request is answered from the cache (~0.2 s on the server instead of ~7 s).
 
 **Training tickers outside the list.** Every 3 hours the screener also refreshes 15m/5m exchange data (Binance, Bybit,
 OKX) and 15m liquidations for `tickers.txt` coins that are not in the list. They are not scored; the point is history

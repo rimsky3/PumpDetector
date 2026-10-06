@@ -30,7 +30,18 @@ Before retraining, label fresh signals on training tickers if they were pumps (s
 | `--restart` | restart the `screener` and `dashboard` containers afterwards |
 | `--labels` | only the labels and lists (`pumps.csv`, `tickers.txt`, `excluded.txt`, `reviews.csv`), then on the server `load_pumps.py` and `fetch.py --new` (hourly history for new training tickers) |
 | `--backtests` | also `reports/backtests/*.json` (shown in the dashboard's Backtest tab) |
+| `--yes` | do not ask about uncommitted changes (by default the script lists them and asks; without a terminal it stops) |
 | `--first` | initial deploy: also `models/`, the lists, scanner / wake JSON state and backtest runs |
+
+### `liq_recorder.py` — own liquidation feed (server container `liqrec`)
+
+| Option | What it does |
+|---|---|
+| (none) | record Binance / Bybit / OKX liquidations over WebSocket into `liq_events` (runs forever, reconnects) |
+| `--stats` | show what was recorded: events, USD, symbols, stream latency per exchange, connection coverage |
+| `--hours N` | window for `--stats` (default 6) |
+
+On the server: `docker compose -f docker-compose.server.yml exec -T liqrec python liq_recorder.py --stats`. See docs/liquidations.md.
 
 ### `tools/pull_db.sh` — server database → laptop (Git Bash)
 

@@ -1,0 +1,10 @@
+# Caddy — HTTPS і пароль перед дашбордом на сервері (docker-compose.server.yml, сервіс caddy).
+# Сертифікат Let's Encrypt Caddy отримує й оновлює сам (потрібні відкриті порти 80 і 443).
+# Значення — з ~/pd/.env на сервері: PD_HOST (напр. 45-76-90-13.sslip.io), PD_USER, PD_PASS_HASH (bcrypt, не пароль!).
+{$PD_HOST} {
+	basic_auth {
+		{$PD_USER} {$PD_PASS_HASH}
+	}
+	encode gzip
+	reverse_proxy dashboard:8766
+}

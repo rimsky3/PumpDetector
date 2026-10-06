@@ -8,7 +8,7 @@
 set -euo pipefail
 export MSYS_NO_PATHCONV=1          # Git Bash не має перетворювати /tmp/... у шляхи Windows в аргументах docker
 
-HOST="ubuntu@13.60.152.123"
+HOST="ubuntu@45.76.90.13"
 PORT=2222
 KEY="D:/keys/pd.pem"
 OUT="data/server.dump"

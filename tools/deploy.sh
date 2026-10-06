@@ -8,20 +8,24 @@
 #   bash tools/deploy.sh --models        — + models/ (після «Прийняти» нову модель; потрібен ще --restart)
 #   bash tools/deploy.sh --backtests     — + прогони бектесту (reports/backtests/*.json) — видно у вкладці «Бектест»
 #   bash tools/deploy.sh --first         — перший раз: + models/, робочі JSON зі reports/, прогони бектесту, списки
+#   bash tools/deploy.sh --yes           — не питати про незакомічені зміни
 # Прапорці можна поєднувати: bash tools/deploy.sh --models --restart
+#
+# Правило: спершу коміт, потім деплой. Скрипт копіює файли такими, як вони є на диску, — якщо є незакомічені зміни,
+# на сервер піде код, якого немає на GitHub; тоді скрипт попереджає і питає (окрім --labels: розмітку комітять пізніше).
 #
 # Файли, які на сервері змінює сам дашборд (watchlist.txt — «＋ у watchlist», scan_config.json — пороги сканера),
 # звичайне оновлення НЕ перезаписує — лише --first. Секрети (.env) скрипт не копіює ніколи.
 set -euo pipefail
 
-HOST="ubuntu@13.60.152.123"
+HOST="ubuntu@45.76.90.13"
 PORT=2222
 KEY="D:/keys/pd.pem"
 DIR="pd"                                   # папка на сервері: /home/ubuntu/pd
 SERVER_OWNED='^(watchlist\.txt|scan_config\.json)$'
 SKIP='^(notes/|images_bags/|data/|ТЗ )'      # особисте і великі локальні кеші — серверу не потрібні
 
-first=0; models=0; restart=0; labels=0; backtests=0
+first=0; models=0; restart=0; labels=0; backtests=0; yes=0
 for a in "$@"; do
   case "$a" in
     --first) first=1; models=1; backtests=1 ;;
@@ -29,12 +33,29 @@ for a in "$@"; do
     --restart) restart=1 ;;
     --labels) labels=1 ;;
     --backtests) backtests=1 ;;
+    --yes) yes=1 ;;
     *) echo "невідомий прапорець: $a"; exit 1 ;;
   esac
 done
 
 cd "$(dirname "$0")/.."
 ssh_() { ssh -p "$PORT" -i "$KEY" -o ConnectTimeout=20 "$HOST" "$@"; }
+
+# незакомічені зміни коду → попередити (особисте й кеші не рахуються)
+if [ "$labels" = 0 ] && [ "$yes" = 0 ]; then
+  dirty=$(git -c core.quotepath=off status --porcelain | grep -v -E ' "?(notes/|images_bags/|data/)' || true)
+  if [ -n "$dirty" ]; then
+    echo "Увага: є незакомічені зміни — на сервер піде код, якого ще немає на GitHub:"
+    echo "$dirty" | head -20
+    [ "$(echo "$dirty" | wc -l)" -gt 20 ] && echo "  … і ще $(( $(echo "$dirty" | wc -l) - 20 ))"
+    ans=n
+    if [ -t 0 ]; then read -r -p "Продовжити без коміту? [y/N] " ans; fi
+    if [ "$ans" != y ] && [ "$ans" != Y ]; then
+      echo "Скасовано. Закоміть зміни (git add -A; git commit; git push) і запусти знову — або додай --yes."
+      exit 1
+    fi
+  fi
+fi
 
 list=$(mktemp)
 if [ "$labels" = 1 ]; then
