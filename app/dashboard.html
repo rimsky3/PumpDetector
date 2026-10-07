@@ -678,7 +678,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
              backtest: LS.get("pd-mode-backtest", null) }, days: LS.get("pd-days", 3), link: LS.get("pd-link", true), oiUsd: LS.get("pd-oiusd", false),
     // вікна графіка: 1 або 2; «Повна інфо» (позиція, угоди, «прокидається», мітки сканера); активне вікно
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
-    meta: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])),
+    meta: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(),
     notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), seen: new Set(LS.get("pd-seen", [])),
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
@@ -1503,6 +1503,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- права панель: список тікерів ----------
   const visibleRows = () => {
     const rows = (st.list?.rows || []).filter((r) => {
+      if (st.gone.has(r.ticker)) return false;            // щойно прибраний «×» — не чекаємо відповіді сервера
       if (st.search && !r.ticker.includes(st.search)) return false;
       if (st.tab === "alert") return r.status === "alert";
       if (st.tab === "cand") return r.status === "alert" || r.status === "candidate";
@@ -1593,22 +1594,33 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   const toggleFav = (t) => { st.fav.has(t) ? st.fav.delete(t) : st.fav.add(t); LS.set("pd-fav", [...st.fav]); renderList(); };
   // × у рядку списку: прибрати тікер (ручний — з watchlist, авто — з авто-списку; обидва — до нового спрацювання сканера)
+  // Рядок зникає одразу (st.gone), тост — теж; запит іде у фоні. Не чекаємо /api/list: якщо скринер щойно записав
+  // оцінки, список перераховується кілька секунд — раніше весь цей час рядок «думав».
   const removeTicker = async (tk) => {
-    try {
-      const r = await api("/api/watchlist/remove", { method: "POST", body: JSON.stringify({ symbol: tk }) });
-      $("toastT").textContent = `Прибрано ${tk}`;
-      $("toastS").textContent = (r.source === "auto" ? "з авто-списку" : "з watchlist") + " · повернеться, лише якщо прокинеться знову";
-      $("toastA").textContent = "Повернути";
-      $("toastA").onclick = async (e) => {
-        e.preventDefault(); $("toast").hidden = true;
-        try { await api("/api/watchlist/undo", { method: "POST", body: JSON.stringify({ symbol: tk }) }); } catch (err) {}
-        loadList();
-      };
-      $("toast").hidden = false;
-      clearTimeout(removeTicker.t);
-      removeTicker.t = setTimeout(() => { if ($("toastA").textContent === "Повернути") $("toast").hidden = true; }, 8000);
-      loadList();
-    } catch (err) { $("toastT").textContent = `Не вдалося прибрати ${tk}`; $("toastS").textContent = err.message || ""; $("toast").hidden = false; }
+    const src = (st.list?.rows || []).find((r) => r.ticker === tk)?.source;
+    st.gone.add(tk); renderList();
+    $("toastT").textContent = `Прибрано ${tk}`;
+    $("toastS").textContent = (src === "auto" ? "з авто-списку" : "з watchlist") + " · повернеться, лише якщо прокинеться знову";
+    $("toastA").textContent = "Повернути";
+    const done = api("/api/watchlist/remove", { method: "POST", quiet: true, body: JSON.stringify({ symbol: tk }) });
+    $("toastA").onclick = async (e) => {
+      e.preventDefault(); $("toast").hidden = true;
+      try { await done; await api("/api/watchlist/undo", { method: "POST", quiet: true, body: JSON.stringify({ symbol: tk }) }); } catch (err) {}
+      st.gone.delete(tk); renderList(); loadList();
+    };
+    $("toast").hidden = false;
+    clearTimeout(removeTicker.t);
+    removeTicker.t = setTimeout(() => { if ($("toastA").textContent === "Повернути") $("toast").hidden = true; }, 8000);
+    try { await done; }
+    catch (err) {
+      st.gone.delete(tk); renderList();
+      $("toastT").textContent = `Не вдалося прибрати ${tk}`; $("toastS").textContent = err.message || "";
+      $("toastA").textContent = "Закрити"; $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; };
+      $("toast").hidden = false; return;
+    }
+    await loadList();
+    // сервер уже не віддає тікер — фільтр більше не потрібен (а якщо додаси його знову, він має з'явитись)
+    if (!(st.list?.rows || []).some((r) => r.ticker === tk)) st.gone.delete(tk);
   };
   const loadList = async () => {
     try { st.list = await api(`/api/list?model=${st.model}`); } catch (e) { st.list = { rows: [], recent: [], alerts: [] }; }
@@ -1690,6 +1702,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   let addPoll = null;
   const addTicker = async (sym) => {
     sym = (sym || "").trim().toUpperCase(); if (!sym) return;
+    st.gone.delete(sym);
     try {
       const r = await api("/api/watchlist/add", { method: "POST", body: JSON.stringify({ symbol: sym }) });
       $("addIn").value = ""; st.search = ""; $("search").value = "";
