@@ -248,6 +248,8 @@ def save_marks(conn, found: list[dict], live: bool) -> None:
                                    %(beyond_delta)s, %(edge)s, %(vol_x)s, %(ctx)s, %(live)s) ON CONFLICT DO NOTHING""",
                         [f | {"ts": pd.Timestamp(f["ts"]).to_pydatetime(), "live": live} for f in found])
     conn.commit()
+    if not live:
+        return                                 # історичні (дозаповнення): не смикаємо дашборд — йому вистачить наступної оцінки
     try:                                       # дашборд перечитує список (і сповіщення) за міткою оцінок
         os.makedirs(os.path.dirname(SIGNALS_STAMP), exist_ok=True)
         with open(SIGNALS_STAMP, "w") as f:
