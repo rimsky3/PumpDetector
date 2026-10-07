@@ -111,6 +111,23 @@ td.m { font-family: var(--mono); font-size: 12px; }
     <div class="kpis" id="valKpis"></div>
   </section>
 
+  <section class="card" aria-labelledby="impH">
+    <div class="bar">
+      <h2 id="impH">На що дивиться модель</h2>
+      <div class="group" role="group" aria-label="Модель">
+        <button data-imp="15m" aria-pressed="true">15m (Кандидат)</button><button data-imp="1h" aria-pressed="false">1h (підтвердження Alert)</button>
+      </div>
+    </div>
+    <p class="note">Частка gain LightGBM: як часто і з якою користю модель розбиває дані за ознакою. Модель вчиться повторювати твою розмітку, тож нова розмітка змінює, на що вона спирається. Схожі ознаки (напр. oi_chg_24h і oi_z_24h — обидві «OI за добу вище норми») ділять частку між собою і можуть мінятися місцями, тому дивись на групи. Gain — не внесок у якість: чи потрібна група, показує лише навчання без неї.</p>
+    <p class="note" id="impSum"></p>
+    <div class="chart" id="impChart"></div>
+    <div class="tbl"><table>
+      <thead><tr><th>Ознака</th><th>Група</th><th>Поточна</th><th>Нова</th><th>Зміна</th></tr></thead>
+      <tbody id="impRows"></tbody>
+    </table></div>
+    <p class="note">Таблиця: ознаки з найбільшою зміною частки (до 10), «п.п.» — процентні пункти.</p>
+  </section>
+
   <section class="card" aria-labelledby="tkH">
     <div class="bar">
       <h2 id="tkH">По тікерах</h2>
@@ -162,7 +179,7 @@ td.m { font-family: var(--mono); font-size: 12px; }
   };
   const frac = (s) => { const m = /^(\d+)\/(\d+)$/.exec(s || ""); return m && +m[2] ? { n: +m[1], d: +m[2], v: +m[1] / +m[2] } : null; };
 
-  let D = null, TIER = "alert", SORT = { k: "caught", dir: -1 }, FILT = "all", METRIC = "caught";
+  let D = null, TIER = "alert", SORT = { k: "caught", dir: -1 }, FILT = "all", METRIC = "caught", IMP = "15m";
 
   // показники одного тікера з event_metrics для вибраного рівня
   const tm = (m) => {
@@ -264,6 +281,63 @@ td.m { font-family: var(--mono); font-size: 12px; }
     box.insertBefore(svg, tip);
   };
 
+  // ---------- на що дивиться модель: частка gain по групах ознак (пари поточна / нова) + ознаки з найбільшою зміною ----------
+  const pp = (v) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v * 100).toFixed(1)} п.п.`;
+  const renderImp = () => {
+    const box = $("impChart"), tb = $("impRows"); box.replaceChildren(); tb.replaceChildren();
+    const I = D.importance?.[IMP];
+    if (!I) { box.appendChild(el("p", "empty", "Немає даних: модель не LightGBM або її файл не знайдено.")); $("impSum").textContent = ""; return; }
+    const G = I.groups, hasCur = G.some((g) => g.cur != null);
+    // підсумок словами: що виросло / впало найбільше; попередження, якщо модель тримається на одній ознаці
+    const ch = G.filter((g) => g.cur != null).map((g) => ({ ...g, d: g.new - g.cur })).sort((a, b) => b.d - a.d);
+    const top1 = I.features[0], parts = [];
+    if (ch.length && ch[0].d > 0.005) parts.push(`Найбільше зросла група «${ch[0].group}» (${pp(ch[0].d)})`);
+    if (ch.length && ch[ch.length - 1].d < -0.005) parts.push(`найбільше впала «${ch[ch.length - 1].group}» (${pp(ch[ch.length - 1].d)})`);
+    let s = parts.length ? parts.join(", ") + "." : hasCur ? "Групи майже не змінились." : "";
+    if (top1 && top1.new >= 0.4) s += ` Увага: нова модель на ${Math.round(top1.new * 100)}% спирається на одну ознаку ${top1.name}` +
+      (top1.group === "Ціна" ? " — це радше «вже виросло», ніж «починається»: перевір, де в розмітці стоїть старт імпульсу." : ".");
+    $("impSum").textContent = s.trim();
+
+    const max = Math.max(1e-9, ...G.flatMap((g) => [g.cur ?? 0, g.new]));
+    const W = box.clientWidth || 900, L = 130, R = 56, bh = 8, gap = 2, rowH = bh * 2 + gap + 12, H = G.length * rowH + 24;
+    const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", `0 0 ${W} ${H}`); svg.setAttribute("height", H); svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `Частка gain по групах ознак, модель ${IMP}: поточна і нова`);
+    const x = (v) => L + (W - L - R) * v / max, mk = (tag, attrs, parent = svg) => { const e = document.createElementNS(ns, tag); Object.entries(attrs).forEach(([k, v]) => e.setAttribute(k, v)); parent.appendChild(e); return e; };
+    [0, 0.5, 1].forEach((f) => { mk("line", { x1: x(max * f), x2: x(max * f), y1: 0, y2: H - 18, class: "gridl" }); const tx = mk("text", { x: x(max * f), y: H - 4, "text-anchor": "middle", class: "ax" }); tx.textContent = `${Math.round(max * f * 100)}%`; });
+    const tip = el("div", "tip"); tip.hidden = true; box.appendChild(tip);
+    G.forEach((g, i) => {
+      const y0 = i * rowH + 4, row = mk("g", { class: "row" });
+      const lab = mk("text", { x: L - 8, y: y0 + bh + 4, "text-anchor": "end", class: "tk" }, row); lab.textContent = g.group;
+      const bar = (v, yy, fill) => { if (v == null) return; const w = Math.max(2, x(v) - L);
+        mk("rect", { x: L, y: yy, width: w, height: bh, rx: 2, style: `fill: ${fill}`, class: "bar" }, row);
+        const t = mk("text", { x: L + w + 4, y: yy + bh - 1, class: "ax" }, row); t.textContent = `${(v * 100).toFixed(0)}%`; };
+      bar(g.cur, y0, "var(--cur)"); bar(g.new, y0 + bh + gap, "var(--new)");
+      const hit = mk("rect", { x: 0, y: y0 - 2, width: W, height: rowH - 4, class: "hit" }, row);
+      hit.addEventListener("mousemove", (e) => {
+        const feats = I.features.filter((f) => f.group === g.group).slice(0, 4);
+        tip.replaceChildren(el("div", "", `${g.group}`));
+        const line = (name, v) => { const d = el("div"); d.append(`${name}: `, el("b", "", v == null ? "—" : `${(v * 100).toFixed(1)}%`)); tip.appendChild(d); };
+        line("поточна", g.cur); line("нова", g.new);
+        if (g.cur != null) tip.appendChild(el("div", "", `зміна ${pp(g.new - g.cur)}`));
+        feats.forEach((f) => tip.appendChild(el("div", "", `· ${f.name} ${(f.new * 100).toFixed(1)}%`)));
+        const rc = box.getBoundingClientRect(); tip.hidden = false;
+        tip.style.left = `${Math.min(e.clientX - rc.left + 12, rc.width - 200)}px`; tip.style.top = `${e.clientY - rc.top + 12}px`;
+      });
+      hit.addEventListener("mouseleave", () => { tip.hidden = true; });
+    });
+    box.insertBefore(svg, tip);
+
+    const rows = I.features.map((f) => ({ ...f, d: f.cur == null ? null : f.new - f.cur }))
+      .sort((a, b) => (b.d == null ? b.new : Math.abs(b.d)) - (a.d == null ? a.new : Math.abs(a.d))).slice(0, 10);
+    rows.forEach((f) => {
+      const tr = el("tr");
+      tr.append(el("td", "m", f.name), el("td", "", f.group), el("td", "m", f.cur == null ? "—" : `${(f.cur * 100).toFixed(1)}%`),
+                el("td", "m", `${(f.new * 100).toFixed(1)}%`), el("td", "m", f.d == null ? "нова ознака" : pp(f.d)));
+      tb.appendChild(tr);
+    });
+  };
+
   // ---------- таблиця по тікерах ----------
   const renderTickers = () => {
     const tb = $("tkRows"); tb.replaceChildren();
@@ -311,13 +385,14 @@ td.m { font-family: var(--mono); font-size: 12px; }
     $("pEmpty").hidden = rows.length > 0;
   };
 
-  const render = () => { renderKpis(); renderChart(); renderTickers(); renderPumps(); };
+  const render = () => { renderKpis(); renderImp(); renderChart(); renderTickers(); renderPumps(); };
   const press = (sel, attr, val) => document.querySelectorAll(sel).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === val)));
   document.querySelectorAll("[data-tier]").forEach((b) => b.addEventListener("click", () => { TIER = b.dataset.tier; press("[data-tier]", "tier", TIER); render(); }));
   document.querySelectorAll("[data-f]").forEach((b) => b.addEventListener("click", () => { FILT = b.dataset.f; press("[data-f]", "f", FILT); renderPumps(); }));
   document.querySelectorAll("th.sort").forEach((th) => th.addEventListener("click", () => { SORT = { k: th.dataset.k, dir: SORT.k === th.dataset.k ? -SORT.dir : -1 }; renderTickers(); }));
   $("metricSel").addEventListener("change", (e) => { METRIC = e.target.value; renderChart(); });
-  addEventListener("resize", () => { if (D) renderChart(); });
+  document.querySelectorAll("[data-imp]").forEach((b) => b.addEventListener("click", () => { IMP = b.dataset.imp; press("[data-imp]", "imp", IMP); renderImp(); }));
+  addEventListener("resize", () => { if (D) { renderChart(); renderImp(); } });
   $("acceptBtn").addEventListener("click", async () => {
     if (!confirm("Прийняти нову модель? Поточна піде в резервну копію models/backup_…")) return;
     try { const r = await api("POST", "/api/retrain/accept", {}); status(`Нову модель прийнято. Попередня — у ${r.backup}. Перезапусти screener.py і dashboard.py`); $("acceptBtn").disabled = $("discardBtn").disabled = true; }

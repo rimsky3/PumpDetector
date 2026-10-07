@@ -341,6 +341,20 @@ def in_pump_mask(ts: pd.Series, a, b):
     return in_pump(ts, a, b, train.BAR_15M).to_numpy()
 
 
+def _importance(cur: dict | None, new: dict | None) -> dict | None:
+    """На що спирається модель: частки gain LightGBM по групах і по ознаках, поточна проти кандидата.
+    Розмітка змінює, які ознаки описують «імпульс» (30.09: ліквідації 18% → 3%), — видно після кожного перенавчання."""
+    c, n = train.gain_shares(cur), train.gain_shares(new)
+    if n is None:
+        return None
+    gc = train.group_shares(c) if c else pd.Series(dtype=float)
+    gn = train.group_shares(n)
+    groups = sorted(set(gn.index) | set(gc.index), key=lambda g: -max(gn.get(g, 0), gc.get(g, 0)))
+    return {"groups": [{"group": g, "cur": float(gc[g]) if g in gc else None, "new": float(gn.get(g, 0))} for g in groups],
+            "features": [{"name": f, "group": train.feature_group(f), "cur": (c or {}).get(f), "new": v}
+                         for f, v in sorted(n.items(), key=lambda x: -x[1])]}
+
+
 def compare(conn) -> dict:
     """Поточна модель проти кандидата: зведення, по тікерах, по кожному розміченому інтервалу.
     Кандидат — out-of-fold (leave-ticker-out) з його навчання. Поточна — її out-of-fold, якщо збережені;
@@ -382,7 +396,9 @@ def compare(conn) -> dict:
             pump_rows.append({"ticker": base, "fair": fair, "start": int(a["start"].timestamp()), "end": int(a["end"].timestamp()),
                               "type": a["type"], "new": {k: a[k] for k in ("alert", "alert_delay", "cand", "cand_delay", "p_max")},
                               "cur": ({k: b[k] for k in ("alert", "alert_delay", "cand", "cand_delay", "p_max")} if b else None)})
-    res = {"current": _summary(cur15, cur1), "candidate": _summary(new15, joblib.load(train.model_path("lightgbm", cand_dir))),
+    new1 = joblib.load(train.model_path("lightgbm", cand_dir))
+    res = {"current": _summary(cur15, cur1), "candidate": _summary(new15, new1),
+           "importance": {"15m": _importance(cur15, new15), "1h": _importance(cur1, new1)},
            "current_delay": {"alert": cur15.get("tier_validation", {}).get("median_delay_h"), "candidate": cur15.get("validation", {}).get("median_delay_h")},
            "candidate_delay": {"alert": new15.get("tier_validation", {}).get("median_delay_h"), "candidate": new15.get("validation", {}).get("median_delay_h")},
            "current_oof": oof_cur is not None, "tickers": tickers, "pumps": pump_rows}

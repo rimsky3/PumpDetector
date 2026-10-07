@@ -152,6 +152,14 @@ not a fair comparison); and every labeled interval with filters *caught only by 
 neither / false starts*. Models trained from 2026-09-30 save their out-of-fold 15m predictions (`oof_15m.parquet`)
 next to the model file, so once the live model has them the whole comparison becomes fair.
 
+The **"What the model looks at"** block (15m and 1h models) shows LightGBM gain share by feature group (OI, price,
+volume, volatility, buy/sell, funding, liquidations, long/short), live vs candidate, a one-line summary of the largest
+shifts, a warning when one feature carries ≥ 40% of the gain, and the ten features whose share changed most. The model
+learns to reproduce the labels, so relabeling changes what it relies on: when impulses replaced long pump intervals
+(2026-09-30), liquidations in the hourly model fell from 18.5% to ~3%, because short liquidations describe a pump in
+full swing, not its start. Gain is not contribution to quality — only retraining without a group shows that. The same
+group table is written to `reports/train_report.md` (`train.FEATURE_GROUPS`, `train.group_table`).
+
 **Model on the chart (M).** The **Модель на графіку** button (or **M**) hides the model's signals, probability pane
 and P value, leaving only your labels. Label a new ticker with the model hidden, then show it and compare: labels
 made while looking at the model's Alerts drift towards them (anchoring), and the model would then partly confirm

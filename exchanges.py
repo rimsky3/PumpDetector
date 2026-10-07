@@ -218,6 +218,16 @@ def okx_download_funding(inst: str, start: int, end: int) -> pd.DataFrame:
                          "value": [float(r["realizedRate"] or r["fundingRate"]) for r in f]}).drop_duplicates("ts").sort_values("ts")
 
 
+def closed_only(k: pd.DataFrame, tf: str) -> pd.DataFrame:
+    """Лише закриті свічки. Binance і Bybit віддають і поточну незакриту — у базі вона стояла б як звичайний бар до
+    наступного збору (NMR 07.10: бар 11:00, записаний о 11:02, «застиг» на графіку з обсягом $2.1 млн замість $6.8 млн
+    і ховав живу свічку). OKX history-candles і так лише закриті."""
+    if k.empty:
+        return k
+    now = pd.Timestamp(time.time(), unit="s", tz="UTC")
+    return k[k["ts"] + pd.Timedelta(milliseconds=TF[tf]["ms"]) <= now]
+
+
 def download(exchange: str, sym: str, start: int, end: int, tf: str = "1h") -> dict[str, pd.DataFrame]:
     if exchange == "OKX":
         d = okx_download(sym, start, end, tf)
@@ -225,13 +235,13 @@ def download(exchange: str, sym: str, start: int, end: int, tf: str = "1h") -> d
         return d
     if exchange == "Binance":
         return {
-            "klines": binance_klines(sym, start, end, tf),
+            "klines": closed_only(binance_klines(sym, start, end, tf), tf),
             "oi": binance_hist("/futures/data/openInterestHist", sym, start, end, "sumOpenInterest", tf),   # у монетах
             "ls": binance_hist("/futures/data/globalLongShortAccountRatio", sym, start, end, "longAccount", tf),
             "funding": binance_funding(sym, start - FUNDING_LOOKBACK, end),
         }
     return {
-        "klines": bybit_klines(sym, start, end, tf),
+        "klines": closed_only(bybit_klines(sym, start, end, tf), tf),
         "oi": bybit_cursor("/v5/market/open-interest", sym, start, end, {"intervalTime": TF[tf]["bybit"]}, "openInterest", 200),
         "ls": bybit_cursor("/v5/market/account-ratio", sym, start, end, {"period": TF[tf]["bybit"]}, "buyRatio", 500),
         "funding": bybit_funding(sym, start - FUNDING_LOOKBACK, end),

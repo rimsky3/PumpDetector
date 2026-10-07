@@ -233,6 +233,44 @@ def feature_importance(X: pd.DataFrame, y: pd.Series, models: list[str]) -> pd.D
     return imp.reindex(imp[key].abs().sort_values(ascending=False).index)
 
 
+# Схожі ознаки (oi_chg_24h і oi_z_24h — обидві «OI за добу вище норми») ділять gain між собою і від навчання до навчання
+# «перескакують» одна на одну; сума групи стабільніша. Порядок важить: oi_minus_ret_24h — група OI.
+FEATURE_GROUPS = [("OI", ("oi_",)), ("Ціна", ("ret_",)), ("Обсяг", ("volume_", "vol_burst")),
+                  ("Волатильність", ("volatility_", "range_")), ("Купівлі / продажі", ("buy_ratio_",)),
+                  ("Funding", ("funding",)), ("Ліквідації", ("liq_",)), ("Long / Short", ("ls_",))]
+
+
+def feature_group(name: str) -> str:
+    return next((g for g, prefixes in FEATURE_GROUPS if name.startswith(prefixes)), "Інше")
+
+
+def gain_shares(bundle: dict | None) -> dict[str, float] | None:
+    """Частка gain кожної ознаки LightGBM збереженої моделі (сума = 1); None — не LightGBM або моделі немає."""
+    booster = getattr((bundle or {}).get("model"), "booster_", None)
+    if booster is None:
+        return None
+    gain = booster.feature_importance(importance_type="gain")
+    names = bundle.get("features") or booster.feature_name()
+    return {n: float(g / gain.sum()) for n, g in zip(names, gain)} if gain.sum() > 0 else None
+
+
+def group_shares(shares: dict[str, float]) -> pd.Series:
+    """Частки ознак → сума по групах, від найбільшої."""
+    s = pd.Series(shares)
+    return s.groupby(s.index.map(feature_group)).sum().sort_values(ascending=False)
+
+
+def group_table(shares: dict[str, float]) -> str:
+    """Таблиця «група → % gain, найважливіша ознака групи» для звіту."""
+    s = pd.Series(shares)
+    groups = group_shares(shares)
+    top = s.groupby(s.index.map(feature_group)).idxmax()
+    t = pd.DataFrame({"gain_%": (100 * groups).round(1),
+                      "top feature": [f"{top[g]} ({100 * s[top[g]]:.1f}%)" for g in groups.index]})
+    t.index.name = "group"
+    return md_table(t)
+
+
 # ---------------------------------------------------------------- звіт
 
 def fmt(v, digits=3):
@@ -355,6 +393,10 @@ def main() -> None:
                   "Models fitted on all data. Logistic regression coefficients are on standardised features "
                   "(sign = direction of effect). LightGBM gain is the share of total split gain.", "",
                   md_table(imp)]
+        if "lightgbm_gain_%" in imp:
+            parts += ["", "### LightGBM gain by feature group", "",
+                      "Correlated features share gain and can swap places between runs; the group total is more stable.", "",
+                      group_table((imp["lightgbm_gain_%"] / 100).to_dict())]
     m15 = None
     if not args.no_15m:
         m15 = train_15m(db_url, df, pumps, cutoff if args.fresh_hours else None, set(reviewed), extra,
@@ -473,6 +515,7 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
                          "n_features": len(FEATURES_15M), "from_1h_start": True, "dropped_before_1h": dropped},
         }
         bundle["labels_fp"] = labels_fp or {}
+        report += ["", "### 15m LightGBM gain by feature group", "", group_table(gain_shares(bundle))]
         os.makedirs(out_dir, exist_ok=True)
         joblib.dump(bundle, model_path(M15_NAME, out_dir))
         oof15.to_parquet(os.path.join(out_dir, "oof_15m.parquet"), index=False)

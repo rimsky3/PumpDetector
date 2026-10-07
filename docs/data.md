@@ -69,6 +69,8 @@ see [modeling.md](modeling.md#experiment-exchange-apis-instead-of-coinalyze)):
 **OKX** (collected since 2026-09-30): candles and funding for months, taker buy/sell volume for 90 days, open interest
 and long/short for only ~14 days at 15m/1h (3 days at 5m). All OKX series are stamped with the bar's *open* time (OI
 is the value at the bar's close), while Binance and Bybit give OI as a snapshot at time T; `exchanges.py` aligns them.
+Binance and Bybit kline endpoints also return the current, still-forming candle; `exchanges.closed_only` drops it, so
+only closed bars are ever stored (a partial bar would otherwise sit in the database as if final until the next fetch).
 OKX is stored but not yet used by the 15m model or the 15m/5m charts (`features.INTRADAY_EXCHANGES`): the model was
 trained on Binance + Bybit sums, and with only 14 days of OKX OI an older chart would show a false OI step. It will be
 switched on after enough history has accumulated and an experiment shows it helps.
