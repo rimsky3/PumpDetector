@@ -134,7 +134,7 @@ LIMIT_ENTRY = {"atr": 0.5, "bars": 4}
 
 def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float | None,
                    exit_bars: int = EXIT_BARS, partial: dict | None = None, entry: dict | None = None,
-                   allow=None) -> dict:
+                   allow=None, p_marks=None) -> dict:
     """Стан «угоди» за сигналами моделі на погодинному ряді тікера.
 
     Угода починається з першого бару з ймовірністю ≥ порогу і закінчується,
@@ -145,6 +145,9 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
     виконання — коли лоу бару ≤ ціни заявки (за ціною заявки або відкриттям, якщо бар відкрився нижче); стоп і ціль —
     від ціни виконання; signal_ts / limit — бар сигналу і ціна заявки. Без entry — вхід по ринку за закриттям бару.
     allow(ts) → bool — додатковий фільтр входу на барі сигналу (режим «OB ≥ 1»: strategies.py); None — без фільтра.
+    p_marks — множина барів (відкриття) з міткою p («залочка» на хаях, footprint.py): у відкритій угоді на такому барі стоп
+    переноситься в беззбиток (p_ts — перший такий бар); після виходу з угоди, де була p, новий вхід — лише в наступному
+    епізоді сигналу (режим «б/з на p», experiments/p_exit.py). None — без правила.
     Стоп у барі перевіряється раніше за ціль (консервативно); на барі входу виходи не перевіряються.
     Повертає поточну угоду (якщо вона відкрита) або останню закриту; у ключі "trades" — усі закриті угоди,
     у ключі "order" — заявка, що ще чекає виконання (лише з entry).
@@ -162,12 +165,12 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
         return {"entry_ts": ts, "entry": float(px), "atr_entry": float(atr0),
                 "stop": float(px - k * atr0) if k is not None else None, "high": float(px),
                 "target": float(px + partial["atr"] * atr0) if partial else None,
-                "partial_ts": None, "partial_price": None, **extra}
+                "partial_ts": None, "partial_price": None, "p_ts": None, **extra}
 
     a = atr(h)
     prob = prob.reindex(h.index)
     trade, last_closed_trade, closed, order = None, None, [], None
-    below, prev_sig = 0, False
+    below, prev_sig, wait = 0, False, False       # wait — після виходу з угоди з p: чекаємо кінця епізоду сигналу
     bar = (h.index[1] - h.index[0]) if len(h) > 1 else H
     for i, (ts, p) in enumerate(prob.items()):
         sig = not pd.isna(p) and p >= threshold
@@ -186,7 +189,9 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
         # відкрита угода: стоп і частковий вихід — на КОЖНОМУ закритому барі, навіть якщо модель його ще не оцінила
         # (оцінка приходить на кілька хвилин пізніше за бар; VELVET 03.10 00:15 — обвал нижче стопу без оцінки не закрив угоду)
         if trade is None:
-            if order is None and sig and (entry is None or not prev_sig) and (allow is None or allow(ts)):
+            if wait and not sig:
+                wait = False                      # епізод сигналу скінчився — наступний сигнал уже новий
+            if order is None and sig and not wait and (entry is None or not prev_sig) and (allow is None or allow(ts)):
                 px, atr0 = h.at[ts, "price"], a.get(ts)
                 if not (pd.isna(px) or pd.isna(atr0)):
                     if entry is None:
@@ -205,6 +210,10 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
             if partial.get("breakeven") and trade["stop"] is not None:
                 trade["stop"] = max(trade["stop"], trade["entry"])      # решта позиції вже не може дати збиток
         trade["high"] = max(trade["high"], float(h.at[ts, "high"]))
+        if p_marks is not None and not stop_hit and ts in p_marks:
+            trade["p_ts"] = trade["p_ts"] or ts
+            if trade["stop"] is not None:
+                trade["stop"] = max(trade["stop"], trade["entry"])      # p у відкритому лонгу — стоп у беззбиток
         if not pd.isna(p):
             below = below + 1 if p < threshold else 0
         if below >= exit_bars or stop_hit:
@@ -212,6 +221,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
             trade.update({"exit_ts": ts, "exit": exit_price, "reason": "stop" if stop_hit else "model",
                           "result_pct": result(trade, exit_price)})
             closed.append(dict(trade))
+            wait = p_marks is not None and trade.get("p_ts") is not None
             last_closed_trade, trade = trade, None
             below = 0
 

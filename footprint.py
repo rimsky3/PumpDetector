@@ -310,6 +310,20 @@ def levels(conn, base: str, since: pd.Timestamp, until: pd.Timestamp, tf_sec: in
     return out
 
 
+def p_times(conn, bases: list[str] | None, since) -> dict[str, set]:
+    """Моменти (відкриття 15m-барів) міток p — живих і з історії — по тікерах: для режиму «б/з на p»
+    (risk.position_state(p_marks=)). Порожньо, якщо таблиці ще немає."""
+    try:
+        m = marks(conn, bases, since)
+    except Exception:
+        conn.rollback()
+        return {}
+    if m.empty:
+        return {}
+    m = m[m["kind"] == "p"]
+    return {b: set(pd.to_datetime(g["ts"], utc=True)) for b, g in m.groupby("base_asset")}
+
+
 def marks(conn, bases: list[str] | None = None, since: pd.Timestamp | None = None, until: pd.Timestamp | None = None) -> pd.DataFrame:
     from features import query_df
     cond, params = ["true"], []

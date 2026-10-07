@@ -37,6 +37,7 @@ import train
 from features import (FEATURES, FEATURES_15M, INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, build_15m, build_hourly_own,
                       load_raw)
 from fetch import Coinalyze, collect_liquidations, excluded_tickers, find_markets, read_tickers_file, upsert_markets
+import footprint
 import market
 import orderbook
 import strategies
@@ -153,8 +154,10 @@ def run_ticker(conn, base: str, m15: dict, m1: dict, days: int, entry: str, stra
         if row:
             allow = orderbook.archive_allow_fn(row[0], list(score.index[score >= 1]))
     allow = market.both(allow, market.strategy_allow(conn, strat))     # режим «ринок не гарячий»
+    # режим «б/з на p»: мітки з fp_marks (є лише там, де писався футпрінт; для історичної перевірки — experiments/p_exit.py)
+    p_marks = footprint.p_times(conn, [base], h.index.min()).get(base, set()) if strat is not None and strat.get("p_be") else None
     pos = position_state(h, score, 1.0, m15.get("risk", {}).get("k"), m15.get("exit_bars", 4), PARTIAL_EXIT,
-                         strategies.entry_rule(strat) if strat is not None else None, allow)
+                         strategies.entry_rule(strat) if strat is not None else None, allow, p_marks)
     trades = []
     for tr in list(pos.get("trades", [])) + ([pos] if pos.get("open") else []):
         trades.append({"ticker": base, "entry_ts": int(pd.Timestamp(tr["entry_ts"]).timestamp()),

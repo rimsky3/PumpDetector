@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
+import footprint
 import market
 import orderbook
 import strategies
@@ -150,7 +151,12 @@ def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict 
             allow = market.both(allow, market.strategy_allow(conn, strat, 15 if tf15 else 60))   # «ринок не гарячий»
         else:
             entry, allow = (LIMIT_ENTRY if model == LIMIT_MODEL else None), None
-        pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None, entry, allow)
+        p_marks = None
+        if strat is not None and strat.get("p_be") and tf15:          # режим «б/з на p»: мітки p — один запит на всі тікери
+            if "p_marks" not in cache:
+                cache["p_marks"] = footprint.p_times(conn, None, scores["ts"].min() - pd.Timedelta(days=1))
+            p_marks = cache["p_marks"].get(base, set())
+        pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None, entry, allow, p_marks)
         trades = list(pos.get("trades", [])) + ([pos] if pos.get("open") else [])
         for t in trades:
             start = pd.Timestamp(t["entry_ts"])

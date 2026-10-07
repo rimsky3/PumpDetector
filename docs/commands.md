@@ -377,6 +377,11 @@ order book filter (bid / ask ratio ≥ 1 at the signal) — with the shared part
 dashboard's Forecast (position, trade marks), Journal (statistics per mode) and Backtest (`backtest.py --strategy <id>`;
 the order book filter reads the Binance `bookDepth` archive there).
 
+Mode `p_be` ("б/з на p", key `p_be: true`): a footprint **p** mark (absorption above the highs, `footprint.py`) inside an
+open long moves the stop to breakeven, and after such a trade there is no re-entry until the Alert episode ends
+(`risk.position_state(p_marks=)`; marks from `fp_marks`, so it only applies where the footprint is recorded — live and
+the 30-day history of list coins; for history use `experiments/p_exit.py`).
+
 Mode `market_cool` ("ринок не гарячий", key `market_max: 0.6`) takes an Alert only when at most 60% of altcoins are up
 over 7 days at the close of the signal bar (`market.py`; unknown state — the signal is taken).
 

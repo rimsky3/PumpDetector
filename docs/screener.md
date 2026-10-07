@@ -80,6 +80,13 @@ the next run (15m modes only). For past signals without an order book snapshot t
 OB filter takes the signal. In Backtest the retrained model waiting for "Прийняти" is called "нова версія" to avoid
 confusion with the Candidate signal tier.
 
+## Mode "breakeven on p" (since 2026-10-07)
+
+`strategies.json` mode `p_be`: when a footprint **p** mark appears in an open long, the stop moves to breakeven (the chart
+line reads "Стоп · б/з (p)"); after a trade that saw p, no new entry until the Alert episode ends. In `experiments/p_exit.py`
+(213 coins, 40 days) this was the best of seven variants — profit factor 0.94 vs 0.93, no large winner cut — but the gain
+is within noise, so it runs as a separate journal row for a live comparison rather than replacing the main mode.
+
 ## Altcoin market state (since 2026-10-07)
 
 `market.py` runs in its own screener thread every hour at HH:01 (and at start; the first run downloads 60 days): hourly

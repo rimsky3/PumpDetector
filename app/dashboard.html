@@ -1277,7 +1277,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const line = (ser, price, color, title) => { if (price != null) priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]); };
       if (is15() && d.limit && d.limit.until > Date.now() / 1000) line(S.candles, d.limit.price, cssVar("--link"), "Ліміт");
       if (pos.open) {
-        line(S.candles, pos.stop, warm, pos.partial_ts ? "Стоп · б/з" : "Стоп");
+        line(S.candles, pos.stop, warm, pos.partial_ts ? "Стоп · б/з" : pos.p_ts ? "Стоп · б/з (p)" : "Стоп");
         if (pos.target != null && !pos.partial_ts) line(S.candles, pos.target, cssVar("--ok"), "Ціль ½");
       }
       line(S.prob, thr, fg2, is15() ? "поріг 15m" : "поріг");
@@ -1442,7 +1442,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       posEl.hidden = !showPos; stopEl.hidden = !showPos;
       if (showPos) {
         posEl.textContent = `позиція ${fmtPct(pos.result_pct)}`; posEl.className = "tk-pos" + (pos.result_pct < 0 ? " neg" : "");
-        stopEl.textContent = `стоп ${pos.partial_ts ? "б/з" : fmtPx(pos.stop)}`;
+        stopEl.textContent = `стоп ${pos.partial_ts ? "б/з" : pos.p_ts ? "б/з (p)" : fmtPx(pos.stop)}`;
       }
     };
 

@@ -506,9 +506,10 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
     if light or not len(t):
         pos = {"open": False, "trades": []}
     else:
+        p_marks = footprint.p_times(conn, [base], h.index.min()).get(base, set()) if strat.get("p_be") else None
         pos = position_state(h, score, 1.0, k, exit_bars, PARTIAL_EXIT, strategies.entry_rule(strat),
                              market.both(orderbook.allow_fn(book_rows) if strat.get("ob") else None,
-                                         market.strategy_allow(conn, strat)))
+                                         market.strategy_allow(conn, strat)), p_marks)
     last = t.iloc[-1] if len(t) else None
     streak = 0
     if last is not None:
