@@ -108,7 +108,7 @@
           if (top > paneH() || top + hh < 0) return;
           const vol = s + u; if (vol <= 0) return;
           const skew = Math.abs(u - s) / vol;                      // 0 — порівну, 1 — лише одна сторона
-          ctx.fillStyle = rgba(u >= s ? ok : hot, 0.22 + 0.63 * Math.min(1, skew / 0.5));   // перекіс ≥ 50% — найяскравіше
+          ctx.fillStyle = rgba(u >= s ? ok : hot, 0.45 + 0.5 * Math.min(1, skew / 0.4));    // перекіс ≥ 40% — найяскравіше
           ctx.fillRect(x0, top, Math.max(1, vol / maxVol * full), hh);
           if (lv === poc) { ctx.strokeStyle = pocC; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0) + 0.5, Math.round(top) + 0.5, Math.round(full), Math.max(1, Math.round(hh) - 1)); }
           if (spacing >= NUM_SPACING && hh >= NUM_ROW) {           // широкі свічки — обсяг рівня числом
