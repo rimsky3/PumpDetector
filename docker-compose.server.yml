@@ -13,10 +13,11 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?заповни POSTGRES_PASSWORD у .env}
       POSTGRES_DB: pump_detector
-    # пам'ять бази під 4-ГБ сервер: кеш сторінок 512 МБ, решту віддаємо скринеру й дашборду
+    # пам'ять бази під 4-ГБ сервер: кеш сторінок 512 МБ, решту віддаємо скринеру й дашборду;
+    # без паралельних запитів: на 2 ядрах кожен запит у 3 процеси лише множив конкуренцію (07.10: load 20, запити в черзі)
     command: >
       postgres -c shared_buffers=512MB -c effective_cache_size=1536MB -c work_mem=32MB
-               -c maintenance_work_mem=256MB -c max_connections=60
+               -c maintenance_work_mem=256MB -c max_connections=60 -c max_parallel_workers_per_gather=0
     # порт 5432 НЕ відкриваємо: до бази ходять лише контейнери цієї мережі (за ім'ям db)
     volumes:
       - pgdata:/var/lib/postgresql/data

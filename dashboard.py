@@ -39,7 +39,7 @@ def last_atr(h: pd.DataFrame) -> float | None:
     a = atr(h).dropna()
     return float(a.iloc[-1]) if len(a) else None
 from screener import (FETCH_DAYS, INTRADAY_DAYS, SIGNALS_STAMP, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
-                      load_models, next_hourly, next_run, score_15m, score_bases, update_15m)
+                      load_models, next_hourly, next_run, score_15m, score_bases, score_bases_own, update_15m)
 import fetch_exchange
 import footprint
 import orderbook
@@ -92,15 +92,22 @@ def status_of(p: float | None, thr: float) -> str:
 
 
 def latest_signals(conn, base: str | None = None) -> pd.DataFrame:
-    """Оцінки лише найсвіжішої версії кожної моделі."""
-    where = "WHERE s.base_asset = %s" if base else ""
-    return query_df(conn, f"""
+    """Оцінки лише найсвіжішої версії кожної моделі. Для одного тікера — версія серед ЙОГО рядків (індекс signals:
+    base_asset, ts — мілісекунди): max(model_version) по всій таблиці на кожне відкриття тікера під навантаженням тривав
+    хвилину, запити накладались один на одного (07.10: 15 таких одночасно, база 117% CPU, графіки не відкривались)."""
+    if base:
+        return query_df(conn, """
+            WITH w AS (SELECT * FROM signals WHERE base_asset = %s)
+            SELECT w.base_asset, w.ts, w.model, w.probability, w.threshold, w.signal, w.live, w.in_sample, w.scored_at
+            FROM w JOIN (SELECT model, max(model_version) AS v FROM w GROUP BY model) m
+              ON w.model = m.model AND w.model_version = m.v
+            ORDER BY w.ts""", (base,))
+    return query_df(conn, """
         SELECT s.base_asset, s.ts, s.model, s.probability, s.threshold, s.signal, s.live, s.in_sample, s.scored_at
         FROM signals s
         JOIN (SELECT model, max(model_version) AS v FROM signals GROUP BY model) m
           ON s.model = m.model AND s.model_version = m.v
-        {where}
-        ORDER BY s.base_asset, s.ts""", (base,) if base else ())
+        ORDER BY s.base_asset, s.ts""")
 
 
 def screener_status() -> dict | None:
@@ -714,6 +721,8 @@ def live_symbols(conn, base: str) -> dict:
 
 
 _ticker_cache: dict = {}                    # (тікер, модель, дні, ТФ, режим, light) → (стан, час, відповідь)
+_inflight: dict = {}                        # той самий ключ → threading.Event, поки відповідь рахується
+_inflight_lock = threading.Lock()
 TICKER_CACHE_SEC = 30
 
 
@@ -726,12 +735,30 @@ def ticker(conn, base: str, model: str, days: int, tf: str | None = None, strate
     c = _ticker_cache.get(key)
     if c is not None and c[0] == state and time.time() - c[1] < TICKER_CACHE_SEC:
         return c[2]
-    res = _ticker(conn, base, model, days, tf, strategy, light)
-    if not res.get("tail_refresh"):             # дані ще дозавантажуються — не кешуємо
-        if len(_ticker_cache) > 64:
-            _ticker_cache.clear()
-        _ticker_cache[key] = (state, time.time(), res)
-    return res
+    # однаковий запит, що вже рахується (два вікна, пульс сторінки, бот), — чекаємо його, а не рахуємо вдруге:
+    # інакше під навантаженням повільні запити накладались і гальмували один одного
+    with _inflight_lock:
+        ev = _inflight.get(key)
+        owner = ev is None
+        if owner:
+            ev = _inflight[key] = threading.Event()
+    if not owner:
+        ev.wait(timeout=90)
+        c = _ticker_cache.get(key)
+        if c is not None and c[0] == state:
+            return c[2]
+    try:
+        res = _ticker(conn, base, model, days, tf, strategy, light)
+        if not res.get("tail_refresh"):             # дані ще дозавантажуються — не кешуємо
+            if len(_ticker_cache) > 64:
+                _ticker_cache.clear()
+            _ticker_cache[key] = (state, time.time(), res)
+        return res
+    finally:
+        if owner:
+            with _inflight_lock:
+                _inflight.pop(key, None)
+            ev.set()
 
 
 def _ticker(conn, base: str, model: str, days: int, tf: str | None = None, strategy: str | None = None,
@@ -886,7 +913,9 @@ def scan_view(q: dict) -> dict:
 
 
 def add_to_watchlist(base: str) -> dict:
-    """«＋ у watchlist»: дописати у watchlist.txt і одразу підтягнути дані й оцінку (у фоні, як Refresh)."""
+    """«＋ у watchlist»: дописати у watchlist.txt і одразу (у фоні) — лише швидку частину: контракти, 15m/5m з бірж,
+    15m- і годинна оцінка з власних 15m (quick_add). Годинну історію Coinalyze скринер дозбирає сам у своїй черзі —
+    раніше тут був повний Refresh (60 днів Coinalyze), і дашборд зі скринером ловили 429 на спільному ліміті (07.10, GRIFFAIN)."""
     from fetch import set_ticker_in_file
     base = base.upper().removesuffix("USDT").strip()
     if not base.isalnum():
@@ -899,12 +928,33 @@ def add_to_watchlist(base: str) -> dict:
     def work():
         try:
             with psycopg.connect(State.db_url) as conn:
-                refresh(conn, base)
+                quick_add(conn, base)
             ADD_JOBS[base] = "done"
         except Exception as e:
             ADD_JOBS[base] = f"{type(e).__name__}: {e}"
     threading.Thread(target=work, daemon=True).start()
     return {"ok": True, "ticker": base}
+
+
+def quick_add(conn, base: str) -> None:
+    """Новий тікер без годинної історії Coinalyze: контракти бірж (2 виклики Coinalyze, якщо їх ще немає в markets),
+    10 днів 15m/5m з бірж (без ліміту Coinalyze), 15m-оцінка і годинна з власних 15m — графік і сигнали за хвилину."""
+    from features import INTRADAY_EXCHANGES
+    from fetch import find_markets, upsert_markets
+    have = conn.execute("SELECT 1 FROM markets WHERE base_asset = %s AND exchange_name = ANY(%s) LIMIT 1",
+                        (base, list(INTRADAY_EXCHANGES))).fetchone()
+    if not have:
+        if State.client is None:
+            State.client = Coinalyze(State.api_key)
+        ms = find_markets(State.client, [base])
+        if not ms:
+            raise ValueError(f"{base}: контрактів не знайдено")
+        upsert_markets(conn, ms)
+        conn.commit()
+    fetch_exchange.collect(conn, [base], ["15m", "5m"], 10, log=lambda m: None)
+    if State.m15 is not None:
+        score_15m(conn, [base], State.m15)
+        score_bases_own(conn, [base], State.models)
 
 
 REMOVED: dict = {}      # «×» у списку: base → ("manual" | "auto", запис авто-списку) — для «Повернути»

@@ -617,6 +617,11 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   без Кандидата / Alert і «прокидається» (wake.last_wake за добу). Автоматично не прибираємо — рішення власника.
   МОДЕЛЬ ВХОДУ ВІДКИНУТО (experiments/entry_model.py): AUC 0.50, топ-оцінки −0.07R; правило b на тому ж тесті +0.08R, PF 1.13.
   Далі: 6 міс. перевірка b на місячних архівах; live-статистика міток через 2–3 тижні.
+- ПЕРЕВАНТАЖЕННЯ ДАШБОРДА (2026-10-07, GRIFFAIN): load 9–13 на 2 ядрах, база 117% CPU — 15 одночасних latest_signals
+  (max(model_version) по ВСІЙ signals на кожне відкриття тікера; пульс сторінки + 2 вікна + бот → запити накладались).
+  Тепер: latest_signals(base) — версія серед рядків тікера (CTE, індекс; результат ідентичний), ticker() — single-flight
+  (_inflight: однаковий ключ чекає першого), «＋ у watchlist» → quick_add (markets 2 виклики + 15m/5m бірж 10 днів +
+  score_15m + score_bases_own; БЕЗ 60 днів Coinalyze — їх дозбирає скринер; раніше refresh у дашборді ловив 429 разом зі скринером).
 - ЛІКВІДАЦІЇ — ІНВЕРСНІ КОНТРАКТИ (2026-10-07): liq_recorder рахував OKX *-USD-SWAP і Binance COIN-M (*USD_PERP, потік
   !forceOrder їх теж віддає) як «контракти × розмір × ціна» → роздуті суми ($19 млрд OKX за добу). Тепер інверсні: usd =
   контракти × розмір (OKX ctType inverse / ctVal USD; Binance dapi exchangeInfo contractSize, BTC 100 / решта 10), qty = usd / ціна.
