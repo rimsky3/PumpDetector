@@ -617,6 +617,11 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   без Кандидата / Alert і «прокидається» (wake.last_wake за добу). Автоматично не прибираємо — рішення власника.
   МОДЕЛЬ ВХОДУ ВІДКИНУТО (experiments/entry_model.py): AUC 0.50, топ-оцінки −0.07R; правило b на тому ж тесті +0.08R, PF 1.13.
   Далі: 6 міс. перевірка b на місячних архівах; live-статистика міток через 2–3 тижні.
+- ЛІКВІДАЦІЇ — ІНВЕРСНІ КОНТРАКТИ (2026-10-07): liq_recorder рахував OKX *-USD-SWAP і Binance COIN-M (*USD_PERP, потік
+  !forceOrder їх теж віддає) як «контракти × розмір × ціна» → роздуті суми ($19 млрд OKX за добу). Тепер інверсні: usd =
+  контракти × розмір (OKX ctType inverse / ctVal USD; Binance dapi exchangeInfo contractSize, BTC 100 / решта 10), qty = usd / ціна.
+  USDT-контракти (модель) були правильні. Старі рядки інверсних — роздуті (виправлення SQL — за згодою власника); для звірки
+  з Coinalyze ~20.10 брати лише USDT-ринки. Після деплою — перезапустити liqrec (deploy --restart його не чіпає).
 - ЗАПИСУВАЧ УГОД (2026-10-07, у роботі з мітками b / p; футпрінт fp_lvl0/fp_buy/fp_sell — з 07.10): trade_recorder.py, контейнер traderec — WebSocket Binance
   (/market/ws, <sym>@aggTrade, 2 з'єднання по ≤ 300) і Bybit (publicTrade, 4 по 200), усі USDT-перпи → trade_bars:
   5-хв бар (час угоди) × біржа × символ — n/v buy/sell за агресором, max_buy/max_sell, масиви buy_n/sell_n/buy_usd/sell_usd

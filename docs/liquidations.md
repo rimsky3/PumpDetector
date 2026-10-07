@@ -14,6 +14,13 @@ per minute) — so that a hot coin is scored ~30–60 s after its 15m bar closes
 
 Hyperliquid (present in Coinalyze) and other venues are not recorded.
 
+Inverse (coin-margined) contracts — OKX `*-USD-SWAP` (`ctType` inverse, `ctVal` in USD) and Binance COIN-M (`BTCUSD_PERP`
+and others, which the Binance stream also delivers) — are sized in USD per contract (BTC $100, others $10), not in coins:
+`usd = contracts × contract size`, `qty = usd / price` (sizes from OKX `public/instruments` and Binance
+`dapi/v1/exchangeInfo`). Until the 2026-10-07 fix they were multiplied by the price once more (one OKX BTC-USD-SWAP event
+read $14 B instead of $17 M); rows recorded before the fix for these symbols are inflated. USDT contracts — the only ones
+the model uses — were always correct.
+
 ## Tables
 
 - `liq_events` — one row per liquidation: `exchange`, `symbol` (the exchange's own symbol, = `markets.symbol_on_exchange`),

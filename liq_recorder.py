@@ -86,7 +86,8 @@ class Recorder:
         self.live: dict[tuple, dict] = {}        # (exchange, conn) → {started, symbols}
         self.count: dict[str, int] = {}
         self.usd: dict[str, float] = {}
-        self.okx_ct: dict[str, float] = {}
+        self.okx_ct: dict[str, tuple[float, bool]] = {}     # instId → (ctVal, інверсний: ctVal у USD, а не в монетах)
+        self.binance_cm: dict[str, float] = {}              # COIN-M Binance: символ → розмір контракту, USD
 
     # ---------- запис ----------
     def add(self, exchange: str, symbol: str, ts: datetime, side: str, qty: float, price: float):
@@ -165,15 +166,30 @@ class Recorder:
             delay = min(60, delay * 2)
 
     # ---------- Binance ----------
+    @staticmethod
+    def binance_coinm_sizes() -> dict[str, float]:
+        """COIN-M контракти Binance (BTCUSD_PERP, квартальні): розмір контракту в USD (BTC — 100, решта — 10)."""
+        r = requests.get("https://dapi.binance.com/dapi/v1/exchangeInfo", timeout=20).json()
+        return {s["symbol"]: float(s["contractSize"]) for s in r.get("symbols", []) if s.get("contractSize")}
+
     def on_binance(self, m: dict):
         o = m.get("o")
         if not o:
             return
         qty = float(o.get("z") or 0) or float(o["q"])
         price = float(o.get("ap") or 0) or float(o["p"])
-        self.add("Binance", o["s"], ms(o["T"]), "long" if o["S"] == "SELL" else "short", qty, price)
+        sym = o["s"]
+        if not sym.endswith(("USDT", "USDC")):     # COIN-M (інверсний): кількість — контракти по contractSize USD, не монети
+            size = self.binance_cm.get(sym) or (100.0 if sym.startswith("BTC") else 10.0)
+            qty = qty * size / price               # → монети; usd = qty × price = контракти × розмір (07.10: було × ціна зайвий раз)
+        self.add("Binance", sym, ms(o["T"]), "long" if o["S"] == "SELL" else "short", qty, price)
 
     async def binance(self):
+        try:
+            self.binance_cm = self.binance_coinm_sizes()
+        except Exception as e:
+            print(f"! Binance COIN-M: довідник контрактів ({e}) — розмір за замовчуванням (BTC 100, решта 10 USD)", flush=True)
+
         async def sub(ws):
             pass                                  # потік уже в адресі
         await self.run_conn("Binance", "binance", BINANCE_WS, sub, self.on_binance)
@@ -220,18 +236,23 @@ class Recorder:
     # ---------- OKX ----------
     def okx_ct_val(self):
         r = requests.get("https://www.okx.com/api/v5/public/instruments", params={"instType": "SWAP"}, timeout=20).json()
-        self.okx_ct = {i["instId"]: float(i["ctVal"]) for i in r["data"] if i.get("ctVal")}
+        # інверсні (BTC-USD-SWAP: ctType inverse, ctVal 100, ctValCcy USD) — розмір контракту в доларах, а не в монетах
+        self.okx_ct = {i["instId"]: (float(i["ctVal"]), i.get("ctType") == "inverse") for i in r["data"] if i.get("ctVal")}
 
     def on_okx(self, m: dict):
         for d in m.get("data", []):
             inst = d["instId"]
-            ct = self.okx_ct.get(inst)
-            if ct is None:                        # новий контракт — перечитаємо довідник при наступному оновленні
+            spec = self.okx_ct.get(inst)
+            if spec is None:                      # новий контракт — перечитаємо довідник при наступному оновленні
                 continue
+            ct, inverse = spec
             for x in d.get("details", []):
                 # posSide — сторона позиції; у режимі net буває порожня → за side ордера (sell = закрили лонг)
                 side = x.get("posSide") if x.get("posSide") in ("long", "short") else ("long" if x.get("side") == "sell" else "short")
-                self.add("OKX", inst, ms(x["ts"]), side, float(x["sz"]) * ct, float(x["bkPx"]))
+                px = float(x["bkPx"])
+                # лінійний: контракти × ctVal = монети; інверсний: контракти × ctVal = USD → монети = USD / ціна
+                qty = float(x["sz"]) * ct / px if inverse else float(x["sz"]) * ct
+                self.add("OKX", inst, ms(x["ts"]), side, qty, px)
 
     async def okx(self):
         while not self.okx_ct:
