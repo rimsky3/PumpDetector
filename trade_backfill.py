@@ -99,9 +99,9 @@ def backfill(conn, bases: list[str], days: list[pd.Timestamp], m15: dict | None,
             continue
         for d in missing_days(conn, sym[1], days):
             jobs.append((base, sym[1], d))
-    if not jobs:
-        return stat
-    log(f"архів угод Binance: {len(jobs)} днів для {len({j[0] for j in jobs})} тікерів")
+    with_fp = sorted({b for b in bases if FP._binance_symbol(conn, b)})
+    if jobs:
+        log(f"архів угод Binance: {len(jobs)} днів для {len({j[0] for j in jobs})} тікерів")
     filled: dict[str, list] = {}
     with ThreadPoolExecutor(WORKERS) as ex:
         futs = {ex.submit(archive_rows, sym, d): (base, sym, d) for base, sym, d in jobs}
@@ -124,10 +124,12 @@ def backfill(conn, bases: list[str], days: list[pd.Timestamp], m15: dict | None,
             stat["days"] += 1
             stat["rows"] += len(rows)
             filled.setdefault(base, []).append(d)
-    if m15 is not None:
-        for base, ds in filled.items():
+    if m15 is not None and days:
+        # мітки — на всьому періоді для тікерів з футпрінтом (не лише на щойно дозаповнених днях: перерваний прогін
+        # лишив би дні без міток); уже записані мітки не змінюються (ON CONFLICT DO NOTHING)
+        for base in with_fp:
             try:
-                found = FP.detect_range(conn, base, min(ds), max(ds) + pd.Timedelta(days=1) - FP.BAR, m15)
+                found = FP.detect_range(conn, base, days[0], days[-1] + pd.Timedelta(days=1) - FP.BAR, m15)
                 stat["marks"] += len(found)
             except Exception as e:
                 conn.rollback()

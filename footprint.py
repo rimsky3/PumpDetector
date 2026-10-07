@@ -191,12 +191,14 @@ def context_frame(conn, bases: list[str], since: pd.Timestamp, until: pd.Timesta
     if not bases:
         return pd.DataFrame(columns=["base_asset", "ts", "ctx"])
     confirm = m15.get("confirm", {}).get("model", "lightgbm")
+    # остання версія моделі — серед рядків цих тікерів і цього проміжку (індекс signals: base_asset, ts), а НЕ по всій
+    # таблиці: max(model_version) по всіх signals — мільйони рядків, хвилини на сервері (07.10 гальмувало скринер)
     sig = query_df(conn, """
-        SELECT s.base_asset, s.ts, s.model, s.probability, s.threshold FROM signals s
-        JOIN (SELECT model, max(model_version) AS v FROM signals WHERE model = ANY(%s) GROUP BY model) m
-          ON s.model = m.model AND s.model_version = m.v
-        WHERE s.base_asset = ANY(%s) AND s.ts > %s AND s.ts <= %s""",
-                   ([m15["name"], confirm], bases, (since - (CTX_BARS + 8) * BAR).to_pydatetime(), until.to_pydatetime()))
+        WITH w AS (SELECT base_asset, ts, model, model_version, probability, threshold FROM signals
+                   WHERE base_asset = ANY(%s) AND model = ANY(%s) AND ts > %s AND ts <= %s)
+        SELECT w.base_asset, w.ts, w.model, w.probability, w.threshold FROM w
+        JOIN (SELECT model, max(model_version) AS v FROM w GROUP BY model) m ON w.model = m.model AND w.model_version = m.v""",
+                   (bases, [m15["name"], confirm], (since - (CTX_BARS + 8) * BAR).to_pydatetime(), until.to_pydatetime()))
     if sig.empty:
         return pd.DataFrame(columns=["base_asset", "ts", "ctx"])
     sig["ts"] = pd.to_datetime(sig["ts"], utc=True)
