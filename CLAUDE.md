@@ -184,8 +184,10 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   (reports/market_closes.pkl) → market_breadth (schema.sql); screener — потік market.watcher щогодини о HH:01; ознаки —
   market.features (спільні з experiments/market_regime.py; живий список ≈ експеримент: ρ 0.997, стан 98.7%).
   Hot > 60% альтів у плюсі за 7 дн, Cold < 40%. /api/market (market.api). Режим strategies market_cool (market_max 0.6):
-  market.strategy_allow / both — журнал, позиція дашборда, backtest.py. Кнопка «Market ▾» праворуч від «OI монети / USD» —
-  макет https://claude.ai/artifact/Acyn8HgbQDgmb338tPtf9j (A шкала / B графік тижня / C альти·BTC), чекає вибору власника.
+  market.strategy_allow / both — журнал, позиція дашборда, backtest.py. Кнопка «Market ▾» праворуч від «OI монети / USD»
+  (власник: варіант A + графік тижня з B, макет https://claude.ai/artifact/Acyn8HgbQDgmb338tPtf9j): стан Hot / Neutral /
+  Cold англійською; панель — % альтів у плюсі за 7 дн, шкала, графік тижня (7 дн біла / 24 год сіра, наведення), порада,
+  метрики, підсумок бектест vs журнал; fixed від кнопки (placeMarket), Esc / клік поза — закрити; /api/market раз на 5 хв.
 - ВАЖЛИВІСТЬ ПО ГРУПАХ (2026-10-07, власник): train.FEATURE_GROUPS / feature_group / gain_shares / group_shares / group_table;
   /compare — блок «На що дивиться модель» (15m і 1h: групи поточна проти нової, підсумок, ⚠ одна ознака ≥ 40%, топ-10 змін),
   label._importance; звіт train.py — таблиці груп для 1h і 15m. Причина: розмітка змінює FI (ліквідації 1h 18.5% → 3% після

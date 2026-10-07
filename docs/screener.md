@@ -90,6 +90,10 @@ of 24.09–06.10 they were better (1.52 vs 1.04) — so it is shown as context a
 "15m + 1h · ринок не гарячий" (`market_cool`), which skips Alerts while the market is Hot. The live list (Binance) and
 the experiment's list (Bybit cache) agree: correlation 0.997, same Hot / not-Hot state in 98.7% of hours.
 
+Dashboard: the **Market ▾** button right of "OI монети / USD" shows the state (Hot / Neutral / Cold). Its panel: share of
+alts up over 7 days with a Cold–Neutral–Hot gauge, a one-week chart (7-day share white, 24-hour grey; hover for the
+hourly value), a one-line hint, alt and BTC metrics, and the backtest vs journal result. Refreshed every 5 minutes.
+
 ## Order book and limit hint (since 2026-10-02)
 
 - **OB** — the bid / ask ratio within ±2% of the mid price, Binance + Bybit summed (`orderbook.py`, public order book

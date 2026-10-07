@@ -95,6 +95,38 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .ohlc b.fpb { color: var(--ok); } .ohlc b.fpp { color: var(--amber); }   /* мітки футпрінту b / p (footprint.py) */
 .chart-card { flex: 1; min-height: 420px; background: var(--card); border-radius: 10px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
 #chart { flex: 1; min-height: 380px; position: relative; }
+/* «Market ▾» — стан ринку альтів (market.py): кнопка праворуч від «OI монети / USD» і панель (варіант A + графік тижня з B) */
+.mk-wrap { position: relative; }
+.mk-btn { height: 30px; display: inline-flex; align-items: center; gap: 7px; padding: 0 8px 0 10px; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); font-size: 12px; white-space: nowrap; }
+.mk-btn:hover { border-color: var(--line3); color: var(--fg); }
+.mk-btn svg { opacity: .7; transition: transform .15s; } .mk-btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+.mk-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg3); }
+.mk-st { color: var(--fg); font-weight: 500; }
+.mk-btn.hot { border-color: #6b4a1a; } .mk-btn.hot .mk-dot { background: var(--amber); } .mk-btn.hot .mk-st { color: var(--amber); }
+.mk-btn.cold .mk-dot { background: var(--link); } .mk-btn.cold .mk-st { color: var(--link); }
+.mk-btn.neutral .mk-dot { background: var(--fg2); }
+.mk-pop { position: fixed; width: 340px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px); overflow-y: auto; z-index: 60; background: var(--card); border: 1px solid var(--line2);
+  border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.45); padding: 12px; display: grid; gap: 10px; }
+.mk-pop[hidden] { display: none; }
+.mk-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.mk-pill { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; padding: 2px 8px; border-radius: 5px; background: var(--line); color: var(--fg2); }
+.mk-pill.hot { background: var(--cand-bg); color: var(--amber); } .mk-pill.cold { background: var(--live-bg); color: var(--link); }
+.mk-big { font-size: 30px; font-weight: 500; line-height: 1; } .mk-big small { font-size: 12px; color: var(--fg2); font-weight: 400; margin-left: 6px; }
+.mk-gauge { position: relative; padding-top: 2px; }
+.mk-gauge .zones { height: 8px; border-radius: 4px; display: grid; grid-template-columns: 40fr 20fr 40fr; overflow: hidden; }
+.mk-gauge .zones i:nth-child(1) { background: #173452; } .mk-gauge .zones i:nth-child(2) { background: var(--line2); } .mk-gauge .zones i:nth-child(3) { background: #5a3a10; }
+.mk-gauge .mark { position: absolute; top: -3px; width: 3px; height: 14px; border-radius: 2px; background: var(--fg); transform: translateX(-50%); box-shadow: 0 0 0 2px var(--card); }
+.mk-gauge .scale { position: relative; display: flex; justify-content: space-between; font-size: 10px; color: var(--fg3); margin-top: 5px; height: 14px; }
+.mk-gauge .scale .at { position: absolute; transform: translateX(-50%); }
+.mk-spark { position: relative; } .mk-spark svg { display: block; width: 100%; height: 96px; }
+.mk-spark .tipx { position: absolute; top: -26px; pointer-events: none; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; padding: 3px 7px; font-size: 11px; white-space: nowrap; }
+.mk-note { font-size: 11.5px; color: var(--fg2); line-height: 1.45; } .mk-note b { color: var(--fg); font-weight: 500; }
+.mk-rows { display: grid; }
+.mk-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; padding: 6px 2px; border-bottom: 1px solid var(--line); font-size: 12px; border-radius: 4px; }
+.mk-row:last-child { border-bottom: 0; } .mk-row span { color: var(--fg2); } .mk-row b { font-weight: 500; } .mk-row:hover { background: var(--row); }
+.mk-row .pos { color: var(--ok); } .mk-row .neg { color: var(--hot); }
+.mk-foot { border-top: 1px solid var(--line); padding-top: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; font-size: 11px; color: var(--fg3); line-height: 1.4; }
+@media (prefers-reduced-motion: reduce) { .mk-btn svg { transition: none; } }
 .tool { height: 30px; width: 34px; display: flex; align-items: center; justify-content: center; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); }
 .tool[aria-pressed="true"] { background: #2962ff; border-color: #2962ff; color: #fff; }
 .fptool { font-size: 12px; font-weight: 600; letter-spacing: .02em; }
@@ -491,6 +523,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <button class="help" data-help="oiunit" aria-label="Що це?">?</button>
         <div class="seg sm" id="oiSeg" role="group" aria-label="Одиниці OI">
           <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
+        </div>
+        <div class="mk-wrap">
+          <button class="mk-btn" id="mkBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mkPop"
+                  title="Стан ринку альтів: частка альтів, дорожчих ніж тиждень тому"><span class="mk-dot" aria-hidden="true"></span>Market: <span class="mk-st" id="mkState">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <div class="mk-pop" id="mkPop" role="dialog" aria-label="Стан ринку альтів" hidden></div>
         </div>
       </div>
     </div>
@@ -1996,6 +2033,115 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const tf = b.dataset.tf === modelInfo()?.tf ? null : b.dataset.tf, ps = targetPanes();
     ps.forEach((p) => p.setTf(tf)); Promise.all(ps.map((p) => p.load()));
   }));
+  // ---------- «Market ▾»: стан ринку альтів (market.py, щогодини о HH:01) ----------
+  // Hot — понад 60% альтів дорожчі, ніж тиждень тому; Cold — менше 40%. У бектесті 6 міс. Alert у Hot гірші (PF 0.78 проти
+  // 1.09, 6 з 6 місяців), у журналі 24.09–06.10 — навпаки: тому це контекст, а не правило; наживо перевіряє рядок журналу.
+  const MK = { data: null, open: false };
+  const MK_STATE = { hot: "Hot", cold: "Cold", neutral: "Neutral" };
+  const MK_ADVICE = {
+    hot: "Більшість альтів уже тиждень росте. У бектесті Alert у такому ринку <b>гірші</b>, у журналі за 2 тижні — ні. Будь вибагливішим: стакан, розмір, швидший вихід.",
+    neutral: "Ринок змішаний — звичайний режим.",
+    cold: "Більшість альтів тиждень падає. Памп монети в такому ринку частіше має <b>власну причину</b> — у бектесті Alert тут кращі.",
+  };
+  const mkPct = (v) => v == null ? "—" : `${Math.round(v * 100)}%`;
+  const mkSpark = (h) => {
+    const box = el("div", "mk-spark");
+    const xs = h.t, ys = h.breadth_7d, y24 = h.breadth_24h, n = xs.length;
+    if (n < 2) return box;
+    const W = 316, Ht = 96, L = 2, R = 30, T = 6, B = 16;
+    const X = (i) => L + (W - L - R) * i / (n - 1), Y = (v) => T + (Ht - T - B) * (1 - v);
+    const path = (a) => a.map((v, i) => v == null ? "" : `${i && a[i - 1] != null ? "L" : "M"}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const fg = cssVar("--fg"), fg3 = cssVar("--fg3"), line = cssVar("--line"), line3 = cssVar("--line3"), d2 = (x) => String(x).padStart(2, "0");
+    const days = []; for (let i = 0; i < n; i++) if (new Date(xs[i] * 1000).getUTCHours() === 0) days.push(i);
+    let last = n - 1; while (last > 0 && ys[last] == null) last--;
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${Ht}" preserveAspectRatio="none" role="img" aria-label="Частка альтів у плюсі за 7 днів і за 24 години, останній тиждень">
+      <rect x="${L}" y="${Y(1)}" width="${W - L - R}" height="${Y(0.6) - Y(1)}" fill="${cssVar("--amber")}" fill-opacity=".08"></rect>
+      <rect x="${L}" y="${Y(0.4)}" width="${W - L - R}" height="${Y(0) - Y(0.4)}" fill="${cssVar("--link")}" fill-opacity=".07"></rect>
+      ${days.map((i) => { const d = new Date(xs[i] * 1000); return `<line x1="${X(i)}" x2="${X(i)}" y1="${T}" y2="${Ht - B}" stroke="${line}"></line><text x="${X(i) + 3}" y="${Ht - 4}" fill="${fg3}" font-size="9.5">${d.getUTCDate()}.${d2(d.getUTCMonth() + 1)}</text>`; }).join("")}
+      ${[0.4, 0.6].map((v) => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${line3}" stroke-dasharray="3 3"></line><text x="${W - R + 4}" y="${Y(v) + 3}" fill="${fg3}" font-size="9.5">${v * 100}%</text>`).join("")}
+      <path d="${path(y24)}" fill="none" stroke="${fg3}" stroke-width="1.2"></path>
+      <path d="${path(ys)}" fill="none" stroke="${fg}" stroke-width="2"></path>
+      ${ys[last] != null ? `<circle cx="${X(last)}" cy="${Y(ys[last])}" r="3.5" fill="${fg}" stroke="${cssVar("--card")}" stroke-width="2"></circle>` : ""}
+      <line class="cx" x1="0" x2="0" y1="${T}" y2="${Ht - B}" stroke="${cssVar("--fg2")}" visibility="hidden"></line>
+      <rect x="0" y="0" width="${W}" height="${Ht}" fill="transparent"></rect></svg>`;
+    const tip = el("div", "tipx"); tip.hidden = true; box.appendChild(tip);
+    const svg = box.querySelector("svg"), cx = box.querySelector(".cx");
+    svg.addEventListener("mousemove", (e) => {
+      const r = svg.getBoundingClientRect(), fx = (e.clientX - r.left) / r.width * W;
+      const i = Math.max(0, Math.min(n - 1, Math.round((fx - L) / (W - L - R) * (n - 1))));
+      cx.setAttribute("x1", X(i)); cx.setAttribute("x2", X(i)); cx.setAttribute("visibility", "visible");
+      const d = new Date(xs[i] * 1000);
+      tip.innerHTML = `${d2(d.getUTCDate())}.${d2(d.getUTCMonth() + 1)} ${d2(d.getUTCHours())}:00 · 7д <b>${mkPct(ys[i])}</b> · 24г ${mkPct(y24[i])}`;
+      tip.hidden = false;
+      tip.style.left = `${Math.min(Math.max(0, X(i) / W * r.width - 70), r.width - 175)}px`;
+    });
+    svg.addEventListener("mouseleave", () => { tip.hidden = true; cx.setAttribute("visibility", "hidden"); });
+    return box;
+  };
+  const renderMarketBtn = () => {
+    const d = MK.data, s = d && !d.stale ? d.state : "unknown";
+    $("mkBtn").className = "mk-btn " + (MK_STATE[s] ? s : "");
+    $("mkState").textContent = MK_STATE[s] || "n/a";
+    $("mkBtn").title = !d ? "Стан ринку альтів: завантаження…" : d.error ? `Стан ринку альтів: ${d.error}`
+      : d.stale ? "Дані про ринок застаріли (скринер не оновлював їх понад 3 год)"
+      : `Ринок альтів: ${mkPct(d.metrics.breadth_7d)} альтів дорожчі, ніж тиждень тому`;
+  };
+  const renderMarketPop = () => {
+    const p = $("mkPop"), d = MK.data; p.replaceChildren();
+    if (!d || d.error) { p.appendChild(el("div", "mk-note", d?.error || "Завантаження…")); return; }
+    const m = d.metrics, s = d.stale ? "unknown" : d.state, when = new Date(d.ts * 1000).toISOString().slice(5, 16).replace("T", " ");
+    const head = el("div", "mk-head");
+    head.append(el("span", "mk-pill " + s, MK_STATE[s] ? `${MK_STATE[s]} market` : "n/a"),
+                el("span", "small", `${when} UTC · ${d.n ?? "—"} альтів${d.stale ? " · застаріло" : ""}`));
+    const big = el("div", "mk-big"); big.append(mkPct(m.breadth_7d), el("small", "", "альтів дорожчі, ніж тиждень тому"));
+    const g = el("div", "mk-gauge");
+    g.innerHTML = `<div class="zones"><i></i><i></i><i></i></div>${m.breadth_7d != null ? `<div class="mark" style="left:${(m.breadth_7d * 100).toFixed(1)}%"></div>` : ""}
+      <div class="scale"><span>Cold</span><span class="at" style="left:40%">40%</span><span class="at" style="left:60%">60%</span><span>Hot</span></div>`;
+    const note = el("div", "mk-note"); note.innerHTML = MK_ADVICE[s] || "Немає свіжих даних.";
+    const rows = el("div", "mk-rows");
+    const sg = (v) => v == null ? ["—", ""] : [fmtPct(v), v > 0 ? "pos" : v < 0 ? "neg" : ""];
+    [["Alts up 24h", m.breadth_24h, "share", "Частка альтів, дорожчих ніж добу тому"],
+     ["Alts median 24h", m.alt_med_24h, "", "Медіанна зміна альтів за добу"],
+     ["Alts median 7d", m.alt_med_7d, "", "Медіанна зміна альтів за тиждень"],
+     ["Alts vs BTC 24h", m.alt_vs_btc_24h, "", "Медіана альтів мінус BTC за добу: від’ємне — альти слабші за BTC"],
+     ["BTC 24h", m.btc_ret_24h, ""],
+     ["BTC vs 7d average", m.btc_vs_ma7d, "", "BTC відносно своєї середньої ціни за 7 днів"],
+     ["BTC volatility", m.btc_vol_x, "x", "Волатильність BTC за добу до її звичайного рівня за 30 днів (×1 — як зазвичай)"],
+    ].forEach(([k, v, f, hint]) => {
+      const r = el("div", "mk-row"); if (hint) r.title = hint;
+      const [txt, c] = f === "share" ? [mkPct(v), ""] : f === "x" ? [v == null ? "—" : `×${v.toFixed(2)}`, ""] : sg(v);
+      r.append(el("span", "", k), el("b", c, txt)); rows.appendChild(r);
+    });
+    const foot = el("div", "mk-foot");
+    const bt = d.backtest || {};
+    const txt = el("span", "", `Alert у Hot: бектест 6 міс. PF ${bt.hot_pf ?? "—"} проти ${bt.rest_pf ?? "—"}; журнал 24.09–06.10 — навпаки. Перевіряє рядок журналу «ринок не гарячий».`);
+    const a = el("a", "", "журнал →"); a.href = "#journal";
+    a.addEventListener("click", () => { MK.open = false; $("mkPop").hidden = true; $("mkBtn").setAttribute("aria-expanded", "false"); });
+    foot.append(txt, a);
+    p.append(head, big, g, mkSpark(d.history || { t: [] }), el("div", "small", "Біла лінія — за 7 днів, сіра — за 24 год. Оновлення щогодини."), note, rows, foot);
+  };
+  const loadMarket = async () => {
+    try { MK.data = await api("/api/market", { quiet: true }); }
+    catch (e) { MK.data = { state: "unknown", error: e.message }; }
+    renderMarketBtn(); if (MK.open) { renderMarketPop(); placeMarket(); }
+  };
+  // панель — fixed від кнопки (як підказки «?»): тулбар переноситься, і кнопка буває і праворуч, і ліворуч
+  const placeMarket = () => {
+    const p = $("mkPop"), r = $("mkBtn").getBoundingClientRect(), w = p.offsetWidth, h = p.offsetHeight;
+    let left = r.right - w; if (left < 8) left = Math.min(r.left, innerWidth - w - 8);
+    let top = r.bottom + 6; if (top + h > innerHeight - 8) top = Math.max(8, innerHeight - h - 8);
+    p.style.left = `${Math.max(8, left)}px`; p.style.top = `${top}px`;
+  };
+  const toggleMarket = (open) => {
+    MK.open = open; $("mkPop").hidden = !open; $("mkBtn").setAttribute("aria-expanded", String(open));
+    if (open) { renderMarketPop(); placeMarket(); }
+  };
+  addEventListener("resize", () => { if (MK.open) placeMarket(); });
+  $("mkBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleMarket(!MK.open); });
+  document.addEventListener("click", (e) => { if (MK.open && !e.target.closest(".mk-wrap")) toggleMarket(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && MK.open) { toggleMarket(false); $("mkBtn").focus(); } });
+  loadMarket(); setInterval(loadMarket, 5 * 60 * 1000);
+
   document.querySelectorAll("#oiSeg [data-oi]").forEach((b) => b.addEventListener("click", () => { st.oiUsd = b.dataset.oi === "usd"; LS.set("pd-oiusd", st.oiUsd); pressIn("oiSeg", "oi", b.dataset.oi); renderAllCharts(); }));
   document.querySelectorAll("#tabSeg [data-tab]").forEach((b) => b.addEventListener("click", () => { st.tab = b.dataset.tab; pressIn("tabSeg", "tab", st.tab); renderList(); }));
   document.querySelectorAll(".cols [data-sort]").forEach((b) => b.addEventListener("click", () => {
