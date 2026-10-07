@@ -254,6 +254,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .tlist { flex: 1; overflow-y: auto; min-height: 0; }
 .trow { height: 36px; border-bottom: 1px solid var(--card); cursor: pointer; }
 .trow:hover { background: #1a1a18; }
+.trow { position: relative; }
+.trow.quiet { opacity: .45; }                 /* «тихо» ≥ 24 год: без Кандидата / Alert і «прокидається» — кандидат на × */
+.trow.quiet:hover { opacity: .85; }
+.trow .rm { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: none; width: 20px; height: 20px;
+  align-items: center; justify-content: center; border: 1px solid var(--line2); border-radius: 5px; background: var(--card);
+  color: var(--fg2); font-size: 13px; line-height: 1; padding: 0; cursor: pointer; }
+.trow:hover .rm { display: flex; }
+.trow .rm:hover { color: var(--hot); border-color: var(--hot); }
 .trow.sel { background: var(--line); box-shadow: inset 2px 0 0 var(--accent); }
 .trow .star { background: none; border: 0; padding: 0; font-size: 12px; color: var(--line2); }
 .trow .star.on { color: var(--amber); }
@@ -730,7 +738,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- підказки «?» ----------
   const FP_TITLE = "Футпрінт: обсяг купівель / продажів на рівнях ціни в кожній свічці";
   const HELP = {
-    fp: "FP — футпрінт, як кластери в ATAS: у кожній свічці обсяг агресивних продажів (ліворуч від центру, червоне) і купівель (праворуч, зелене) на рівнях ціни через 0.1%; рамка — POC бару (рівень з найбільшим обсягом). На широких свічках — числа ($, k / M). Видно лише, коли графік наближено (колесо миші): на віддаленому свічки завузькі. Дані — угоди Binance: живий записувач + історія з архіву Binance для монет зі списку (за 30 днів); для інших монет — лише з моменту запуску записувача. Вимкнено — нічого не завантажується й не малюється. Мітки b / p на графіку — з того самого футпрінту.",
+    fp: "FP — футпрінт у вигляді дельта-кластерів: у кожній свічці рівні ціни через 0.1% смугами — довжина = обсяг рівня, колір = хто переважав (зелений — агресивні купівлі, червоний — продажі), яскравість = наскільки сильно (бліда — порівну, яскрава — перекіс ≥ 50%); рамка — POC бару (рівень з найбільшим обсягом). На широких свічках — обсяг рівня числом ($, k / M). Видно лише, коли графік наближено (колесо миші): на віддаленому свічки завузькі. Дані — угоди Binance: живий записувач + історія з архіву Binance для монет зі списку (за 30 днів); для інших монет — лише з моменту запуску записувача. Вимкнено — нічого не завантажується й не малюється. Мітки b / p на графіку — з того самого футпрінту.",
     backtest: "Бектест — модель проходить історію монет, яких не бачила в навчанні: усі USDT-перпи Binance з середнім оборотом від заданого, OI не більше, ніж у сканері, без тікерів навчання і виключених. Список задається правилом ДО прогону, тож вибору «де був памп» немає. Угоди — тими самими правилами, що й «Позиція моделі». Без прослизання, стакану і твого фільтру стаканом; той самий період ринку, що й навчання.",
     btEquity: "Накопичена сума результатів закритих угод по днях (дата виходу), у % — як якби кожна угода була однією позицією однакового розміру. Сума ≠ дохідність рахунку; для порівняння прогонів і моделей.",
     btCompare: "Два прогони поруч: A — відкритий ліворуч, B — вибраний у «Порівняти з». Зелене — B краще. Чесно лише для однієї смуги монет і вікна (напр., поточна модель і кандидат на тих самих монетах). На кривій B — синій пунктир. Різниця в кілька десятків відсотків суми — ще шум.",
@@ -1523,9 +1531,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
       const oi = el("span", "num " + (r.oi_24h >= 0.15 ? "warm" : r.oi_24h < 0 ? "dim" : ""), fmtPct(r.oi_24h));
       const chg = el("span", "num " + pctCls(r.chg_24h), fmtPct(r.chg_24h));
-      row.append(star, name, sparkSvg(r.spark, r.threshold, colors[r.status]), p, oi, chg);
+      // × — прибрати зі списку (авто-тікер сканер не повертає 24 год); «Повернути» — у підказці внизу
+      const rm = el("button", "rm", "×"); rm.setAttribute("aria-label", `Прибрати ${r.ticker} зі списку`);
+      rm.title = r.source === "auto" ? "Прибрати зі списку: сканер не поверне 24 год" : "Прибрати з watchlist";
+      rm.addEventListener("click", (e) => { e.stopPropagation(); removeTicker(r.ticker); });
+      const quiet = r.status === "calm" && r.quiet_h != null && r.quiet_h >= 24;
+      if (quiet) row.classList.add("quiet");
+      row.append(star, name, sparkSvg(r.spark, r.threshold, colors[r.status]), p, oi, chg, rm);
       row.title = `${STATUS[r.status]}${r.in_sample ? " · in-sample" : ""}` + (r.p1h != null ? ` · 1h P ${fmtP(r.p1h)} (для Alert ≥ ${fmtP(r.need1h)})` : "")
-        + (r.source === "auto" ? `\nАвто: ${r.reason || ""}\nу списку до ${fmtTs(Date.parse(r.expires) / 1000)}${r.held ? " (" + r.held + ")" : ""}` : "");
+        + (r.source === "auto" ? `\nАвто: ${r.reason || ""}\nу списку до ${fmtTs(Date.parse(r.expires) / 1000)}${r.held ? " (" + r.held + ")" : ""}` : "")
+        + (quiet ? `\nТихо ${Math.round(r.quiet_h)} год: без Кандидата / Alert і «прокидається» — можна прибрати ×` : "");
       row.addEventListener("click", () => selectTicker(r.ticker));
       box.appendChild(row);
     });
@@ -1546,6 +1561,24 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (!(st.list?.recent || []).length) rec.appendChild(el("span", "small", "Сигналів ще не було."));
   };
   const toggleFav = (t) => { st.fav.has(t) ? st.fav.delete(t) : st.fav.add(t); LS.set("pd-fav", [...st.fav]); renderList(); };
+  // × у рядку списку: прибрати тікер (ручний — з watchlist, авто — пауза сканера 24 год), «Повернути» — у підказці
+  const removeTicker = async (tk) => {
+    try {
+      const r = await api("/api/watchlist/remove", { method: "POST", body: JSON.stringify({ symbol: tk }) });
+      $("toastT").textContent = `Прибрано ${tk}`;
+      $("toastS").textContent = r.source === "auto" ? `авто: сканер не поверне ${r.snooze_hours || 24} год` : "з watchlist";
+      $("toastA").textContent = "Повернути";
+      $("toastA").onclick = async (e) => {
+        e.preventDefault(); $("toast").hidden = true;
+        try { await api("/api/watchlist/undo", { method: "POST", body: JSON.stringify({ symbol: tk }) }); } catch (err) {}
+        loadList();
+      };
+      $("toast").hidden = false;
+      clearTimeout(removeTicker.t);
+      removeTicker.t = setTimeout(() => { if ($("toastA").textContent === "Повернути") $("toast").hidden = true; }, 8000);
+      loadList();
+    } catch (err) { $("toastT").textContent = `Не вдалося прибрати ${tk}`; $("toastS").textContent = err.message || ""; $("toast").hidden = false; }
+  };
   const loadList = async () => {
     try { st.list = await api(`/api/list?model=${st.model}`); } catch (e) { st.list = { rows: [], recent: [], alerts: [] }; }
     renderList(); checkAlerts();
@@ -1880,6 +1913,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const c = candOnly[0];
       $("toastT").textContent = `Кандидат: ${c.ticker} · ${fmtP(c.probability)} — перевір стакан`;
       $("toastS").textContent = `${fmtTs(c.ts)} UTC · годинна ще не підтвердила${candOnly.length > 1 ? ` · ще ${candOnly.length - 1}` : ""}`;
+      $("toastA").textContent = "Відкрити";
       $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; selectTicker(c.ticker); };
       $("toast").hidden = false;
       chime();
@@ -1894,6 +1928,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("toastT").textContent = `Новий Alert: ${a.ticker} · ${fmtP(a.probability)}`;
     const extra = a.limit != null ? ` · ліміт ${fmtPx(a.limit)}` : "";
     $("toastS").textContent = `${fmtTs(a.ts)} UTC${extra}${fresh.length > 1 ? ` · ще ${fresh.length - 1}` : ""}`;
+    $("toastA").textContent = "Відкрити";
     $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; selectTicker(a.ticker); };
     $("toast").hidden = false;
     beep();

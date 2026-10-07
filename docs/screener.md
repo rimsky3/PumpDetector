@@ -111,6 +111,12 @@ The screener writes raw data for watchlist coins into the same tables. If unlabe
 training set, every hour on them would count as "no pump" and silently bias the model. That is why
 `features.py` builds the training table from `tickers.txt` only.
 
+Pruning the list (since 2026-10-07): a row whose coin had no Candidate / Alert and no "waking up" for 24 hours is
+dimmed ("quiet N h" on hover, `quiet_h` in `/api/list`). The × on a row (on hover) removes the coin: a manual one from
+`watchlist.txt`, a scanner one from the auto list plus a 24-hour pause (`reports/auto_snooze.json`, `scanner.SNOOZE_HOURS`)
+so the next scan does not add it straight back; "Повернути" in the toast undoes it (`/api/watchlist/undo`). The
+screener stops scoring the coin from its next cycle.
+
 ## "Waking up" (5-minute early warning)
 
 `wake.py` flags a coin from the list that has just started to move, before the model reacts: over the last 15 minutes

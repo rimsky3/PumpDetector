@@ -37,6 +37,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(ROOT, "scan_config.json")
 AUTO_FILE = os.path.join(ROOT, "reports", "auto_watchlist.json")
 LAST_FILE = os.path.join(ROOT, "reports", "scan_last.json")
+SNOOZE_FILE = os.path.join(ROOT, "reports", "auto_snooze.json")   # прибрані власником авто-тікери: {base: до коли не повертати}
+SNOOZE_HOURS = 24                 # пауза після «×» у списку дашборду (власник, 2026-10-07)
 RECALL_FILE = os.path.join(ROOT, "reports", "scan_recall.json")   # --recall: результат наборів на пампах
 AVG_FILE = os.path.join(ROOT, "reports", "scan_turnover_avg.json")  # середній денний оборот перпів, раз на добу
 AVG_DAYS = 30                      # ліквідність — середній денний оборот за стільки завершених днів
@@ -320,6 +322,38 @@ def _excluded() -> set[str]:
     return excluded_tickers(ROOT)
 
 
+def snoozed(now: datetime | None = None) -> dict:
+    """Авто-тікери, які власник прибрав зі списку і пауза ще триває: {base: until (ISO)}."""
+    now = pd.Timestamp(now or datetime.now(timezone.utc))
+    return {b: u for b, u in _read_json(SNOOZE_FILE, {}).items() if pd.Timestamp(u) > now}
+
+
+def remove_auto(base: str, hours: float = SNOOZE_HOURS) -> dict | None:
+    """«×» у списку дашборду: авто-тікер — геть зі списку і SNOOZE_HOURS сканер його не повертає. Повертає прибраний запис
+    (для «Повернути»), None — тікера в авто-списку не було."""
+    base = base.upper()
+    auto = load_auto()
+    rec = auto.pop(base, None)
+    if rec is None:
+        return None
+    _write_json(AUTO_FILE, auto)
+    sn = snoozed()
+    sn[base] = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat(timespec="minutes")
+    _write_json(SNOOZE_FILE, sn)
+    return rec
+
+
+def restore_auto(base: str, rec: dict) -> None:
+    """«Повернути»: запис — назад в авто-список, паузу знято."""
+    base = base.upper()
+    auto = load_auto()
+    auto[base] = rec
+    _write_json(AUTO_FILE, auto)
+    sn = snoozed()
+    sn.pop(base, None)
+    _write_json(SNOOZE_FILE, sn)
+
+
 def apply(last: dict, manual: set[str], log=print) -> dict:
     """Оновити авто-список: нові спрацювання, продовження, прострочені — геть, не більше max_auto."""
     cfg = load_config()
@@ -331,7 +365,7 @@ def apply(last: dict, manual: set[str], log=print) -> dict:
         return auto
     ttl = timedelta(hours=cfg["ttl_hours"])
     new = []
-    for m in hits(last, params(cfg), exclude=set(manual) | excluded):
+    for m in hits(last, params(cfg), exclude=set(manual) | excluded | set(snoozed(now))):
         b = m["base"]
         if b not in auto:
             new.append(b)
@@ -351,7 +385,7 @@ def apply(last: dict, manual: set[str], log=print) -> dict:
 def preview(p: dict, manual: set[str]) -> dict:
     """Для дашборду: скільки пройшло б за останнім сканом з такими порогами."""
     last = _read_json(LAST_FILE, {})
-    h = hits(last, p, exclude=set(manual) | _excluded())
+    h = hits(last, p, exclude=set(manual) | _excluded() | set(snoozed()))
     return {"at": last.get("at"), "checked": last.get("checked", 0), "universe": last.get("universe", 0),
             "count": len(h), "top": [{"base": m["base"], "reason": m["reason"]} for m in h[:8]]}
 

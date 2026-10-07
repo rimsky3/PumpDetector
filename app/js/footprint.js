@@ -1,13 +1,13 @@
-// Футпрінт на графіку (кнопка FP, 2026-10-07): у кожній свічці — обсяг агресивних продажів (ліворуч від центру, червоне)
-// і купівель (праворуч, зелене) на рівнях ціни; рамка — POC бару (рівень з найбільшим обсягом); на широких свічках —
-// числа, як у кластерах ATAS. Дані — /api/footprint (5m-бари записувача угод і архіву Binance, рівні через 0.1%:
+// Футпрінт на графіку (кнопка FP, 2026-10-07) у вигляді дельта-кластерів (вибір власника): у кожній свічці рівні ціни
+// смугами — довжина = обсяг рівня, колір = знак дельти (зелений — переважали агресивні купівлі, червоний — продажі),
+// яскравість = сила перекосу; рамка — POC бару (рівень з найбільшим обсягом); на широких свічках — обсяг рівня числом. Дані — /api/footprint (5m-бари записувача угод і архіву Binance, рівні через 0.1%:
 // рівень k = [e^(k·LVL), e^((k+1)·LVL)), footprint.py), лише для видимих барів і лише коли кнопка увімкнена.
 // Вузькі свічки (графік віддалено) не малюються — там рівнів однаково не прочитати; підказка «наблизь».
 (function () {
   "use strict";
 
   const LVL = Math.log(1.001);
-  const MIN_SPACING = 16;          // px між свічками, з яких малюємо рівні
+  const MIN_SPACING = 10;          // px між свічками, з яких малюємо рівні (дельта-кластери компактні)
   const MIN_ROW = 3;               // px — мінімальна висота рядка; дрібніші рівні зливаємо
   const NUM_SPACING = 70, NUM_ROW = 11;   // з яких розмірів пишемо числа
 
@@ -81,9 +81,11 @@
         ctx.fillText("FP: наблизь графік (колесо миші), щоб побачити футпрінт", 8, 16);
         ctx.restore(); return;
       }
-      const sellC = rgba(cssVar("--hot", "#e24b4a"), .6), buyC = rgba(cssVar("--ok", "#97c459"), .6);
-      const pocC = cssVar("--warm", "#f0997b"), txt = cssVar("--fg", "#f0efec");
-      const half = spacing * 0.46;
+      // дельта-кластери (вибір власника 2026-10-07): рядок рівня — одна смуга від лівого краю слоту свічки; довжина — обсяг
+      // рівня (від найбільшого в барі), колір — знак дельти (купівлі − продажі), яскравість — сила перекосу |дельта| / обсяг
+      const hot = cssVar("--hot", "#e24b4a"), ok = cssVar("--ok", "#97c459");
+      const pocC = cssVar("--warm", "#f0997b"), txt = cssVar("--fg2", "#a8a79f");
+      const half = spacing * 0.4;                                  // ≈ ширина тіла свічки LWC
       const y = (lvl) => series.priceToCoordinate(Math.exp(lvl * LVL));
       for (let i = a0; i <= a1; i++) {
         const b = data.get(T[i]); if (!b) continue;
@@ -97,21 +99,21 @@
           const row = rows.get(lv) || [0, 0];
           row[0] += b.sell[k]; row[1] += b.buy[k]; rows.set(lv, row);
         }
-        let maxSide = 1, poc = null, pocV = -1;
-        rows.forEach(([s, u], lv) => { maxSide = Math.max(maxSide, s, u); if (s + u > pocV) { pocV = s + u; poc = lv; } });
+        let maxVol = 1, poc = null;
+        rows.forEach(([s, u], lv) => { if (s + u > maxVol) { maxVol = s + u; poc = lv; } });
+        const x0 = x - half, full = 2 * half;
         rows.forEach(([s, u], lv) => {
           const yTop = y(lv + g), yBot = y(lv); if (yTop == null || yBot == null) return;
           const top = Math.min(yTop, yBot), hh = Math.max(1, Math.abs(yBot - yTop) - (Math.abs(yBot - yTop) > 4 ? 1 : 0));
           if (top > paneH() || top + hh < 0) return;
-          const ws = s / maxSide * half, wb = u / maxSide * half;
-          ctx.fillStyle = sellC; ctx.fillRect(x - 1 - ws, top, ws, hh);
-          ctx.fillStyle = buyC; ctx.fillRect(x + 1, top, wb, hh);
-          if (lv === poc) { ctx.strokeStyle = pocC; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x - half) + 0.5, Math.round(top) + 0.5, Math.round(2 * half), Math.max(1, Math.round(hh) - 1)); }
-          if (spacing >= NUM_SPACING && hh >= NUM_ROW) {
+          const vol = s + u; if (vol <= 0) return;
+          const skew = Math.abs(u - s) / vol;                      // 0 — порівну, 1 — лише одна сторона
+          ctx.fillStyle = rgba(u >= s ? ok : hot, 0.22 + 0.63 * Math.min(1, skew / 0.5));   // перекіс ≥ 50% — найяскравіше
+          ctx.fillRect(x0, top, Math.max(1, vol / maxVol * full), hh);
+          if (lv === poc) { ctx.strokeStyle = pocC; ctx.lineWidth = 1; ctx.strokeRect(Math.round(x0) + 0.5, Math.round(top) + 0.5, Math.round(full), Math.max(1, Math.round(hh) - 1)); }
+          if (spacing >= NUM_SPACING && hh >= NUM_ROW) {           // широкі свічки — обсяг рівня числом
             ctx.font = `${Math.min(11, Math.floor(hh) - 1)}px -apple-system, Segoe UI, sans-serif`; ctx.fillStyle = txt;
-            ctx.textBaseline = "middle";
-            ctx.textAlign = "right"; ctx.fillText(fmtK(s), x - 3, top + hh / 2);
-            ctx.textAlign = "left"; ctx.fillText(fmtK(u), x + 3, top + hh / 2);
+            ctx.textBaseline = "middle"; ctx.textAlign = "right"; ctx.fillText(fmtK(vol), x0 + full - 2, top + hh / 2);
           }
         });
       }

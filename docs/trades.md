@@ -101,9 +101,10 @@ hundred MB. Trial on 5 coins × 10 days: 9 historical marks (≈ one per coin ev
 
 ## Footprint on the chart (FP button)
 
-The dashboard's FP button (next to the ruler) draws the footprint inside each candle: aggressive sells to the left of
-the centre (red), buys to the right (green), per 0.1% price level; the bar's POC is outlined; numbers appear when candles
-are wide enough. Candles become hollow while FP is on (as in ATAS clusters). Data come from `/api/footprint` (5-minute
+The dashboard's FP button (next to the ruler) draws the footprint inside each candle as delta clusters (the owner's
+choice): one strip per 0.1% price level, its length the level's volume, its colour the sign of the delta (green —
+aggressive buys dominated, red — sells), its brightness the size of the skew; the bar's POC is outlined; the level's
+volume appears as a number when candles are wide enough. Candles become hollow while FP is on (as in ATAS clusters). Data come from `/api/footprint` (5-minute
 `trade_bars` summed to the chart's timeframe) only for the visible bars and only while FP is on; when the chart is zoomed
 out the levels are not drawn (a hint says to zoom in). Live recorder data for every coin; history for list coins.
 

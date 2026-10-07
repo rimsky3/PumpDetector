@@ -57,6 +57,7 @@ JS_DIR = os.path.join(ROOT, "app", "js")                              # спіл
 MODEL_NAMES = {"lightgbm": "LightGBM", "logreg": "Логістична регресія"}
 CANDIDATE_SHARE = 0.5     # «Кандидат»: ймовірність ≥ половини порогу сигналу
 SPARK_HOURS = 24
+QUIET_HOURS = 24          # рядок списку блідий («тихо N год»), якщо стільки годин без Кандидата / Alert і «прокидається»
 BAR_15M = pd.Timedelta(minutes=15)
 refresh_lock = threading.Lock()
 
@@ -204,6 +205,7 @@ def watch_list_15m(conn) -> dict:
     newest = troll.sort_values("ts").groupby("base_asset").tail(1).set_index("base_asset") if len(troll) else None
     rows, hmap = [], {}
     woke = wake.last_wake()                    # «прокинулись» за останні 30 хв — фіолетова крапка в списку
+    woke_day = wake.last_wake(minutes=QUIET_HOURS * 60)     # для «тихо N год»
     for base, g in t.groupby("base_asset"):
         g = g.sort_values("ts")
         last = g.iloc[-1]
@@ -219,6 +221,12 @@ def watch_list_15m(conn) -> dict:
             if x != last["tier"] or x == "calm":
                 break
             streak += 1
+        # «тихо N год» (бліді рядки — кандидати на «×»): скільки годин без Кандидата / Alert і без «прокидається»
+        act = g.loc[g["tier"] != "calm", "ts"]
+        last_act = act.max() if len(act) else g["ts"].min()
+        if base in woke_day:
+            last_act = max(last_act, pd.Timestamp(woke_day[base]["at"]))
+        quiet_h = (g["ts"].iloc[-1] + BAR_15M - last_act) / pd.Timedelta(hours=1)
         h = aggregate(parts.get(base, raw), base, "15min", light=True)   # лише ціна й OI: зміни за 24 год, ATR для ліміту
         hmap[base] = h
         lt = g["ts"].iloc[-1]                     # спарклайн і зміни за 24 год — на звичайних 15m-барах
@@ -234,7 +242,7 @@ def watch_list_15m(conn) -> dict:
             "streak": streak, "streak_min": streak * 15, "in_sample": bool(last["in_sample"]), "last_bar": last["ts"],
             "spark": spark.tolist(), "chg_24h": chg, "oi_24h": oi24,
             "p1h": last["p1h"], "thr1h": last["thr1h"], "need1h": share() * last["thr1h"] if pd.notna(last["thr1h"]) else None,
-            "wake": woke.get(base), "roll": roll,
+            "wake": woke.get(base), "roll": roll, "quiet_h": round(float(quiet_h), 1),
         })
     order = {"alert": 0, "candidate": 1, "calm": 2}
     rows.sort(key=lambda r: (order.get(r["status"], 3), -(r["probability"] or 0)))
@@ -899,11 +907,41 @@ def add_to_watchlist(base: str) -> dict:
     return {"ok": True, "ticker": base}
 
 
+REMOVED: dict = {}      # «×» у списку: base → ("manual" | "auto", запис авто-списку) — для «Повернути»
+
+
 def remove_from_watchlist(base: str) -> dict:
+    """«×» у рядку списку: ручний тікер — геть з watchlist.txt; авто-тікер — геть з авто-списку і scanner.SNOOZE_HOURS
+    сканер його не повертає (інакше повернувся б із наступним спрацюванням). Скринер не оцінює його з наступного циклу."""
     from fetch import set_ticker_in_file
-    set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base.upper(), False)
-    ADD_JOBS.pop(base.upper(), None)
-    return {"ok": True}
+    base = base.upper()
+    manual, _ = list_sources()
+    out = {"ok": True, "ticker": base, "source": None}
+    if base in manual:
+        set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base, False)
+        REMOVED[base] = ("manual", None)
+        out["source"] = "manual"
+    rec = scanner.remove_auto(base)
+    if rec is not None:
+        REMOVED[base] = ("auto", rec)
+        out.update(source="auto", snooze_hours=scanner.SNOOZE_HOURS)
+    ADD_JOBS.pop(base, None)
+    return out
+
+
+def undo_remove(base: str) -> dict:
+    """«Повернути» після «×»: ручний — назад у watchlist.txt (без перезавантаження даних), авто — запис і без паузи."""
+    from fetch import set_ticker_in_file
+    base = base.upper()
+    item = REMOVED.pop(base, None)
+    if item is None:
+        raise ValueError(f"{base}: нічого повертати")
+    kind, rec = item
+    if kind == "manual":
+        set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base, True, "повернено з дашборду")
+    else:
+        scanner.restore_auto(base, rec)
+    return {"ok": True, "ticker": base}
 
 
 # ---------------------------------------------------------------- бектест (backtest.py) — вкладка «Бектест»
@@ -1209,6 +1247,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, add_to_watchlist(str(body.get("symbol", ""))))
             if url.path == "/api/watchlist/remove":
                 return self._send(200, remove_from_watchlist(str(body.get("symbol", ""))))
+            if url.path == "/api/watchlist/undo":
+                return self._send(200, undo_remove(str(body.get("symbol", ""))))
         except ValueError as e:
             return self._send(400, {"error": str(e)})
         except Exception as e:
