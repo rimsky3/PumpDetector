@@ -481,6 +481,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <button class="help" data-help="ruler" aria-label="Що це?">?</button>
         <button class="tool fptool" id="fpBtn" aria-pressed="false" title="Футпрінт: обсяг купівель / продажів на рівнях ціни в кожній свічці" aria-label="Футпрінт">FP</button>
         <button class="help" data-help="fp" aria-label="Що це?">?</button>
+        <button class="tool" id="linkBtn" aria-pressed="true" title="Лінковка вікон: увімкнено — ТФ, FP і профіль обсягу змінюються в обох вікнах; вимкнено — лише в активному" aria-label="Лінковка вікон"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"></path><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"></path></svg></button>
+        <button class="help" data-help="link" aria-label="Що це?">?</button>
         <div class="seg sm" id="vpSeg" role="group" aria-label="Профіль обсягу за період">
           <button data-vp="off" aria-pressed="true" title="Профіль обсягу вимкнено">VP</button><button data-vp="day" title="Профіль обсягу на кожен день UTC">День</button><button data-vp="week" title="Профіль обсягу на кожен тиждень (з понеділка, UTC)">Тиж</button>
         </div>
@@ -673,7 +675,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     view: "forecast", model: "tier15",
     // режим — окремо для кожної вкладки (власник 02.10): Прогноз, Журнал і Бектест не перемикають одне одного
     modes: { forecast: LS.get("pd-mode-forecast", LS.get("pd-strategy", null)), journal: LS.get("pd-mode-journal", null),
-             backtest: LS.get("pd-mode-backtest", null) }, chartTf: null, days: LS.get("pd-days", 3), fp: LS.get("pd-fp", false), oiUsd: LS.get("pd-oiusd", false),
+             backtest: LS.get("pd-mode-backtest", null) }, days: LS.get("pd-days", 3), link: LS.get("pd-link", true), oiUsd: LS.get("pd-oiusd", false),
     // вікна графіка: 1 або 2; «Повна інфо» (позиція, угоди, «прокидається», мітки сканера); активне вікно
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
     meta: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])),
@@ -738,6 +740,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- підказки «?» ----------
   const FP_TITLE = "Футпрінт: обсяг купівель / продажів на рівнях ціни в кожній свічці";
   const HELP = {
+    link: "Лінковка вікон (ланцюжок). Увімкнено — таймфрейм, FP (футпрінт) і профіль обсягу «День / Тиж» змінюються в обох вікнах одразу; при вмиканні друге вікно бере налаштування активного (з помаранчевою рамкою). Вимкнено — кнопки змінюють лише активне вікно: напр. ліворуч 15m з футпрінтом, праворуч 1h без нього. Налаштування кожного вікна зберігаються після перезавантаження сторінки. Тікер у вікнах і так незалежний.",
     fp: "FP — футпрінт у вигляді дельта-кластерів: у кожній свічці рівні ціни через 0.1% смугами — довжина = обсяг рівня, колір = хто переважав (зелений — агресивні купівлі, червоний — продажі), яскравість = наскільки сильно (бліда — порівну, яскрава — перекіс ≥ 40%); рамка — POC бару (рівень з найбільшим обсягом). На широких свічках — обсяг рівня числом ($, k / M). Видно лише, коли графік наближено (колесо миші): на віддаленому свічки завузькі. Дані — угоди Binance: живий записувач + історія з архіву Binance для монет зі списку (за 30 днів); для інших монет — лише з моменту запуску записувача. Вимкнено — нічого не завантажується й не малюється. Мітки b / p на графіку — з того самого футпрінту.",
     backtest: "Бектест — модель проходить історію монет, яких не бачила в навчанні: усі USDT-перпи Binance з середнім оборотом від заданого, OI не більше, ніж у сканері, без тікерів навчання і виключених. Список задається правилом ДО прогону, тож вибору «де був памп» немає. Угоди — тими самими правилами, що й «Позиція моделі». Без прослизання, стакану і твого фільтру стаканом; той самий період ринку, що й навчання.",
     btEquity: "Накопичена сума результатів закритих угод по днях (дата виходу), у % — як якби кожна угода була однією позицією однакового розміру. Сума ≠ дохідність рахунку; для порівняння прогонів і моделей.",
@@ -858,7 +861,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   const setMode = (view, id) => {
     st.modes[view] = id; LS.set(`pd-mode-${view}`, id);
-    if (view === "forecast") { applyMode(); st.chartTf = null; loadList(); loadTicker(); }
+    if (view === "forecast") { applyMode(); PANES.forEach((p) => p.setTf(null)); loadList(); loadTicker(); }
     else if (view === "journal") loadJournal();
     renderModelSeg();
   };
@@ -1017,7 +1020,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("panes").appendChild(root);
     const q = (s) => root.querySelector(s);
     const chartEl = q(".chart"), ohlcEl = q(".ohlc");
-    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null };
+    // налаштування вікна (лінковка вимкнена — кожне своє): ТФ графіка (null — ТФ моделі), FP, профіль обсягу за період
+    const cfg0 = LS.get(`pd-pane-cfg-${n}`, null) || { tf: null, fp: LS.get("pd-fp", false), vp: LS.get("pd-vp-period", "off") };
+    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off" };
+    const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP });
     let chart = null, S = {}, priceLines = [], markersApi = null, probMarkers = null, idx = new Map(), rangeKey = null;
     let ruler = null, vp = null, fpv = null, wakeAt = new Map(), fpAt = new Map(), candleCol = null;
     // з футпрінтом тіла свічок порожні (лише контур), як у кластерах ATAS — інакше заливка зливається з рівнями
@@ -1091,13 +1097,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         vp = PDProfile.create({ chart, el: chartEl, series: S.candles, times: () => P.data?.series.t || [], bar: () => P.data?.bar || 900,
           symbol: () => P.ticker || "", keys: isActive, onModeChange: (on) => { if (isActive()) $("vpBtn").setAttribute("aria-pressed", String(on)); },
           onInfo: (t) => { if (isActive()) $("vpBtn").title = `Профіль фрагмента (V): клік — початок, клік — кінець · ${t}`; } });
-        vp.setPeriod(vpPeriod());
+        vp.setPeriod(P.vpP);
       }
-      // футпрінт (app/js/footprint.js, кнопка FP — спільна для вікон): рівні купівель / продажів у свічках
+      // футпрінт (app/js/footprint.js, кнопка FP — для вікна або обох при лінковці): рівні купівель / продажів у свічках
       if (window.PDFootprint) {
         fpv = PDFootprint.create({ chart, el: chartEl, series: S.candles, times: () => P.data?.series.t || [], bar: () => P.data?.bar || 900,
           symbol: () => P.ticker || "", tf: () => P.data?.tf || "15m", onInfo: (t) => { if (isActive()) $("fpBtn").title = t || FP_TITLE; } });
-        fpv.setOn(st.fp); hollow(st.fp);
+        fpv.setOn(P.fp); hollow(P.fp);
       }
     };
     const renderOhlc = (i) => {
@@ -1380,7 +1386,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const done = opts.quiet ? () => {} : busy(q(".chart-card"), null);
       try {
         const d = await api(`/api/ticker?symbol=${encodeURIComponent(tk)}&model=${st.model}&strategy=${st.modes.forecast}&days=30` +
-          `${st.chartTf ? "&tf=" + st.chartTf : ""}${st.full ? "" : "&light=1"}`, { quiet: !!opts.quiet });
+          `${P.tf ? "&tf=" + P.tf : ""}${st.full ? "" : "&light=1"}`, { quiet: !!opts.quiet });
         if (P.ticker !== tk) return;               // поки вантажилось, вікну дали інший тікер
         P.data = d; show($("fError"), "");
       } catch (e) { if (P.ticker === tk) { P.data = null; show($("fError"), `${tk}: ${e.message}`); } return; }
@@ -1401,14 +1407,23 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     Object.assign(P, {
       load, renderHead, renderChart, setRange, live,
       toggleRuler: () => { if (ruler) ruler.toggle(); }, toggleVp: () => { if (vp) vp.toggle(); },
-      setVpPeriod: (p) => { if (vp) vp.setPeriod(p); },
-      setFp: (v) => { if (fpv) fpv.setOn(v); hollow(v); },
+      setVpPeriod: (p) => { P.vpP = p; saveCfg(); if (vp) vp.setPeriod(p); },
+      setFp: (v) => { P.fp = !!v; saveCfg(); if (fpv) fpv.setOn(P.fp); hollow(P.fp); },
+      setTf: (tf) => { P.tf = tf; saveCfg(); },
     });
     return P;
   };
 
   // активне вікно: рамка, тікер зі списку, ліва панель
-  const renderToolbar = () => { const d = st.data; if (d) pressIn("tfSeg", "tf", d.tf || "1h"); };
+  // кнопки ТФ / FP / профілю показують стан активного вікна (без лінковки вікна можуть різнитися)
+  const renderToolbar = () => {
+    const d = st.data, P = activePane();
+    if (d) pressIn("tfSeg", "tf", d.tf || "1h");
+    $("fpBtn").setAttribute("aria-pressed", String(!!P.fp)); pressIn("vpSeg", "vp", P.vpP || "off");
+    $("linkBtn").setAttribute("aria-pressed", String(st.link));
+  };
+  // лінковка вікон (кнопка біля FP): увімкнена — ТФ, FP і профіль обсягу міняються в обох вікнах, вимкнена — лише в активному
+  const targetPanes = () => (st.link ? shownPanes() : [activePane()]);
   const setActive = (i) => {
     if (i === st.active || i >= st.panes) return;
     st.active = i;
@@ -1443,6 +1458,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const setPanes = (k) => {
     st.panes = k; LS.set("pd-panes", k);
     ensureSecond();
+    if (st.link && k > 1) syncFromActive();     // друге вікно з лінковкою — з налаштуваннями активного
     applyLayout(); renderList();
     if (st.view === "forecast") loadTicker();
   };
@@ -1460,13 +1476,28 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   $("rulerBtn").addEventListener("click", () => activePane().toggleRuler());
   $("vpBtn").addEventListener("click", () => activePane().toggleVp());
   $("fpBtn").addEventListener("click", () => {
-    st.fp = !st.fp; LS.set("pd-fp", st.fp); $("fpBtn").setAttribute("aria-pressed", String(st.fp));
-    PANES.forEach((p) => p.setFp(st.fp));
+    const v = !activePane().fp; LS.set("pd-fp", v);
+    targetPanes().forEach((p) => p.setFp(v)); renderToolbar();
+  });
+  // лінковка: при вмиканні інші вікна беруть налаштування активного (ТФ, FP, профіль)
+  const syncFromActive = () => {
+    const a = activePane();
+    shownPanes().forEach((p) => {
+      if (p === a) return;
+      const tfChanged = p.tf !== a.tf;
+      p.setTf(a.tf); p.setFp(a.fp); p.setVpPeriod(a.vpP);
+      if (tfChanged) p.load();
+    });
+  };
+  $("linkBtn").addEventListener("click", () => {
+    st.link = !st.link; LS.set("pd-link", st.link);
+    if (st.link) syncFromActive();
+    renderToolbar();
   });
   $("vpSeg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-vp]"); if (!b) return;
-    LS.set("pd-vp-period", b.dataset.vp); pressIn("vpSeg", "vp", b.dataset.vp);
-    PANES.forEach((p) => p.setVpPeriod(b.dataset.vp));
+    LS.set("pd-vp-period", b.dataset.vp);
+    targetPanes().forEach((p) => p.setVpPeriod(b.dataset.vp)); renderToolbar();
   });
 
   // ---------- права панель: список тікерів ----------
@@ -1949,7 +1980,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   $("railBtn").addEventListener("click", toggleRail);
   $("railOpen").addEventListener("click", toggleRail);
   document.querySelectorAll("#tfSeg [data-tf]").forEach((b) => b.addEventListener("click", () => {
-    st.chartTf = b.dataset.tf === modelInfo()?.tf ? null : b.dataset.tf; loadTicker();
+    const tf = b.dataset.tf === modelInfo()?.tf ? null : b.dataset.tf, ps = targetPanes();
+    ps.forEach((p) => p.setTf(tf)); Promise.all(ps.map((p) => p.load()));
   }));
   document.querySelectorAll("#oiSeg [data-oi]").forEach((b) => b.addEventListener("click", () => { st.oiUsd = b.dataset.oi === "usd"; LS.set("pd-oiusd", st.oiUsd); pressIn("oiSeg", "oi", b.dataset.oi); renderAllCharts(); }));
   document.querySelectorAll("#tabSeg [data-tab]").forEach((b) => b.addEventListener("click", () => { st.tab = b.dataset.tab; pressIn("tabSeg", "tab", st.tab); renderList(); }));
@@ -2310,7 +2342,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     applyMode();
     PANES.forEach((p, i) => { if (!st.meta.tickers.includes(p.ticker)) p.ticker = i ? null : st.meta.tickers[0] || null; });
     pressIn("oiSeg", "oi", st.oiUsd ? "usd" : "coins"); pressIn("vpSeg", "vp", vpPeriod());
-    $("fpBtn").setAttribute("aria-pressed", String(st.fp)); $("fullBtn").setAttribute("aria-pressed", String(st.full));
+    renderToolbar(); $("fullBtn").setAttribute("aria-pressed", String(st.full));
     applyLayout();
     renderModelSeg(); renderSystem(); renderStatus(); checkRetrain();
     await loadList(); loadScan(false);
