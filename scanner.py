@@ -37,8 +37,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(ROOT, "scan_config.json")
 AUTO_FILE = os.path.join(ROOT, "reports", "auto_watchlist.json")
 LAST_FILE = os.path.join(ROOT, "reports", "scan_last.json")
-SNOOZE_FILE = os.path.join(ROOT, "reports", "auto_snooze.json")   # прибрані власником авто-тікери: {base: до коли не повертати}
-SNOOZE_HOURS = 24                 # пауза після «×» у списку дашборду (власник, 2026-10-07)
+SNOOZE_FILE = os.path.join(ROOT, "reports", "auto_snooze.json")   # прибрані «×» тікери: {base: коли прибрано}
+BLOCK_MIN_HOURS = 1               # «×» блокує до нового спрацювання сканера (власник, 2026-10-07), але не менше години
 RECALL_FILE = os.path.join(ROOT, "reports", "scan_recall.json")   # --recall: результат наборів на пампах
 AVG_FILE = os.path.join(ROOT, "reports", "scan_turnover_avg.json")  # середній денний оборот перпів, раз на добу
 AVG_DAYS = 30                      # ліквідність — середній денний оборот за стільки завершених днів
@@ -322,36 +322,58 @@ def _excluded() -> set[str]:
     return excluded_tickers(ROOT)
 
 
-def snoozed(now: datetime | None = None) -> dict:
-    """Авто-тікери, які власник прибрав зі списку і пауза ще триває: {base: until (ISO)}."""
-    now = pd.Timestamp(now or datetime.now(timezone.utc))
-    return {b: u for b, u in _read_json(SNOOZE_FILE, {}).items() if pd.Timestamp(u) > now}
+def snoozed() -> dict:
+    """Тікери, прибрані власником «×» у списку дашборду, — блок «до нового спрацювання»: {base: коли прибрано (ISO)}.
+    Старий формат файлу ({base: «до коли»}) читається так само — як момент блоку."""
+    return dict(_read_json(SNOOZE_FILE, {}))
 
 
-def remove_auto(base: str, hours: float = SNOOZE_HOURS) -> dict | None:
-    """«×» у списку дашборду: авто-тікер — геть зі списку і SNOOZE_HOURS сканер його не повертає. Повертає прибраний запис
-    (для «Повернути»), None — тікера в авто-списку не було."""
+def block(base: str) -> None:
+    """«×»: сканер не додає тікер, поки триває той самий сплеск (тікер безперервно проходить фільтр). Щойно на скані він
+    фільтр не пройде (сплеск вичерпався, і минуло ≥ BLOCK_MIN_HOURS) — блок знято, наступне спрацювання поверне його як авто."""
+    sn = snoozed()
+    sn[base.upper()] = datetime.now(timezone.utc).isoformat(timespec="minutes")
+    _write_json(SNOOZE_FILE, sn)
+
+
+def unblock(base: str) -> None:
+    sn = snoozed()
+    if sn.pop(base.upper(), None) is not None:
+        _write_json(SNOOZE_FILE, sn)
+
+
+def release_blocks(passing: set[str], now: datetime) -> set[str]:
+    """Після скану: тікери, що вже не проходять фільтр і заблоковані ≥ BLOCK_MIN_HOURS, — розблоковано; повертає ті, що
+    лишаються заблокованими. Мінімум — щоб фільтр, який «мерехтить» (то проходить, то ні), не повернув той самий сплеск."""
+    sn = snoozed()
+    now = pd.Timestamp(now)
+    keep = {b: t for b, t in sn.items()           # min(…, now): старі записи «до коли» (у майбутньому) — як «щойно»
+            if b in passing or now - min(pd.Timestamp(t), now) < pd.Timedelta(hours=BLOCK_MIN_HOURS)}
+    if len(keep) != len(sn):
+        _write_json(SNOOZE_FILE, keep)
+    return set(keep)
+
+
+def remove_auto(base: str) -> dict | None:
+    """«×» у списку дашборду: авто-тікер — геть зі списку і блок до нового спрацювання. Повертає прибраний запис
+    (для «Повернути»), None — тікера в авто-списку не було (блок однаково ставить dashboard.remove_from_watchlist)."""
     base = base.upper()
     auto = load_auto()
     rec = auto.pop(base, None)
     if rec is None:
         return None
     _write_json(AUTO_FILE, auto)
-    sn = snoozed()
-    sn[base] = (datetime.now(timezone.utc) + timedelta(hours=hours)).isoformat(timespec="minutes")
-    _write_json(SNOOZE_FILE, sn)
+    block(base)
     return rec
 
 
 def restore_auto(base: str, rec: dict) -> None:
-    """«Повернути»: запис — назад в авто-список, паузу знято."""
+    """«Повернути»: запис — назад в авто-список, блок знято."""
     base = base.upper()
     auto = load_auto()
     auto[base] = rec
     _write_json(AUTO_FILE, auto)
-    sn = snoozed()
-    sn.pop(base, None)
-    _write_json(SNOOZE_FILE, sn)
+    unblock(base)
 
 
 def apply(last: dict, manual: set[str], log=print) -> dict:
@@ -365,7 +387,9 @@ def apply(last: dict, manual: set[str], log=print) -> dict:
         return auto
     ttl = timedelta(hours=cfg["ttl_hours"])
     new = []
-    for m in hits(last, params(cfg), exclude=set(manual) | excluded | set(snoozed(now))):
+    found = hits(last, params(cfg), exclude=set(manual) | excluded)
+    blocked = release_blocks({m["base"] for m in found}, now)     # прибрані «×» — лише після нового спрацювання
+    for m in [m for m in found if m["base"] not in blocked]:
         b = m["base"]
         if b not in auto:
             new.append(b)
@@ -385,7 +409,7 @@ def apply(last: dict, manual: set[str], log=print) -> dict:
 def preview(p: dict, manual: set[str]) -> dict:
     """Для дашборду: скільки пройшло б за останнім сканом з такими порогами."""
     last = _read_json(LAST_FILE, {})
-    h = hits(last, p, exclude=set(manual) | _excluded() | set(snoozed()))
+    h = hits(last, p, exclude=set(manual) | _excluded() | set(snoozed()))     # заблоковані «×» — не рахуємо
     return {"at": last.get("at"), "checked": last.get("checked", 0), "universe": last.get("universe", 0),
             "count": len(h), "top": [{"base": m["base"], "reason": m["reason"]} for m in h[:8]]}
 

@@ -911,8 +911,9 @@ REMOVED: dict = {}      # «×» у списку: base → ("manual" | "auto", �
 
 
 def remove_from_watchlist(base: str) -> dict:
-    """«×» у рядку списку: ручний тікер — геть з watchlist.txt; авто-тікер — геть з авто-списку і scanner.SNOOZE_HOURS
-    сканер його не повертає (інакше повернувся б із наступним спрацюванням). Скринер не оцінює його з наступного циклу."""
+    """«×» у рядку списку: ручний тікер — геть з watchlist.txt, авто — з авто-списку; обидва блокуються «до нового
+    спрацювання» (scanner.block): той самий сплеск, що й досі проходить фільтр, їх не поверне, а новий — поверне як авто.
+    Скринер не оцінює тікер з наступного циклу."""
     from fetch import set_ticker_in_file
     base = base.upper()
     manual, _ = list_sources()
@@ -924,7 +925,8 @@ def remove_from_watchlist(base: str) -> dict:
     rec = scanner.remove_auto(base)
     if rec is not None:
         REMOVED[base] = ("auto", rec)
-        out.update(source="auto", snooze_hours=scanner.SNOOZE_HOURS)
+        out["source"] = "auto"
+    scanner.block(base)
     ADD_JOBS.pop(base, None)
     return out
 
@@ -939,6 +941,7 @@ def undo_remove(base: str) -> dict:
     kind, rec = item
     if kind == "manual":
         set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base, True, "повернено з дашборду")
+        scanner.unblock(base)
     else:
         scanner.restore_auto(base, rec)
     return {"ok": True, "ticker": base}

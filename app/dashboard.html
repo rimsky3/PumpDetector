@@ -1531,9 +1531,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
       const oi = el("span", "num " + (r.oi_24h >= 0.15 ? "warm" : r.oi_24h < 0 ? "dim" : ""), fmtPct(r.oi_24h));
       const chg = el("span", "num " + pctCls(r.chg_24h), fmtPct(r.chg_24h));
-      // × — прибрати зі списку (авто-тікер сканер не повертає 24 год); «Повернути» — у підказці внизу
+      // × — прибрати зі списку (блок до нового спрацювання сканера); «Повернути» — у підказці внизу
       const rm = el("button", "rm", "×"); rm.setAttribute("aria-label", `Прибрати ${r.ticker} зі списку`);
-      rm.title = r.source === "auto" ? "Прибрати зі списку: сканер не поверне 24 год" : "Прибрати з watchlist";
+      rm.title = "Прибрати зі списку: повернеться як авто, лише якщо сканер побачить нове спрацювання";
       rm.addEventListener("click", (e) => { e.stopPropagation(); removeTicker(r.ticker); });
       const quiet = r.status === "calm" && r.quiet_h != null && r.quiet_h >= 24;
       if (quiet) row.classList.add("quiet");
@@ -1561,12 +1561,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (!(st.list?.recent || []).length) rec.appendChild(el("span", "small", "Сигналів ще не було."));
   };
   const toggleFav = (t) => { st.fav.has(t) ? st.fav.delete(t) : st.fav.add(t); LS.set("pd-fav", [...st.fav]); renderList(); };
-  // × у рядку списку: прибрати тікер (ручний — з watchlist, авто — пауза сканера 24 год), «Повернути» — у підказці
+  // × у рядку списку: прибрати тікер (ручний — з watchlist, авто — з авто-списку; обидва — до нового спрацювання сканера)
   const removeTicker = async (tk) => {
     try {
       const r = await api("/api/watchlist/remove", { method: "POST", body: JSON.stringify({ symbol: tk }) });
       $("toastT").textContent = `Прибрано ${tk}`;
-      $("toastS").textContent = r.source === "auto" ? `авто: сканер не поверне ${r.snooze_hours || 24} год` : "з watchlist";
+      $("toastS").textContent = (r.source === "auto" ? "з авто-списку" : "з watchlist") + " · повернеться, лише якщо прокинеться знову";
       $("toastA").textContent = "Повернути";
       $("toastA").onclick = async (e) => {
         e.preventDefault(); $("toast").hidden = true;

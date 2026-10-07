@@ -113,9 +113,12 @@ training set, every hour on them would count as "no pump" and silently bias the 
 
 Pruning the list (since 2026-10-07): a row whose coin had no Candidate / Alert and no "waking up" for 24 hours is
 dimmed ("quiet N h" on hover, `quiet_h` in `/api/list`). The × on a row (on hover) removes the coin: a manual one from
-`watchlist.txt`, a scanner one from the auto list plus a 24-hour pause (`reports/auto_snooze.json`, `scanner.SNOOZE_HOURS`)
-so the next scan does not add it straight back; "Повернути" in the toast undoes it (`/api/watchlist/undo`). The
-screener stops scoring the coin from its next cycle.
+`watchlist.txt`, a scanner one from the auto list, and both are blocked "until a new trigger"
+(`reports/auto_snooze.json`, `scanner.block` / `release_blocks`): the scanner's windows (4-hour volume and OI) keep a spike
+passing the filter for hours, so while the coin keeps passing it is the same event and stays out; the first scan where it
+no longer passes (and at least `BLOCK_MIN_HOURS` = 1 h after removal, so a flickering filter cannot bring the same spike
+back) lifts the block, and the next pass adds it again as an auto coin. "Повернути" in the toast undoes it
+(`/api/watchlist/undo`). The screener stops scoring the coin from its next cycle.
 
 ## "Waking up" (5-minute early warning)
 
