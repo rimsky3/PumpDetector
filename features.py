@@ -143,7 +143,9 @@ def weighted_mean(values: pd.DataFrame, weights: pd.DataFrame) -> pd.Series:
 
 def chained_log_index(w: pd.DataFrame) -> pd.Series:
     """«Зв'язаний» лог-індекс суми по контрактах: погодинна зміна рахується лише по контрактах,
-    які мали значення і годину тому, і зараз. Тоді поява нової біржі (лістинг) не виглядає як ріст OI."""
+    які мали значення і годину тому, і зараз. Тоді поява нової біржі (лістинг) не виглядає як ріст OI.
+    Нуль / від'ємне — пропуск (архів Binance зрідка має OI = 0: log(0) = −∞, і без цього весь ряд після нього ставав NaN)."""
+    w = w.where(w > 0)
     prev = w.shift(1)
     both = w.notna() & prev.notna()
     step = np.log(w.where(both).sum(axis=1, min_count=1) / prev.where(both).sum(axis=1, min_count=1))

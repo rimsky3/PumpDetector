@@ -104,6 +104,20 @@ Address to listen on (default `127.0.0.1`). In the server container it is `0.0.0
 Re-running is safe: rows are upserted. The API limit counts symbols, not days, so `--days` does not make a run
 cheaper; `--new` does.
 
+### `binance_archive.py` — Binance history from the public archive
+
+| Usage | Meaning |
+|---|---|
+| `python binance_archive.py NMR ZEC --from 2026-07-25 --to 2026-10-05` | download daily archive files from `data.binance.vision` (15m klines with taker buy volume, `metrics`: OI and long/short account ratio every 5 min) and write them into the same raw tables as `fetch_exchange.py` (through `exchanges.normalize`); funding from the API |
+| `… --tf 15m 5m` | timeframes (default 15m) |
+| `… --check` | compare the archive with what is already in the database (API rows) on common bars; writes nothing |
+
+The API gives Binance OI and long/short for 30 days only; the archive has them since at least December 2021. Verified
+against the API: prices and taker buy volume identical, OI identical, long/short equal up to the API's 4-digit
+rounding. Two archive quirks are handled: `create_time` is 5 minutes earlier than the API timestamp of the same
+snapshot (shifted +5 min), and OI = 0 appears on rare snapshots (dropped). Daily files are cached in
+`data/binance_archive/`.
+
 ### `fetch_exchange.py` — 15m and 5m from Binance and Bybit
 
 | Option | Default | Meaning |
@@ -273,6 +287,21 @@ Do the models still need liquidations on the impulse labels? Trains the 15m and 
 tier, hourly events) and a backtest on the backtest coins outside training (Alert = 15m + hourly ≥ 0.75 of its threshold,
 hourly features from own 15m data as in the screener), current and partial exit. Variants: `base`, `noliq` (both models
 without liquidations), `noliq15` (15m without, hourly with). Report: `reports/no_liq.md`.
+
+### `experiments/book_features.py`
+
+Order book depth features from the free Binance `bookDepth` archive (cumulative bid / ask notional within ±1 / 2 / 5% of
+the price every ~30–40 s; `orderbook.archive_day`, cache `data/book_cache`). At each 15m bar close: imbalance, ask and
+total depth relative to 24-hour turnover, 1- and 4-hour change of ask / bid depth, ask depth against its 7-day median;
+plus short dynamics from all snapshots inside the bar (5 / 15-minute change, mean / min / max imbalance, depth
+dispersion). Variants `base` (model features without liquidations), `book`, `book_fast`: leave-ticker-out and a backtest
+on ≥ 20 M $ coins outside training. Report: `reports/book_features.md` (first pass: `reports/book_features_pass1.md`).
+
+### `experiments/binance_only.py`
+
+The 15m model on Binance data only vs Binance + Bybit (Binance OI backfilled from the archive first): leave-ticker-out
+and a backtest on the backtest coins with three arms — both exchanges, 15m Binance-only with the usual hourly
+confirmation, everything Binance-only. Report: `reports/binance_only.md`.
 
 ### `experiments/trade_count.py`
 

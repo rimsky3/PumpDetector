@@ -49,7 +49,11 @@ DAYS, K = 30, 2.48
 OUT = os.path.join("reports", "book_features.md")
 BOOK = ["book_imb_1", "book_imb_2", "book_imb_5", "book_ask2_turn", "book_ask5_turn", "book_depth2_turn",
         "book_ask2_chg_1h", "book_ask2_chg_4h", "book_bid2_chg_1h", "book_bid2_chg_4h", "book_ask2_vs_7d"]
-VARIANTS = {"base": MODEL_FEATURES_15M, "book": MODEL_FEATURES_15M + BOOK}
+# другий прохід (власник 07.10: «може, рахувати на 5 хв?»): коротка динаміка — зі ВСІХ знімків усередині бару
+FAST = ["book_ask2_chg_5m", "book_bid2_chg_5m", "book_ask2_chg_15m", "book_bid2_chg_15m",
+        "book_imb2_mean_bar", "book_imb2_min_bar", "book_imb2_max_bar", "book_ask2_sd_bar"]
+VARIANTS = {"base": MODEL_FEATURES_15M, "book": MODEL_FEATURES_15M + BOOK, "book_fast": MODEL_FEATURES_15M + BOOK + FAST}
+ALL_BOOK = BOOK + FAST
 LAST_DAY = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=2)).normalize()   # новіші архіви ще можуть не вийти
 
 
@@ -80,7 +84,7 @@ def book_wide(symbol: str, days: list[str]) -> pd.DataFrame:
 
 def book_features(h: pd.DataFrame, w: pd.DataFrame) -> pd.DataFrame:
     """15m-ряд монети (індекс — відкриття бару, volume у $) + смуги стакану → ознаки на закритті кожного бару."""
-    out = pd.DataFrame(index=h.index, columns=BOOK, dtype=float)
+    out = pd.DataFrame(index=h.index, columns=ALL_BOOK, dtype=float)
     if w.empty or not {-5.0, -2.0, -1.0, 1.0, 2.0, 5.0} <= set(w.columns):
         return out
     close = pd.DataFrame({"t": h.index + pd.Timedelta(minutes=15)})
@@ -100,6 +104,19 @@ def book_features(h: pd.DataFrame, w: pd.DataFrame) -> pd.DataFrame:
     out["book_bid2_chg_1h"] = lg(b2) - lg(b2.shift(4))
     out["book_bid2_chg_4h"] = lg(b2) - lg(b2.shift(16))
     out["book_ask2_vs_7d"] = lg(a2) - lg(a2.rolling(672, min_periods=96).median())
+    # коротка динаміка: знімок за 5 / 15 хв до закриття і всі знімки всередині бару (відкриття, закриття]
+    for m in (5, 15):
+        prev = pd.merge_asof(pd.DataFrame({"t": close["t"] - pd.Timedelta(minutes=m)}), w.reset_index().rename(columns={"timestamp": "t"}),
+                             on="t", direction="backward", tolerance=pd.Timedelta(minutes=3)).set_index(h.index)
+        out[f"book_ask2_chg_{m}m"] = lg(a2) - lg(prev[2.0])
+        out[f"book_bid2_chg_{m}m"] = lg(b2) - lg(prev[-2.0])
+    snap = pd.DataFrame({"imb": (w[-2.0] - w[2.0]) / (w[-2.0] + w[2.0]), "la": np.log(w[2.0].where(w[2.0] > 0))})
+    bar = (snap.index - pd.Timedelta(microseconds=1)).floor("15min")         # знімок о 10:15:00 — ще бар 10:00
+    g = snap.groupby(bar)
+    agg = pd.DataFrame({"book_imb2_mean_bar": g["imb"].mean(), "book_imb2_min_bar": g["imb"].min(),
+                        "book_imb2_max_bar": g["imb"].max(), "book_ask2_sd_bar": g["la"].std()})
+    for c in agg:
+        out[c] = agg[c].reindex(h.index)
     return out.replace([np.inf, -np.inf], np.nan)
 
 
@@ -115,8 +132,8 @@ def add_book(conn, d: pd.DataFrame, raw: pd.DataFrame, syms: dict[str, str]) -> 
                                                                 min(g["ts"].max().normalize(), LAST_DAY), freq="D")]
         f = book_features(h, book_wide(sym, days)).reindex(g["ts"]).set_axis(g.index)
         parts.append(f)
-    bk = pd.concat(parts) if parts else pd.DataFrame(columns=BOOK)
-    return d.drop(columns=[c for c in BOOK if c in d], errors="ignore").join(bk.reindex(d.index))
+    bk = pd.concat(parts) if parts else pd.DataFrame(columns=ALL_BOOK)
+    return d.drop(columns=[c for c in ALL_BOOK if c in d], errors="ignore").join(bk.reindex(d.index))
 
 
 def pf(v: pd.Series) -> str:
@@ -177,7 +194,7 @@ def main() -> None:
                      "фальстарти": ev["false_starts_triggered"], "хибних / 30 д": round(ev["false_alarms_per_30d"], 1)}
         model = train.make_lightgbm().fit(d[cols], y)
         models[name] = (model, thr, cols)
-        if name == "book":
+        if name == "book_fast":
             g = pd.Series(model.booster_.feature_importance("gain"), index=cols)
             imp = (g / g.sum()).sort_values(ascending=False)
 
@@ -224,11 +241,11 @@ def main() -> None:
              "## 1. Leave-ticker-out (15m, рівень «Кандидат»)", "", md(t_lto), "",
              f"## 2. Бектест: {len(coins)} монет ≥ 20 млн $ поза навчанням, {start:%Y-%m-%d} – {LAST_DAY:%Y-%m-%d} "
              f"(Alert = 15m + годинна без ліквідацій ≥ {share}; стоп {K} ATR)", "", md(t_bt), "",
-             "## 3. Важливість ознак (book, gain): ознаки стакану і топ-5", ""]
+             "## 3. Важливість ознак (book_fast, gain): ознаки стакану і топ-5", ""]
     for f, v in imp.items():
-        if f in BOOK or f in imp.index[:5]:
-            lines.append(f"- {f}: {v:.1%}" + ("  ← стакан" if f in BOOK else ""))
-    lines.append(f"\nРазом стакан: {imp[BOOK].sum():.1%}")
+        if f in ALL_BOOK or f in imp.index[:5]:
+            lines.append(f"- {f}: {v:.1%}" + ("  ← стакан, коротка динаміка" if f in FAST else "  ← стакан" if f in BOOK else ""))
+    lines.append(f"\nРазом стакан: {imp[ALL_BOOK].sum():.1%} (з них коротка динаміка {imp[FAST].sum():.1%})")
     with open(OUT, "w", encoding="utf-8") as fh:
         fh.write("\n".join(lines) + "\n")
     print("\n".join(lines))

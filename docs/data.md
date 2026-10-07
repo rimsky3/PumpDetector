@@ -62,7 +62,7 @@ see [modeling.md](modeling.md#experiment-exchange-apis-instead-of-coinalyze)):
 | Series | Binance | Bybit |
 |---|---|---|
 | Candles (incl. buy volume on Binance) | years, 1m and up | years, 1m and up; no buy volume |
-| Open interest, long/short | 30 days (5m, 1h) | at least a year (5m, 1h) |
+| Open interest, long/short | API: 30 days (5m, 1h); **archive** `data.binance.vision/data/futures/um/daily/metrics/` — OI every 5 min, long/short account ratio (all and top traders), taker buy/sell ratio, since at least Dec 2021 | at least a year (5m, 1h) |
 | Funding (paid rates) | years | years |
 | Liquidations, predicted funding | no history (websocket / current value only) | no history |
 
