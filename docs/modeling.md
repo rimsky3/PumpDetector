@@ -117,6 +117,23 @@ features; the coin features stay in the table for charts and later experiments. 
 (with TRUMP): LightGBM 0.67 in USD vs 0.59 in coins — same conclusion. Differences of ±0.02–0.03 are
 within noise, so "both" is not an improvement either.
 
+## Liquidations removed from the models (2026-10-07)
+
+On the old labels (long pump intervals) liquidations mattered: without them LightGBM F1 fell 0.71 → 0.60, and short
+liquidations over 4 hours took 18% of the gain. After relabeling to impulses (from the start to the OI collapse) their
+share fell to 3–5%: short squeezes describe a pump in full swing, not its start. `experiments/no_liq.py` retrained both
+models with and without the five `liq_*` features on the same data (21 tickers, 101 impulses):
+
+| | 15m caught / false starts / false per 30 d | hourly caught | backtest, 216 new coins, profit factor (partial exit) |
+|---|---|---|---|
+| with liquidations | 83/100 · 13/22 · 10.7 | 81/100 | 0.83 (≥ 20 M $: 1.00) |
+| without | 84/100 · 15/22 · 11.2 | 78/100 | 0.89 (≥ 20 M $: 1.07) |
+
+No loss — within noise, if anything slightly better on new coins. The models now train without them by default
+(`train.py --with-liq` restores the old set), so the 15-minute scoring no longer waits for ~200 Coinalyze liquidation
+calls per cycle. Liquidations are still collected (Coinalyze after scoring, plus the own WebSocket recorder) and the
+features stay in the `features` table: they may matter for other targets later (e.g. a short-side model).
+
 ## Predicted funding removed
 
 `pred_funding_gap` (predicted − current funding) had the lowest weight in both models (0.14% of LightGBM gain,

@@ -145,6 +145,7 @@ with labels contributes only the hours inside its labeled intervals (column `rev
 | `--no-15m` | off | skip the 15m model (faster: hourly models only) |
 | `--candidate` | off | save to `models/candidate/` instead of `models/`; the labeling tool compares it with the live model and **Прийняти** promotes it (the live one goes to `models/backup_<time>/`) |
 | `--fresh-hours N` | 48 | unlabeled hours from the last N hours are left out of training; `0` uses everything |
+| `--with-liq` | off | include the liquidation features (`liq_*`) as before 2026-10-07; by default the models train without them (`features.MODEL_FEATURES`, `MODEL_FEATURES_15M`; see `experiments/no_liq.py`) |
 
 **Why `--fresh-hours`.** Tickers in `tickers.txt` are treated as fully labeled, so an unlabeled hour counts as
 "no pump". Fresh hours nobody has reviewed yet — possibly a pump in progress — would teach the model to un-see
@@ -264,6 +265,14 @@ before its entry. Trade sets: the 6-month long backtest (`reports/long_backtest_
 run. Reports terciles per feature with month-by-month stability, a preset risk-on / risk-off combination, and a filter
 "skip the Alert when more than 50 / 60 / 70% of alts are up over 7 days". `--bt PATH` — September run (default: the
 newest market run with turnover ≥ 20 M); `--refresh-btc` — download BTC again. Report: `reports/market_regime.md`.
+
+### `experiments/no_liq.py`
+
+Do the models still need liquidations on the impulse labels? Trains the 15m and hourly LightGBM with and without the
+`liq_*` features on the current labels (same sample rules as `train.py`) and compares: leave-ticker-out (15m Candidate
+tier, hourly events) and a backtest on the backtest coins outside training (Alert = 15m + hourly ≥ 0.75 of its threshold,
+hourly features from own 15m data as in the screener), current and partial exit. Variants: `base`, `noliq` (both models
+without liquidations), `noliq15` (15m without, hourly with). Report: `reports/no_liq.md`.
 
 ### `experiments/trade_count.py`
 

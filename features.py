@@ -70,6 +70,12 @@ INTRADAY_EXCHANGES = ("Binance", "Bybit")
 SHORT_FEATURES = ["ret_bar", "ret_2bar", "oi_chg_bar", "oi_chg_2bar", "oi_accel_1h", "ret_accel_1h",
                   "vol_burst", "buy_ratio_bar", "range_bar", "liq_long_1h_oi", "liq_short_1h_oi"]
 FEATURES_15M = FEATURES + SHORT_FEATURES
+# Ознаки ліквідацій рахуються й лежать у таблиці features, але в моделі з 2026-10-07 не йдуть (train.py --with-liq — повернути):
+# experiments/no_liq.py — на розмітці імпульсів без них не гірше (бектест PF 0.89 проти 0.83), а 15m-оцінка не чекає
+# ~200 викликів Coinalyze. Самі ліквідації збираємо далі (Coinalyze, liq_recorder) — знадобляться (напр., шорт-модель).
+LIQ_FEATURES = [f for f in FEATURES_15M if f.startswith("liq_")]
+MODEL_FEATURES = [f for f in FEATURES if f not in LIQ_FEATURES]
+MODEL_FEATURES_15M = [f for f in FEATURES_15M if f not in LIQ_FEATURES]
 
 
 # ---------------------------------------------------------------- завантаження

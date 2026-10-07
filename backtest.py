@@ -124,8 +124,8 @@ def tiers_and_bars(conn, base: str, m15: dict, m1: dict, days: int) -> tuple[pd.
     if d15.empty:
         return None
     d1 = build_hourly_own(conn, [base], since=since)
-    s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[FEATURES_15M])[:, 1], threshold=m15["threshold"])
-    s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[FEATURES])[:, 1], threshold=m1["threshold"]) \
+    s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[m15["features"]])[:, 1], threshold=m15["threshold"])
+    s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[m1["features"]])[:, 1], threshold=m1["threshold"]) \
         if not d1.empty else pd.DataFrame(columns=["base_asset", "ts", "probability", "threshold"])
     t = tier_frame(s15, s1, m15.get("confirm", {}).get("share", 0.75)).set_index("ts").sort_index()
     start = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=days)

@@ -94,6 +94,13 @@ Dashboard: the **Market ▾** button right of "OI монети / USD" shows the 
 alts up over 7 days with a Cold–Neutral–Hot gauge, a one-week chart (7-day share white, 24-hour grey; hover for the
 hourly value), a one-line hint, alt and BTC metrics, and the backtest vs journal result. Refreshed every 5 minutes.
 
+## Liquidations after scoring (since 2026-10-07)
+
+Models trained without liquidation features (the default from 2026-10-07) do not need them to score: the cycle takes
+exchange data, scores the 15m bar and the hourly confirmation, and only then collects 15m liquidations from Coinalyze
+in the background thread (`collect_liq_15m`, last 3 days; the 5-minute cycle collects 5m liquidations for hot tickers
+after its rolling score). A model that still uses them (`uses_liq`) keeps the old order: liquidations first.
+
 ## Order book and limit hint (since 2026-10-02)
 
 - **OB** — the bid / ask ratio within ±2% of the mid price, Binance + Bybit summed (`orderbook.py`, public order book

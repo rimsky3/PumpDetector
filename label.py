@@ -114,9 +114,9 @@ def model15(conn, base: str) -> dict:
         d1 = build(conn, [base], labels=False)
         if d1.empty:                  # немає 1h Coinalyze (напр., монета з бектесту) — година з власних 15m, як у скринері
             d1 = build_hourly_own(conn, [base])
-        s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[FEATURES_15M])[:, 1],
+        s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[m15["features"]])[:, 1],
                                                 threshold=m15["threshold"])
-        s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[FEATURES])[:, 1],
+        s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[m1["features"]])[:, 1],
                                               threshold=m1["threshold"]) if not d1.empty else \
             pd.DataFrame(columns=["base_asset", "ts", "probability", "threshold"])
         _score_cache.clear()          # тримаємо лише останній тікер — оцінки дешево перерахувати
@@ -303,8 +303,8 @@ def score_tiers(conn, base: str, m15: dict, m1: dict) -> pd.DataFrame:
     if d15.empty:
         return pd.DataFrame()
     d1 = build(conn, [base], labels=False)
-    s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[FEATURES_15M])[:, 1], threshold=m15["threshold"])
-    s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[FEATURES])[:, 1], threshold=m1["threshold"]) \
+    s15 = d15[["base_asset", "ts"]].assign(probability=m15["model"].predict_proba(d15[m15["features"]])[:, 1], threshold=m15["threshold"])
+    s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[m1["features"]])[:, 1], threshold=m1["threshold"]) \
         if not d1.empty else pd.DataFrame(columns=["base_asset", "ts", "probability", "threshold"])
     return tier_frame(s15, s1, m15.get("confirm", {}).get("share", 0.75))
 

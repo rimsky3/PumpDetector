@@ -42,7 +42,7 @@ from sklearn.metrics import average_precision_score, f1_score, precision_recall_
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from features import FEATURES, FEATURES_15M, INTERVAL_15M, build_15m, in_pump, load_pumps, load_raw, query_df
+from features import FEATURES, FEATURES_15M, INTERVAL_15M, MODEL_FEATURES, MODEL_FEATURES_15M, build_15m, in_pump, load_pumps, load_raw, query_df
 from risk import EXIT_BARS_15M, entry_stop, stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
@@ -293,6 +293,8 @@ def main() -> None:
     parser.add_argument("--fresh-hours", type=int, default=FRESH_HOURS,
                         help="скільки останніх годин без розмітки не брати в навчання (0 — брати все)")
     parser.add_argument("--no-15m", action="store_true", help="не навчати 15m-модель (лише годинні)")
+    parser.add_argument("--with-liq", action="store_true",
+                        help="ознаки ліквідацій у моделях (до 2026-10-07; без них не гірше — experiments/no_liq.py)")
     parser.add_argument("--candidate", action="store_true",
                         help=f"зберегти моделі як кандидата в {CANDIDATE_DIR} (у роботу — після порівняння і «Прийняти» в label.py)")
     args = parser.parse_args()
@@ -326,13 +328,14 @@ def main() -> None:
         run = (g["ts"].diff() != H).cumsum()
         extra += [(b, r["ts"].min(), r["ts"].max()) for _, r in g.groupby(run)]
 
-    X, y, groups = df[FEATURES], df["label"].astype(int), df["base_asset"]
+    feats = FEATURES if args.with_liq else MODEL_FEATURES
+    X, y, groups = df[feats], df["label"].astype(int), df["base_asset"]
     tickers = sorted(groups.unique())
     reviewed = sorted(df.loc[df["reviewed"], "base_asset"].unique())    # нерозмічена година тут = «пампу не було»
     # з якими налаштуваннями навчено — у файл моделі, звіт і дашборд, щоб потім було видно, чому модель така
     settings = {
         "fresh_hours": args.fresh_hours, "fresh_cutoff": cutoff if args.fresh_hours else None,
-        "fresh_hours_dropped": n_fresh_dropped, "models": args.models, "n_features": len(FEATURES),
+        "fresh_hours_dropped": n_fresh_dropped, "models": args.models, "n_features": len(feats), "liquidations": bool(args.with_liq),
         "hours": int(len(df)), "pump_hours": int(y.sum()), "tickers": len(tickers),
         "labeled_only_tickers": len(tickers) - len(reviewed),
     }
@@ -383,7 +386,7 @@ def main() -> None:
         f"- `--fresh-hours {args.fresh_hours}`: " + (
             f"{n_fresh_dropped} unlabeled hours after {cutoff:%Y-%m-%d %H:%M} UTC left out of training"
             if args.fresh_hours else "all hours used, including fresh unlabeled ones"),
-        f"- models: {', '.join(args.models)}; {len(FEATURES)} features; saved for the screener: {'no' if args.no_save else 'yes'}",
+        f"- models: {', '.join(args.models)}; {len(feats)} features ({'with' if args.with_liq else 'without'} liquidations); saved for the screener: {'no' if args.no_save else 'yes'}",
     ]
     for name, t in per_ticker.items():
         t.index.name = "ticker"
@@ -417,7 +420,7 @@ def main() -> None:
             bundle = {
                 "name": name,
                 "model": PROBA_MODELS[name]().fit(X, y),
-                "features": FEATURES,
+                "features": feats,
                 "threshold": best_f1_threshold(y.to_numpy(), oof[name]),
                 "trained_at": now,
                 "tickers": reviewed,
@@ -461,7 +464,8 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
     if cutoff is not None:
         d = d[(d["ts"] <= cutoff) | d["pattern_type"].notna()]
     d = d.reset_index(drop=True)
-    X, y, groups = d[FEATURES_15M], d["label"].astype(int), d["base_asset"]
+    feats15 = FEATURES_15M if args.with_liq else MODEL_FEATURES_15M
+    X, y, groups = d[feats15], d["label"].astype(int), d["base_asset"]
     print(f"  {len(d)} барів 15m, {groups.nunique()} тікерів")
     res = leave_ticker_out("lightgbm", X, y, groups)
     s15 = (res["score"] / res["threshold"]).to_numpy()
@@ -492,7 +496,7 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
     oof15["tier"] = np.where(s15 >= 1, np.where(oof15["s1h"] >= CONFIRM_SHARE, "alert", "candidate"), "calm")
     print(summary.to_string())
     report = ["", "## 15m model and signal tiers", "",
-              f"LightGBM on {len(d)} 15-minute bars ({len(FEATURES_15M)} features: the hourly set with the same wall-clock "
+              f"LightGBM on {len(d)} 15-minute bars ({len(feats15)} features: the hourly set with the same wall-clock "
               "windows plus short bar features), leave-ticker-out with nested threshold. *Candidate* = 15m model alone; "
               f"*alert* = 15m signal confirmed by the hourly LightGBM at ≥ {CONFIRM_SHARE:g} of its threshold "
               "(score of the last closed hour). Event delays are in hours from the labeled start; "
@@ -501,7 +505,7 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
     if not args.no_save:
         bundle = {
             "name": M15_NAME, "tf": "15m", "bar_minutes": 15,
-            "model": make_lightgbm().fit(X, y), "features": FEATURES_15M,
+            "model": make_lightgbm().fit(X, y), "features": feats15,
             "threshold": best_f1_threshold(y.to_numpy(), res["score"].to_numpy()),
             "trained_at": now, "tickers": sorted(reviewed & set(bases)),
             "data_end": min(d["ts"].max(), cutoff) if cutoff is not None else d["ts"].max(),
@@ -512,7 +516,7 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
             "risk": risk15, "exit_bars": EXIT_BARS_15M,
             "confirm": {"model": "lightgbm", "share": CONFIRM_SHARE},
             "settings": {"fresh_hours": args.fresh_hours, "bars": int(len(d)), "tickers": int(groups.nunique()),
-                         "n_features": len(FEATURES_15M), "from_1h_start": True, "dropped_before_1h": dropped},
+                         "n_features": len(feats15), "liquidations": bool(args.with_liq), "from_1h_start": True, "dropped_before_1h": dropped},
         }
         bundle["labels_fp"] = labels_fp or {}
         report += ["", "### 15m LightGBM gain by feature group", "", group_table(gain_shares(bundle))]
@@ -526,8 +530,8 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
 def load_model(name: str) -> dict:
     """Збережена модель з метаданими: model, features, threshold, trained_at, validation."""
     bundle = joblib.load(model_path(name))
-    expected = FEATURES_15M if bundle.get("tf") == "15m" else FEATURES
-    if bundle["features"] != expected:
+    expected = (FEATURES_15M, MODEL_FEATURES_15M) if bundle.get("tf") == "15m" else (FEATURES, MODEL_FEATURES)
+    if bundle["features"] not in expected:            # з ліквідаціями (до 2026-10-07) або без
         raise ValueError(f"{name}: модель навчена на іншому наборі ознак — перезапусти python train.py")
     return bundle
 

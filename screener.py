@@ -114,8 +114,23 @@ def first_gap_15m(conn, bases: list[str]) -> dict:
     return out
 
 
-def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print) -> None:
+LIQ_TAIL_DAYS = 3                # 15m-ліквідації після оцінки: виклик Coinalyze той самий (за символом), тож 3 дні з запасом
+
+
+def uses_liq(*models: dict | None) -> bool:
+    """Чи бере хоч одна модель ознаки ліквідацій (до 2026-10-07 — так; train.py без --with-liq — ні)."""
+    return any(f.startswith("liq_") for m in models if m for f in m.get("features", []))
+
+
+def collect_liq_15m(conn, client: Coinalyze, bases: list[str]) -> None:
+    """15m-ліквідації Coinalyze — ПІСЛЯ оцінки (моделі без ліквідацій їх не чекають), щоб історія накопичувалась далі:
+    ліквідації знадобляться (шорт-модель, звірка з власним записувачем)."""
+    collect_liquidations(client, conn, bases, ["15m"], LIQ_TAIL_DAYS, log=lambda m: None)
+
+
+def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print, liq: bool = True) -> None:
     """Свіжі 15m/5m-дані з бірж і 15m-ліквідації з Coinalyze. 5m моделі не потрібен — лише графіку дашборда.
+    liq=False — без ліквідацій (моделі без ліквідацій: оцінка не чекає Coinalyze, ліквідації — collect_liq_15m після).
 
     Скільки брати — за фактичним пропуском: від останнього бару в базі до зараз плюс запас (не менше 6 год),
     новому тікеру — 10 днів. Так нічний простій ноутбука дозаповнюється повністю, без дірок посередині.
@@ -133,7 +148,7 @@ def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print) -> N
     quiet = lambda m: log(m) if "помилка" in m else None  # noqa: E731
     for days, group in sorted(groups.items()):
         fetch_exchange.collect(conn, group, ["15m", "5m"], days, log=quiet)
-        if client is not None:
+        if client is not None and liq:
             collect_liquidations(client, conn, group, ["15m"], days, log=lambda m: None)
 
 
@@ -215,9 +230,11 @@ def quick_cycle(conn, client: Coinalyze | None, bases: list[str], m15: dict, fet
         short = [b for b in hot if b not in start or start[b] > pd.Timestamp(started) - pd.Timedelta(days=8, hours=6)]
         if short:
             fetch_exchange.collect(conn, short, ["5m"], 9, log=lambda m: None, exchanges=list(INTRADAY_EXCHANGES))
-        if client is not None:
+        if client is not None and uses_liq(m15):
             collect_liquidations(client, conn, hot, ["5m"], LIQ5_DAYS, log=lambda m: None)
     s, open_ = score_15m_rolling(conn, hot, m15)
+    if fetch and client is not None and not uses_liq(m15):     # модель без ліквідацій — збір після оцінки (для історії)
+        collect_liquidations(client, conn, hot, ["5m"], LIQ5_DAYS, log=lambda m: None)
     try:
         orderbook.record(conn, hot)       # стакан гарячих — кожні 5 хв (історія «за 15 хв» і OB у момент сигналу)
     except Exception as e:
@@ -493,9 +510,10 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
         first = hot_bases(conn, bases)
         groups = [g for g in (first, [b for b in bases if b not in set(first)]) if g]
         parts, last15 = [], last_closed_15m()
+        need_liq = uses_liq(m15, *models)           # моделі без ліквідацій (з 2026-10-07): оцінка не чекає Coinalyze
         for group in groups:
             if fetch:
-                update_15m(conn, client, group)
+                update_15m(conn, client, group, liq=need_liq)
             s, last15 = score_15m(conn, group, m15)
             parts.append(s)
             mine = [b for b in group if b in own]
@@ -507,6 +525,12 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
                 print(f"  гарячі першими ({', '.join(first)}): оцінено за {(datetime.now(timezone.utc) - started).seconds} с")
         parts = [p for p in parts if len(p)]
         s15 = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+        if fetch and client is not None and not need_liq:
+            # ліквідації — далі збираємо (знадобляться), але вже після оцінки: у фоні, якщо він є
+            if BG is not None:
+                BG.submit("15m-ліквідації", lambda c, b: collect_liq_15m(c, BG.client, b), list(bases))
+            else:
+                collect_liq_15m(conn, client, bases)
         # патерни футпрінту b / p («залочка») на щойно закритому барі — лише в тікерів з Кандидатом / Alert за 6 год
         try:
             footprint.detect(conn, bases, last15, m15)
