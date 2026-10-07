@@ -598,6 +598,11 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   прибрано, st.days лишився з localStorage pd-days): app/js/footprint.js (PDFootprint), /api/footprint?symbol&tf&from&to
   (≤ 3 доби, footprint.levels — 5m trade_bars, сума до ТФ), рівні 0.1% злиті до ≥ 3 px, POC у рамці, числа від 70 px свічки,
   свічки контурні при FP (hollow), localStorage pd-fp; при віддаленому графіку — підказка «наблизь».
+  ПІСЛЯ ДЕПЛОЮ 07.10: (1) footprint.context_frame брав max(model_version) по ВСІЙ signals — хвилини, скринер 26 с і
+  обрив циклу → тепер версія серед рядків тікерів/проміжку (CTE w, індекс base_asset, ts); (2) дозаповнення тримало день
+  ETH/PEPE цілком у пам'яті → OOM у контейнері скринера (вбило дозаповнення) → архів на диск, CSV частинами CHUNK = 500k
+  (пік ETH 68 МБ), WORKERS = 2, у дочірньому процесі RLIMIT_DATA 900 МБ; (3) мітки шукаються на всьому періоді (перерваний
+  прогін нічого не губить). Git Bash: шлях до ключа /d/keys/pd.pem (D:\keys\… він «з'їдає»).
   МОДЕЛЬ ВХОДУ ВІДКИНУТО (experiments/entry_model.py): AUC 0.50, топ-оцінки −0.07R; правило b на тому ж тесті +0.08R, PF 1.13.
   Далі: 6 міс. перевірка b на місячних архівах; live-статистика міток через 2–3 тижні.
 - ЗАПИСУВАЧ УГОД (2026-10-07, у роботі з мітками b / p; футпрінт fp_lvl0/fp_buy/fp_sell — з 07.10): trade_recorder.py, контейнер traderec — WebSocket Binance

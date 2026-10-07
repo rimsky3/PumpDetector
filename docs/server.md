@@ -10,7 +10,7 @@ labeling, training, backtests and experiments stay on the laptop.
 | Provider | Vultr, Frankfurt — not a US region: Binance and Bybit block US IPs |
 | Plan | Regular Cloud Compute `vc2-2c-4gb`: 2 shared vCPU (no CPU credits), 4 GB RAM (+ 8 GB swap), 80 GB SSD, $20/month; no provider backups (the laptop copy from `pull_db.sh` is the backup) |
 | OS | Ubuntu 24.04 LTS, Docker 29 + Compose v2, fail2ban on SSH |
-| Access | `ssh -p 2222 -i D:\keys\pd.pem ubuntu@45.76.90.13` (port 2222: the owner's ISP blocks outbound 22; set up at first boot by `tools/vultr_startup.sh`, which also creates the `ubuntu` user) |
+| Access | `ssh -p 2222 -i /d/keys/pd.pem ubuntu@45.76.90.13` from Git Bash (it strips backslashes, so `D:\keys\pd.pem` becomes `D:keyspd.pem`; in PowerShell / cmd use `D:\keys\pd.pem`) (port 2222: the owner's ISP blocks outbound 22; set up at first boot by `tools/vultr_startup.sh`, which also creates the `ubuntu` user) |
 | Code | `/home/ubuntu/pd` — a plain copy of the project (no git checkout, no GitHub credentials on the server) |
 
 ## Containers (`docker-compose.server.yml`)

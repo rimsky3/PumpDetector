@@ -382,9 +382,17 @@ class FootprintHistory:
         self.day = None
         self.proc = None
 
+    MEM_LIMIT = 900 * 2 ** 20       # процес дозаповнення ділить ліміт пам'яті контейнера зі скринером: перевищить —
+                                    # MemoryError у ньому, а не OOM-кіл контейнера (07.10: ETH / PEPE цілком у пам'яті)
+
     def _spawn(self, args: list[str]) -> None:
         import subprocess
-        kw = {"preexec_fn": lambda: os.nice(10)} if hasattr(os, "nice") else {}
+
+        def limits():                 # у дочірньому процесі (лише Linux / сервер): нижчий пріоритет і стеля пам'яті
+            import resource
+            os.nice(10)
+            resource.setrlimit(resource.RLIMIT_DATA, (self.MEM_LIMIT, self.MEM_LIMIT))
+        kw = {"preexec_fn": limits} if hasattr(os, "nice") else {}
         self.proc = subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_backfill.py"),
                                       *args], **kw)
         print(f"  історія футпрінту: запущено trade_backfill.py {' '.join(args[:6])}{' …' if len(args) > 6 else ''}")

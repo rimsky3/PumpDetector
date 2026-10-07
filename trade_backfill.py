@@ -20,9 +20,9 @@ trade_backfill.py — історія футпрінту з архіву угод
 """
 
 import argparse
-import io
 import os
 import sys
+import tempfile
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor
@@ -42,39 +42,77 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 URL = "https://data.binance.vision/data/futures/um/daily/aggTrades/{s}/{s}-aggTrades-{d}.zip"
 DAYS = 30
 FULL_DAY = 280            # з 288 5-хв барів: день вважаємо вже заповненим
-WORKERS = 4
+WORKERS = 2               # паралельних днів: великі монети (ETH, PEPE) — мільйони угод на день
+CHUNK = 500_000           # угод за раз: пам'ять обмежена незалежно від розміру дня
 NB = len(SIZE_BOUNDS) + 1
 _session = requests.Session()
 
 
+def _download(sym: str, day: pd.Timestamp) -> str | None:
+    """Архів дня — у тимчасовий файл на диску (не в пам'ять: у великих монет це сотні МБ). None — файлу немає."""
+    with _session.get(URL.format(s=quote(sym), d=f"{day:%Y-%m-%d}"), timeout=180, stream=True) as r:
+        if r.status_code == 404:
+            return None
+        r.raise_for_status()
+        f = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        with f:
+            for part in r.iter_content(1 << 20):
+                f.write(part)
+    return f.name
+
+
 def archive_rows(sym: str, day: pd.Timestamp) -> list[tuple] | None:
-    """Один день угод Binance → рядки trade_bars (як у записувача). None — файлу немає (ще не викладено / не торгувався)."""
-    r = _session.get(URL.format(s=quote(sym), d=f"{day:%Y-%m-%d}"), timeout=180)
-    if r.status_code == 404:
+    """Один день угод Binance → рядки trade_bars (як у записувача). None — файлу немає (ще не викладено / не торгувався).
+    CSV читається частинами по CHUNK угод: проміжні суми по барах / рівнях складаються, тож пам'ять не залежить від
+    розміру дня (07.10: ETH / PEPE цілком у пам'яті — 1.4 ГБ і OOM у контейнері скринера)."""
+    path = _download(sym, day)
+    if path is None:
         return None
-    r.raise_for_status()
-    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
-        raw = z.read(z.namelist()[0])
-    head = raw[:20].decode("utf-8", "ignore")
-    t = pd.read_csv(io.BytesIO(raw), header=0 if head.startswith("agg_trade_id") else None,
-                    names=["id", "price", "qty", "first", "last", "time", "ibm"], usecols=["price", "qty", "time", "ibm"])
-    if t.empty:
+    sides, ks, fps = [], [], []
+    try:
+        with zipfile.ZipFile(path) as z:
+            name = z.namelist()[0]
+            with z.open(name) as fh:
+                head = fh.read(20).decode("utf-8", "ignore")
+            with z.open(name) as fh:
+                reader = pd.read_csv(fh, header=0 if head.startswith("agg_trade_id") else None, chunksize=CHUNK,
+                                     names=["id", "price", "qty", "first", "last", "time", "ibm"], usecols=["price", "qty", "time", "ibm"])
+                for t in reader:
+                    ibm = t["ibm"] if t["ibm"].dtype == bool else t["ibm"].astype(str).str.lower().eq("true")
+                    p = t["price"].to_numpy(float)
+                    d = pd.DataFrame({"bar": t["time"].to_numpy() // 300_000 * 300, "buy": ~ibm.to_numpy(),
+                                      "usd": p * t["qty"].to_numpy(float), "lvl": np.floor(np.log(p) / FP.LVL).astype(np.int64)})
+                    d["k"] = np.searchsorted(SIZE_BOUNDS, d["usd"], side="right")      # = bisect_right у записувача
+                    sides.append(d.groupby(["bar", "buy"])["usd"].agg(["count", "sum", "max"]))
+                    ks.append(d.groupby(["bar", "buy", "k"])["usd"].agg(["count", "sum"]))
+                    fps.append(d.groupby(["bar", "lvl", "buy"])["usd"].sum())
+    finally:
+        os.remove(path)
+    if not sides:
         return []
-    ibm = t["ibm"] if t["ibm"].dtype == bool else t["ibm"].astype(str).str.lower().eq("true")
-    p = t["price"].to_numpy(float)
-    d = pd.DataFrame({"bar": t["time"].to_numpy() // 300_000 * 300, "buy": ~ibm.to_numpy(), "usd": p * t["qty"].to_numpy(float),
-                      "lvl": np.floor(np.log(p) / FP.LVL).astype(np.int64)})
-    d["k"] = np.searchsorted(SIZE_BOUNDS, d["usd"], side="right")      # = bisect_right у записувача
+    sd = pd.concat(sides).groupby(level=[0, 1]).agg({"count": "sum", "sum": "sum", "max": "max"})
+    kd = pd.concat(ks).groupby(level=[0, 1, 2]).sum()
+    fd = pd.concat(fps).groupby(level=[0, 1, 2]).sum()
     rows = []
-    for bar, g in d.groupby("bar"):
-        b, s = g[g["buy"]], g[~g["buy"]]
-        bn, sn = np.bincount(b["k"], minlength=NB), np.bincount(s["k"], minlength=NB)
-        bu, su = np.bincount(b["k"], weights=b["usd"], minlength=NB), np.bincount(s["k"], weights=s["usd"], minlength=NB)
-        lo, hi = int(g["lvl"].min()), int(g["lvl"].max())
-        fb = np.bincount(b["lvl"] - lo, weights=b["usd"], minlength=hi - lo + 1)
-        fs = np.bincount(s["lvl"] - lo, weights=s["usd"], minlength=hi - lo + 1)
-        rows.append((datetime.fromtimestamp(int(bar), tz=timezone.utc), len(b), len(s), float(b["usd"].sum()), float(s["usd"].sum()),
-                     float(b["usd"].max()) if len(b) else None, float(s["usd"].max()) if len(s) else None,
+    for bar in sd.index.get_level_values(0).unique():
+        side = {buy: sd.loc[(bar, buy)] if (bar, buy) in sd.index else None for buy in (True, False)}
+        bn, sn, bu, su = (np.zeros(NB, int), np.zeros(NB, int), np.zeros(NB), np.zeros(NB))
+        for (buy, k), r in kd.loc[bar].iterrows():
+            if buy:
+                bn[k], bu[k] = r["count"], r["sum"]
+            else:
+                sn[k], su[k] = r["count"], r["sum"]
+        f = fd.loc[bar]
+        lvls = f.index.get_level_values(0)
+        lo, hi = int(lvls.min()), int(lvls.max())
+        fb, fs = np.zeros(hi - lo + 1), np.zeros(hi - lo + 1)
+        for (lv, buy), v in f.items():
+            (fb if buy else fs)[lv - lo] += v
+        nb = int(side[True]["count"]) if side[True] is not None else 0
+        ns = int(side[False]["count"]) if side[False] is not None else 0
+        rows.append((datetime.fromtimestamp(int(bar), tz=timezone.utc), nb, ns,
+                     float(side[True]["sum"]) if nb else 0.0, float(side[False]["sum"]) if ns else 0.0,
+                     float(side[True]["max"]) if nb else None, float(side[False]["max"]) if ns else None,
                      bn.tolist(), sn.tolist(), bu.tolist(), su.tolist(), lo, fb.tolist(), fs.tolist()))
     return rows
 
