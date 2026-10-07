@@ -29,6 +29,7 @@ import pandas as pd
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 CLOSES_FILE = os.path.join(ROOT, "reports", "market_closes.pkl")
+QVOL_FILE = os.path.join(ROOT, "reports", "market_qvol.pkl")   # $-оборот тих самих годин (Amihud ILLIQ у movers.py)
 H = pd.Timedelta(hours=1)
 HISTORY_DAYS = 60
 MIN_TURNOVER, MAX_TURNOVER = 5e6, 1e9      # «альти»: досить ліквідні, але без BTC / ETH / SOL / XRP / ZEC-гігантів
@@ -120,8 +121,8 @@ def universe() -> list[str]:
                   and s not in NOT_ALTS)
 
 
-def _klines(sym: str, start: pd.Timestamp, now: pd.Timestamp, lim: _Limiter) -> pd.Series:
-    """Закриття 1h-свічок з start (включно) до останньої закритої години."""
+def _klines(sym: str, start: pd.Timestamp, now: pd.Timestamp, lim: _Limiter) -> pd.DataFrame:
+    """1h-свічки з start (включно) до останньої закритої години: c — закриття, q — оборот у $ (quote volume)."""
     import exchanges as X
     out, t = [], int(start.timestamp() * 1000)
     end = int(now.timestamp() * 1000)
@@ -135,22 +136,39 @@ def _klines(sym: str, start: pd.Timestamp, now: pd.Timestamp, lim: _Limiter) -> 
             break                                   # символ зник / помилка — без нього
         if not page:
             break
-        out += [(r[0], float(r[4])) for r in page]
+        out += [(r[0], float(r[4]), float(r[7])) for r in page]
         if len(page) < limit:
             break
         t = page[-1][0] + 3_600_000
     if not out:
-        return pd.Series(dtype=float)
-    s = pd.Series({pd.Timestamp(ms, unit="ms", tz="UTC"): c for ms, c in out})
-    return s[s.index + H <= now]                    # лише закриті години
+        return pd.DataFrame(columns=["c", "q"], dtype=float)
+    df = pd.DataFrame(out, columns=["ms", "c", "q"])
+    df.index = pd.to_datetime(df.pop("ms"), unit="ms", utc=True)
+    df = df[~df.index.duplicated(keep="last")]
+    return df[df.index + H <= now]                  # лише закриті години
 
 
-def load_closes() -> pd.DataFrame:
+def _load(path: str) -> pd.DataFrame:
     try:
-        with open(CLOSES_FILE, "rb") as f:
+        with open(path, "rb") as f:
             return pickle.load(f)
     except (OSError, EOFError, pickle.UnpicklingError):
         return pd.DataFrame()
+
+
+def load_closes() -> pd.DataFrame:
+    return _load(CLOSES_FILE)
+
+
+def load_qvol() -> pd.DataFrame:
+    return _load(QVOL_FILE)
+
+
+def _save(df: pd.DataFrame, path: str) -> None:
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "wb") as f:
+        pickle.dump(df, f)
+    os.replace(path + ".tmp", path)
 
 
 def update(conn, log=print) -> int:
@@ -158,30 +176,37 @@ def update(conn, log=print) -> int:
     Повертає кількість записаних годин."""
     ensure_table(conn)
     now = pd.Timestamp(datetime.now(timezone.utc))
-    closes = load_closes()
+    closes, qvol = load_closes(), load_qvol()
     syms = universe() + [BTC]
     first = closes.empty
     hist_start = (now - pd.Timedelta(days=HISTORY_DAYS)).floor("h")
     lim = _Limiter(WEIGHT_PER_SEC)
 
-    def job(sym):
-        have = closes[sym].dropna() if sym in closes else pd.Series(dtype=float)
-        start = have.index.max() + H if len(have) else hist_start
-        return sym, _klines(sym, start, now, lim)
+    def nxt(df, sym):
+        have = df[sym].dropna() if sym in df else pd.Series(dtype=float)
+        return have.index.max() + H if len(have) else hist_start
+
+    def job(sym):                                   # оборот з'явився пізніше за закриття — тоді дотягуємо з його початку
+        return sym, _klines(sym, min(nxt(closes, sym), nxt(qvol, sym)), now, lim)
 
     t0 = time.time()
     with ThreadPoolExecutor(WORKERS) as pool:
         got = dict(pool.map(job, syms))
-    new = pd.DataFrame({s: v for s, v in got.items() if len(v)})
-    closes = new if closes.empty else pd.concat([closes, new]).groupby(level=0).last()
-    closes = closes[closes.index >= hist_start].sort_index()
     keep = set(syms) | {BTC}                        # монети, що випали з універсуму, — більше не рахуємо
-    closes = closes[[c for c in closes.columns if c in keep]]
-    os.makedirs(os.path.dirname(CLOSES_FILE), exist_ok=True)
-    tmp = CLOSES_FILE + ".tmp"
-    with open(tmp, "wb") as f:
-        pickle.dump(closes, f)
-    os.replace(tmp, CLOSES_FILE)
+
+    def merge(old, col):
+        new = pd.DataFrame({s: v[col] for s, v in got.items() if len(v)})
+        df = new if old.empty else pd.concat([old, new]).groupby(level=0).last()
+        df = df[df.index >= hist_start].sort_index()
+        return df[[c for c in df.columns if c in keep]]
+    closes, qvol = merge(closes, "c"), merge(qvol, "q")
+    _save(closes, CLOSES_FILE)
+    _save(qvol, QVOL_FILE)
+    try:                                            # кнопка «Movers» у дашборді — з тих самих годин
+        import movers
+        movers.save(closes, qvol)
+    except Exception as e:
+        log(f"  ! movers: {type(e).__name__}: {e}")
 
     f = features(closes)
     if not first:

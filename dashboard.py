@@ -43,6 +43,7 @@ from screener import (FETCH_DAYS, INTRADAY_DAYS, SIGNALS_STAMP, STATUS_FILE, WAT
 import fetch_exchange
 import footprint
 import market
+import movers
 import orderbook
 import volume_profile
 import wake
@@ -1299,6 +1300,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, scan_view(q))
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
+        if url.path == "/api/movers":          # монети з власним рухом (кнопка «Movers»): reports/movers.json від market.py
+            return self._send(200, movers.load())
         if url.path == "/api/market":          # стан ринку альтів (кнопка «Market» над графіком): market_breadth
             return self._route(lambda c: market.api(c, int(q.get("days", 7))))
         if url.path == "/api/book":            # біди / аски ±2% наживо (Binance + Bybit), кеш кілька секунд

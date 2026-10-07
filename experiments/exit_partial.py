@@ -52,7 +52,7 @@ def simulate(h: pd.DataFrame, score: pd.Series, sl: float, exit_bars: int, tp: f
         if lo[i] <= tr["stop"]:                                            # стоп (консервативно — раніше за ціль у тому ж барі)
             rest = tr["stop"] / e - 1
             out.append({"ret": tr["part"] + (1 - (frac if tr["part"] else 0)) * rest - FEE, "reason": "stop",
-                        "took": bool(tr["part"]), "bars": i - tr["i0"]})
+                        "took": bool(tr["part"]), "bars": i - tr["i0"], "ts": h.index[tr["i0"]]})
             tr = None
             continue
         if tr["tp"] is not None and not tr["part"] and hi[i] >= tr["tp"]:  # частковий вихід на цілі
@@ -63,7 +63,7 @@ def simulate(h: pd.DataFrame, score: pd.Series, sl: float, exit_bars: int, tp: f
         if below >= exit_bars:
             rest = c[i] / e - 1
             out.append({"ret": tr["part"] + (1 - (frac if tr["part"] else 0)) * rest - FEE, "reason": "model",
-                        "took": bool(tr["part"]), "bars": i - tr["i0"]})
+                        "took": bool(tr["part"]), "bars": i - tr["i0"], "ts": h.index[tr["i0"]]})
             tr = None
     return out
 

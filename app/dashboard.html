@@ -127,6 +127,31 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .mk-row .pos { color: var(--ok); } .mk-row .neg { color: var(--hot); }
 .mk-foot { border-top: 1px solid var(--line); padding-top: 8px; display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; font-size: 11px; color: var(--fg3); line-height: 1.4; }
 @media (prefers-reduced-motion: reduce) { .mk-btn svg { transition: none; } }
+/* «Movers ▾» — монети з власним рухом (movers.py): таблиця, варіант A з макета */
+.mv-btn .mk-dot { background: #c792ea; } .mv-btn .mk-st { color: #c792ea; }
+.mv-pop { width: 640px; }
+.mv-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mv-ttl { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #c792ea; }
+.mv-seg { display: inline-flex; gap: 3px; padding: 2px; background: var(--side); border-radius: 7px; }
+.mv-seg button { height: 24px; border: 0; border-radius: 5px; background: transparent; color: var(--fg2); font-size: 11.5px; padding: 0 9px; }
+.mv-seg button[aria-pressed="true"] { background: var(--line2); color: var(--fg); }
+.mv-idx { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11.5px; color: var(--fg2); padding: 7px 9px; background: var(--side); border-radius: 7px; }
+.mv-idx b { color: var(--fg); font-weight: 500; }
+.mv-tbl { overflow-x: auto; max-height: 420px; overflow-y: auto; }
+.mv-tbl table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.mv-tbl th, .mv-tbl td { padding: 5px 6px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.mv-tbl th { position: sticky; top: 0; background: var(--card); color: var(--fg3); font-weight: 500; font-size: 10.5px; letter-spacing: .03em; text-transform: uppercase; cursor: pointer; user-select: none; }
+.mv-tbl th:first-child, .mv-tbl td:first-child { text-align: left; }
+.mv-tbl th[aria-sort="descending"]::after { content: " ↓"; } .mv-tbl th[aria-sort="ascending"]::after { content: " ↑"; }
+.mv-tbl tbody tr:hover { background: var(--row); } .mv-tbl tbody tr.open { cursor: pointer; }
+.mv-sym { font-weight: 500; color: var(--fg); }
+.mv-tag { font-size: 9.5px; font-weight: 600; letter-spacing: .05em; padding: 1px 5px; border-radius: 3px; margin-left: 6px; background: #2a2a26; color: var(--fg2); }
+.mv-z { display: inline-block; min-width: 46px; padding: 1px 6px; border-radius: 4px; font-weight: 500; }
+.mv-liq { font-size: 10.5px; font-weight: 500; padding: 1px 6px; border-radius: 4px; background: var(--line); color: var(--fg2); }
+.mv-liq.deep { background: var(--ok-bg); color: var(--ok); } .mv-liq.thin { background: var(--cand-bg); color: var(--amber); } .mv-liq.vthin { background: var(--alert-bg); color: var(--warm); }
+.mv-add { border: 1px solid var(--line2); background: transparent; color: var(--fg2); border-radius: 5px; font-size: 12px; line-height: 1; padding: 2px 6px; }
+.mv-add:hover { color: var(--fg); border-color: var(--fg3); }
+.mv-tbl .pos { color: var(--ok); } .mv-tbl .neg { color: var(--hot); }
 .tool { height: 30px; width: 34px; display: flex; align-items: center; justify-content: center; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); }
 .tool[aria-pressed="true"] { background: #2962ff; border-color: #2962ff; color: #fff; }
 .fptool { font-size: 12px; font-weight: 600; letter-spacing: .02em; }
@@ -528,6 +553,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           <button class="mk-btn" id="mkBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mkPop"
                   title="Стан ринку альтів: частка альтів, дорожчих ніж тиждень тому"><span class="mk-dot" aria-hidden="true"></span>Market: <span class="mk-st" id="mkState">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           <div class="mk-pop" id="mkPop" role="dialog" aria-label="Стан ринку альтів" hidden></div>
+        </div>
+        <div class="mk-wrap mv-wrap">
+          <button class="mk-btn mv-btn" id="mvBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mvPop"
+                  title="Монети з власним (ідіосинкратичним) рухом — рух, не пояснений ринком альтів"><span class="mk-dot" aria-hidden="true"></span>Movers <span class="mk-st" id="mvCount">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <div class="mk-pop mv-pop" id="mvPop" role="dialog" aria-label="Монети з власним рухом" hidden></div>
         </div>
       </div>
     </div>
@@ -2137,10 +2167,105 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (open) { renderMarketPop(); placeMarket(); }
   };
   addEventListener("resize", () => { if (MK.open) placeMarket(); });
-  $("mkBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleMarket(!MK.open); });
-  document.addEventListener("click", (e) => { if (MK.open && !e.target.closest(".mk-wrap")) toggleMarket(false); });
+  $("mkBtn").addEventListener("click", (e) => { e.stopPropagation(); if (!MK.open && MV.open) toggleMovers(false); toggleMarket(!MK.open); });
+  document.addEventListener("click", (e) => { if (MK.open && !e.target.closest(".mk-wrap:not(.mv-wrap)")) toggleMarket(false); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && MK.open) { toggleMarket(false); $("mkBtn").focus(); } });
   loadMarket(); setInterval(loadMarket, 5 * 60 * 1000);
+
+  // ---------- «Movers ▾»: монети з власним (ідіосинкратичним) рухом (movers.py; market.py щогодини о HH:01) ----------
+  // Опис ринку, а не сигнал моделі; пояснення кожної колонки — notes/movers.md і title заголовків.
+  const MV = { data: null, open: false, h: String(LS.get("pd-mv-h", "4")), sort: { k: "z", dir: -1 } };
+  const MV_COLS = [
+    ["base", "Symbol", "Монета. IN LIST — уже в списку (клік — графік); ＋ — додати у watchlist"],
+    ["idio", "Idio. ret", "Idiosyncratic (residual) return — власний рух: уся доходність мінус β × індекс альтів (ALT-EW)"],
+    ["z", "Resid. z", "Residual z-score — власний рух у σ залишків моделі монети: наскільки він незвичний (|z| ≥ 2.5 — «mover»)"],
+    ["tot", "Total", "Total return — уся доходність монети за вибраний горизонт"],
+    ["sys", "Syst. ret", "Systematic return — частина руху, яку пояснює ринок: β × доходність ALT-EW"],
+    ["beta", "Beta", "Beta — чутливість до індексу альтів (OLS годинних доходностей за 7 днів, без останньої доби): β 1.5 — ринок +1% → монета в середньому +1.5%"],
+    ["r2", "R²", "R² — частка руху монети, яку пояснює ринок (0…1); низький R² — монета живе своїм життям"],
+    ["illiq", "ILLIQ vs 30D", "Amihud illiquidity — ціновий вплив на $ обороту за 24 год відносно норми монети за 30 днів: Thin — легше штовхнути, Deep — глибше за норму (часто сплеск обороту)"],
+    ["turn", "24H turnover", "$-оборот монети на Binance за 24 год"],
+  ];
+  const mvPct = (v) => v == null ? "—" : fmtPct(v);
+  const mvVal = (r, k, h) => ({ base: r.base, idio: r["idio_" + h], z: r["z_" + h] == null ? null : Math.abs(r["z_" + h]), tot: r["tot_" + h],
+                                 sys: r["sys_" + h], beta: r.beta, r2: r.r2, illiq: r.illiq_x, turn: r.turnover_24h })[k];
+  const mvInList = () => new Set([...(st.list?.rows || []).map((r) => r.ticker), ...(st.list?.pending || []).map((x) => x.ticker)]);
+  const mvZbg = (z) => { const a = Math.min(1, Math.abs(z) / 6); return z >= 0 ? "rgba(199,146,234," + (0.15 + 0.55 * a) + ")" : "rgba(226,75,74," + (0.12 + 0.45 * a) + ")"; };
+  const renderMoversBtn = () => {
+    const d = MV.data;
+    $("mvCount").textContent = !d || d.error ? "—" : String(d["movers_" + MV.h] ?? "—");
+    $("mvBtn").title = d && !d.error ? "Монет з |Resid. z| ≥ " + d.z_mover + " за " + MV.h + " год: " + d["movers_" + MV.h] + " (з " + d.n + ")" : "Монети з власним рухом";
+  };
+  const renderMoversPop = () => {
+    const p = $("mvPop"), d = MV.data; p.replaceChildren();
+    if (!d || d.error) { p.appendChild(el("div", "mk-note", d?.error || "Завантаження…")); return; }
+    const h = MV.h, head = el("div", "mv-head");
+    head.appendChild(el("span", "mv-ttl", "Idiosyncratic movers"));
+    const seg = el("div", "mv-seg");
+    ["1", "4", "24"].forEach((x) => { const b = el("button", "", x + "H"); b.setAttribute("aria-pressed", String(x === h));
+      b.addEventListener("click", (e) => { e.stopPropagation(); MV.h = x; LS.set("pd-mv-h", x); renderMoversBtn(); renderMoversPop(); }); seg.appendChild(b); });
+    head.appendChild(seg);
+    const when = new Date(d.ts * 1000).toISOString().slice(5, 16).replace("T", " ");
+    const ix = el("div", "mv-idx");
+    ix.appendChild(document.createTextNode("ALT-EW index (" + d.n + "):"));
+    ["1", "4", "24"].forEach((x) => { const sp = el("span"); sp.append(x + "H ", el("b", (d.index[x] ?? 0) >= 0 ? "pos" : "neg", mvPct(d.index[x]))); ix.appendChild(sp); });
+    ix.appendChild(el("span", "small", "β window " + Math.round(d.beta_window_h / 24) + "D · 1H bars · " + when + " UTC"));
+    const inList = mvInList(), rows = (d.rows[h] || []).slice();
+    const s = MV.sort;
+    const num = (v) => v == null ? -Infinity : v;
+    rows.sort((a, b) => { const x = mvVal(a, s.k, h), y = mvVal(b, s.k, h);
+      if (s.k === "base") return (x > y ? 1 : x < y ? -1 : 0) * s.dir;
+      return (num(x) > num(y) ? 1 : num(x) < num(y) ? -1 : 0) * s.dir; });
+    const t = el("table"), trh = el("tr");
+    MV_COLS.forEach(([k, name, hint]) => { const c = el("th", "", name); c.title = hint;
+      c.setAttribute("aria-sort", s.k === k ? (s.dir > 0 ? "ascending" : "descending") : "none");
+      c.addEventListener("click", (e) => { e.stopPropagation(); MV.sort = { k, dir: s.k === k ? -s.dir : -1 }; renderMoversPop(); }); trh.appendChild(c); });
+    const thead = el("thead"); thead.appendChild(trh); t.appendChild(thead);
+    const tb = el("tbody");
+    rows.forEach((r) => {
+      const z = r["z_" + h], has = inList.has(r.base), tr = el("tr", has ? "open" : "");
+      const liqCls = { "Deep": "deep", "Thin": "thin", "Very thin": "vthin" }[r.liq] || "";
+      const cell = (txt, cls) => el("td", cls || "", txt);
+      const first = el("td"); first.appendChild(el("span", "mv-sym", r.base));
+      if (has) first.appendChild(el("span", "mv-tag", "IN LIST"));
+      tr.appendChild(first);
+      tr.appendChild(cell(mvPct(r["idio_" + h]), (r["idio_" + h] ?? 0) >= 0 ? "pos" : "neg"));
+      const zc = el("td"); const zs = el("span", "mv-z", z == null ? "—" : (z >= 0 ? "+" : "−") + Math.abs(z).toFixed(1) + "σ");
+      if (z != null) zs.style.background = mvZbg(z); zc.appendChild(zs); tr.appendChild(zc);
+      tr.append(cell(mvPct(r["tot_" + h]), (r["tot_" + h] ?? 0) >= 0 ? "pos" : "neg"), cell(mvPct(r["sys_" + h]), (r["sys_" + h] ?? 0) >= 0 ? "pos" : "neg"),
+                cell(r.beta.toFixed(2)), cell(r.r2 == null ? "—" : r.r2.toFixed(2)));
+      const lc = el("td"); lc.appendChild(el("span", "mv-liq " + liqCls, r.liq + (r.illiq_x ? " ×" + r.illiq_x.toFixed(1) : ""))); tr.appendChild(lc);
+      const last = el("td", "", r.turnover_24h ? (r.turnover_24h / 1e6).toFixed(1) + "M " : "— ");
+      if (!has) { const a = el("button", "mv-add", "＋"); a.title = "Додати " + r.base + " у watchlist";
+        a.addEventListener("click", (e) => { e.stopPropagation(); addTicker(r.base); }); last.appendChild(a); }
+      tr.appendChild(last);
+      if (has) tr.addEventListener("click", () => { toggleMovers(false); selectTicker(r.base); });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    const wrap = el("div", "mv-tbl"); wrap.appendChild(t);
+    const note = el("div", "mk-note", "Опис ринку, а не сигнал моделі: монети, рух яких не пояснює ринок альтів. Наведи на заголовок — що означає колонка; деталі — notes/movers.md. Оновлення щогодини.");
+    p.append(head, ix, wrap, note);
+  };
+  const placeMovers = () => {
+    const p = $("mvPop"), r = $("mvBtn").getBoundingClientRect(), w = p.offsetWidth, hgt = p.offsetHeight;
+    let left = r.right - w; if (left < 8) left = Math.min(r.left, innerWidth - w - 8);
+    let top = r.bottom + 6; if (top + hgt > innerHeight - 8) top = Math.max(8, innerHeight - hgt - 8);
+    p.style.left = Math.max(8, left) + "px"; p.style.top = top + "px";
+  };
+  const toggleMovers = (open) => {
+    MV.open = open; $("mvPop").hidden = !open; $("mvBtn").setAttribute("aria-expanded", String(open));
+    if (open) { renderMoversPop(); placeMovers(); }
+  };
+  const loadMovers = async () => {
+    try { MV.data = await api("/api/movers", { quiet: true }); } catch (e) { MV.data = { error: e.message }; }
+    renderMoversBtn(); if (MV.open) { renderMoversPop(); placeMovers(); }
+  };
+  $("mvBtn").addEventListener("click", (e) => { e.stopPropagation(); if (!MV.open && MK.open) toggleMarket(false); toggleMovers(!MV.open); });
+  document.addEventListener("click", (e) => { if (MV.open && !e.target.closest(".mv-wrap")) toggleMovers(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && MV.open) { toggleMovers(false); $("mvBtn").focus(); } });
+  addEventListener("resize", () => { if (MV.open) placeMovers(); });
+  loadMovers(); setInterval(loadMovers, 5 * 60 * 1000);
 
   document.querySelectorAll("#oiSeg [data-oi]").forEach((b) => b.addEventListener("click", () => { st.oiUsd = b.dataset.oi === "usd"; LS.set("pd-oiusd", st.oiUsd); pressIn("oiSeg", "oi", b.dataset.oi); renderAllCharts(); }));
   document.querySelectorAll("#tabSeg [data-tab]").forEach((b) => b.addEventListener("click", () => { st.tab = b.dataset.tab; pressIn("tabSeg", "tab", st.tab); renderList(); }));

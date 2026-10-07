@@ -94,6 +94,14 @@ Dashboard: the **Market ▾** button right of "OI монети / USD" shows the 
 alts up over 7 days with a Cold–Neutral–Hot gauge, a one-week chart (7-day share white, 24-hour grey; hover for the
 hourly value), a one-line hint, alt and BTC metrics, and the backtest vs journal result. Refreshed every 5 minutes.
 
+## Idiosyncratic movers (since 2026-10-07)
+
+After each hourly market update, `movers.py` computes for the same ~250 alts: beta and R² against the equal-weighted alt
+index (hourly OLS over 7 days, ending a day before now so the current spike does not bias it), total / systematic /
+idiosyncratic return over 1, 4 and 24 hours, the residual z-score, and Amihud illiquidity relative to the coin's 30-day
+norm → `reports/movers.json`. The dashboard shows it as the **Movers ▾** table (sortable, horizon switch, IN LIST /
+add to watchlist). It describes the market, it is not a model signal.
+
 ## Liquidations after scoring (since 2026-10-07)
 
 Models trained without liquidation features (the default from 2026-10-07) do not need them to score: the cycle takes

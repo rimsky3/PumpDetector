@@ -303,6 +303,16 @@ The 15m model on Binance data only vs Binance + Bybit (Binance OI backfilled fro
 and a backtest on the backtest coins with three arms — both exchanges, 15m Binance-only with the usual hourly
 confirmation, everything Binance-only. Report: `reports/binance_only.md`.
 
+### `experiments/long_binance.py`
+
+Six-month backtest (April–September) on the Binance archive, by month — the robustness check for new features. Coins:
+those of the long backtest (`data/long_bt`), outside training. Stages, each cached so a rerun continues: `data`
+(`binance_archive.collect` into the raw tables, Binance only; the order book archive downloads in parallel), `features`
+(15m model features, order book features, hourly features from own 15m, prices → `data/long_bin/<coin>.pkl`), `test`
+(15m variants trained on the training tickers, Binance only; Alert with the live hourly model; partial exit, stop
+2.48 ATR → `reports/long_binance.md`, `reports/long_binance_trades.csv`). `--stage data|features|test|all`,
+`--limit N` (first N coins, to test the pipeline). New feature ideas plug in as new variants and reuse the cached data.
+
 ### `experiments/trade_count.py`
 
 The number of trades as features: on 1h from Coinalyze `tx` / `btx` (all exchanges), on 15m from Binance klines (trade
@@ -380,6 +390,16 @@ over 7 days at the close of the signal bar (`market.py`; unknown state — the s
 State: **Hot** — more than 60% of alts up over 7 days, **Cold** — below 40%, otherwise Neutral. The screener (`--loop`)
 updates it in its own thread at HH:01; the dashboard reads it at `/api/market`; journal, dashboard positions and
 `backtest.py` use it for the `market_cool` mode. Background: `experiments/market_regime.py`.
+
+### `movers.py` — coins with idiosyncratic moves
+
+| Usage | Meaning |
+|---|---|
+| `python movers.py [--h 1\|4\|24]` | compute from the `market.py` cache and print the top: beta and R² vs the equal-weighted alt index (OLS on hourly log returns, 7 days ending 24 h ago), idiosyncratic return (total − β × index), residual z-score, Amihud illiquidity vs its 30-day median, 24 h turnover; writes `reports/movers.json` |
+
+The screener's market thread runs it every hour after `market.update` (which now also caches hourly quote volume in
+`reports/market_qvol.pkl`). Dashboard: the **Movers N ▾** button (`/api/movers`); N = coins with |z| ≥ 2.5. Owner's
+guide to every column: `notes/movers.md`.
 
 ### `orderbook.py`
 

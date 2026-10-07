@@ -152,7 +152,10 @@ def archive_day(symbol: str, day: str):
     os.makedirs(ARCHIVE_CACHE, exist_ok=True)
     path = os.path.join(ARCHIVE_CACHE, f"{symbol}-bookDepth-{day}.parquet")
     if os.path.exists(path):
-        return pd.read_parquet(path)
+        try:
+            return pd.read_parquet(path)
+        except Exception:               # обрізаний файл (вимкнення світла під час запису) — видалити й скачати заново
+            os.remove(path)
     url = f"https://data.binance.vision/data/futures/um/daily/bookDepth/{quote(symbol)}/{quote(symbol)}-bookDepth-{day}.zip"
     df = pd.DataFrame(columns=["timestamp", "percentage", "notional"])
     for attempt in range(4):
@@ -168,7 +171,8 @@ def archive_day(symbol: str, day: str):
             time.sleep(3 + attempt * 3)
     if len(df):
         df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True)
-    df.to_parquet(path)
+    df.to_parquet(path + ".tmp")          # атомарно: обрив посеред запису не лишає битого файлу
+    os.replace(path + ".tmp", path)
     return df
 
 

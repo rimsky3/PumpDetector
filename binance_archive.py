@@ -34,15 +34,20 @@ KLINE_COLS = ["open_time", "open", "high", "low", "close", "volume", "close_time
               "taker_buy_volume", "taker_buy_quote_volume", "ignore"]
 
 
-def _csv(kind: str, symbol: str, day: str, tf: str | None = None) -> pd.DataFrame:
-    """Денний файл архіву (кеш на диску; немає файлу — порожній кадр, не кешується: архів за день з'являється наступного дня)."""
+def _csv(kind: str, symbol: str, day: str, tf: str | None = None, monthly: bool = False) -> pd.DataFrame:
+    """Денний (або місячний: day = YYYY-MM, monthly=True — лише свічки) файл архіву; кеш на диску; немає файлу — порожній
+    кадр, не кешується (архів за день з'являється наступного дня, за місяць — на початку наступного)."""
     sub = f"klines/{symbol}/{tf}/{symbol}-{tf}-{day}" if kind == "klines" else f"metrics/{symbol}/{symbol}-metrics-{day}"
-    path = os.path.join(CACHE, sub + ".parquet")
+    path = os.path.join(CACHE, ("monthly/" if monthly else "") + sub + ".parquet")
     if os.path.exists(path):
-        return pd.read_parquet(path)
+        try:
+            return pd.read_parquet(path)
+        except Exception:               # обрізаний файл (вимкнення світла під час запису) — видалити й скачати заново
+            os.remove(path)
+    url = f"{BASE_URL.replace('/daily', '/monthly')}/{sub}.zip" if monthly else f"{BASE_URL}/{sub}.zip"
     for attempt in range(4):
         try:
-            r = _S.get(f"{BASE_URL}/{sub}.zip", timeout=60)
+            r = _S.get(url, timeout=120)
             if r.status_code == 404:
                 return pd.DataFrame()
             r.raise_for_status()
@@ -59,7 +64,8 @@ def _csv(kind: str, symbol: str, day: str, tf: str | None = None) -> pd.DataFram
     else:
         df = pd.read_csv(io.StringIO(raw))
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    df.to_parquet(path)
+    df.to_parquet(path + ".tmp")          # атомарно: обрив посеред запису не лишає битого файлу
+    os.replace(path + ".tmp", path)
     return df
 
 
@@ -70,8 +76,13 @@ def _days(start: str, end: str) -> list[str]:
 def download(symbol: str, start: str, end: str, tf: str = "15m") -> dict[str, pd.DataFrame]:
     """Дані у форматі exchanges.download (для normalize): klines, oi (монети), ls (частка лонг-акаунтів), funding."""
     days = _days(start, end)
+    # свічки: повні завершені місяці — одним місячним файлом (у ~30 разів менше запитів), решта — подобово
+    this_month = pd.Timestamp.now(tz="UTC").strftime("%Y-%m")
+    months = {d[:7] for d in days}
+    full = {m for m in months if m < this_month and all(x in days for x in _days(f"{m}-01", (pd.Timestamp(f"{m}-01") + pd.offsets.MonthEnd(0)).strftime("%Y-%m-%d")))}
     with ThreadPoolExecutor(WORKERS) as pool:
-        kl = list(pool.map(lambda d: _csv("klines", symbol, d, tf), days))
+        kl = list(pool.map(lambda m: _csv("klines", symbol, m, tf, monthly=True), sorted(full)))
+        kl += list(pool.map(lambda d: _csv("klines", symbol, d, tf), [d for d in days if d[:7] not in full]))
         mt = list(pool.map(lambda d: _csv("metrics", symbol, d), days))
     kl = pd.concat([k for k in kl if len(k)]) if any(len(k) for k in kl) else pd.DataFrame(columns=KLINE_COLS)
     mt = pd.concat([m for m in mt if len(m)]) if any(len(m) for m in mt) else pd.DataFrame(columns=["create_time"])
