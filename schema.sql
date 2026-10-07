@@ -138,3 +138,31 @@ CREATE TABLE IF NOT EXISTS liq_ws_coverage (
     symbols   INTEGER,                    -- на скільки символів підписані (Binance/OKX — увесь ринок, NULL)
     PRIMARY KEY (exchange, conn, started)
 );
+
+-- Угоди Binance / Bybit через WebSocket (trade_recorder.py, з 2026-10-07): 5-хв зведення за стороною агресора
+-- і кошиками розміру угоди + періоди живих з'єднань.
+CREATE TABLE IF NOT EXISTS trade_bars (
+    exchange  TEXT NOT NULL,              -- Binance / Bybit (як markets.exchange_name)
+    symbol    TEXT NOT NULL,              -- символ на біржі (markets.symbol_on_exchange): BTCUSDT
+    ts        TIMESTAMPTZ NOT NULL,       -- відкриття 5-хв бару
+    n_buy     INTEGER NOT NULL,           -- угод, де агресор купував
+    n_sell    INTEGER NOT NULL,
+    v_buy     DOUBLE PRECISION NOT NULL,  -- $ агресивних купівель
+    v_sell    DOUBLE PRECISION NOT NULL,
+    max_buy   DOUBLE PRECISION,           -- найбільша угода бару, $
+    max_sell  DOUBLE PRECISION,
+    buy_n     INTEGER[] NOT NULL,         -- угод за кошиками розміру (межі — trade_recorder.SIZE_BOUNDS)
+    sell_n    INTEGER[] NOT NULL,
+    buy_usd   DOUBLE PRECISION[] NOT NULL,
+    sell_usd  DOUBLE PRECISION[] NOT NULL,
+    PRIMARY KEY (exchange, symbol, ts)
+);
+CREATE INDEX IF NOT EXISTS trade_bars_ts ON trade_bars (ts);
+CREATE TABLE IF NOT EXISTS trade_ws_coverage (
+    exchange  TEXT NOT NULL,
+    conn      TEXT NOT NULL,              -- binance#0, bybit#2 …
+    started   TIMESTAMPTZ NOT NULL,       -- підключились і підписались
+    last_seen TIMESTAMPTZ NOT NULL,       -- з'єднання ще живе станом на цей момент
+    symbols   INTEGER,
+    PRIMARY KEY (exchange, conn, started)
+);

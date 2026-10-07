@@ -79,6 +79,25 @@ services:
         condition: service_healthy
     mem_limit: 250m
 
+  # угоди Binance + Bybit (WebSocket) → 5-хв зведення trade_bars; docs/trades.md
+  # ВИМКНЕНО (профіль trades): історію дають архіви бірж; запис потрібен лише для живих ознак потоку — запускати,
+  # коли експеримент на архівах покаже користь: docker compose -f docker-compose.server.yml --profile trades up -d traderec
+  traderec:
+    profiles: ["trades"]
+    build: .
+    image: pump-detector
+    restart: unless-stopped
+    command: python trade_recorder.py
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pump_detector
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 300m
+
   # HTTPS + логін/пароль перед дашбордом: https://<PD_HOST> з будь-якого пристрою (Caddyfile; значення — у .env)
   caddy:
     image: caddy:2

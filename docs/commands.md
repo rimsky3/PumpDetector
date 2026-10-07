@@ -27,7 +27,7 @@ Before retraining, label fresh signals on training tickers if they were pumps (s
 |---|---|
 | (none) | copy the code: files tracked by git + new non-ignored ones; skips `watchlist.txt` and `scan_config.json` (the server's dashboard edits them) and never copies `.env` |
 | `--models` | also `models/` |
-| `--restart` | restart the `screener` and `dashboard` containers afterwards |
+| `--restart` | restart the `screener` and `dashboard` containers afterwards and start any compose service that is not running yet (`docker compose up -d`) |
 | `--labels` | only the labels and lists (`pumps.csv`, `tickers.txt`, `excluded.txt`, `reviews.csv`), then on the server `load_pumps.py` and `fetch.py --new` (hourly history for new training tickers) |
 | `--backtests` | also `reports/backtests/*.json` (shown in the dashboard's Backtest tab) |
 | `--yes` | do not ask about uncommitted changes (by default the script lists them and asks; without a terminal it stops) |
@@ -42,6 +42,16 @@ Before retraining, label fresh signals on training tickers if they were pumps (s
 | `--hours N` | window for `--stats` (default 6) |
 
 On the server: `docker compose -f docker-compose.server.yml exec -T liqrec python liq_recorder.py --stats`. See docs/liquidations.md.
+
+### `trade_recorder.py` — own trade feed (server container `traderec`)
+
+| Option | What it does |
+|---|---|
+| (none) | record every Binance (`aggTrade`) and Bybit (`publicTrade`) USDT-perpetual trade over WebSocket into 5-minute summaries `trade_bars`: aggressor side, USD, largest trade, size buckets (runs forever, reconnects) |
+| `--stats` | show what was recorded: bars, symbols, trades, USD, trades ≥ $250k per exchange, connection coverage |
+| `--hours N` | window for `--stats` (default 6) |
+
+On the server: `docker compose -f docker-compose.server.yml exec -T traderec python trade_recorder.py --stats`. See docs/trades.md.
 
 ### `tools/pull_db.sh` — server database → laptop (Git Bash)
 
@@ -219,6 +229,50 @@ and the partial exit, and the trade-outcome target from `experiments/outcome_tar
 The 15m model with open interest in coins (no price effect) instead of USD, and with both sets: leave-ticker-out on the
 training tickers and a backtest on the backtest coins outside training with the current and the partial exit, plus
 feature importance of the coin variants.
+
+### `experiments/hmm_regimes.py`
+
+Hidden market regimes as features: a Gaussian hidden Markov model (own numpy implementation, diagonal covariance) on
+1-hour price and OI change, 4-hour price change, hourly volume against its 7-day median and the buy share, fitted on the
+backtest coins before the backtest window only. State probabilities come from the forward pass alone (filtering, no
+look-ahead), states ordered from "falling" to "rising". Reports the state profiles, the state probabilities before and at
+the start of impulses, and base vs base + state probabilities: leave-ticker-out and a backtest on the backtest coins
+(current and partial exit). `--states N` — number of hidden states (default 4). Report: `reports/hmm_regimes.md`.
+
+### `experiments/trade_count.py`
+
+The number of trades as features: on 1h from Coinalyze `tx` / `btx` (all exchanges), on 15m from Binance klines (trade
+count field, cached in `data/trades15m/`). Features: trade-count z-score and 24-hour ratio, average trade size z-score,
+hourly trade burst, and on 1h the share of buy trades. Base vs base + trade features: leave-ticker-out for the hourly and
+the 15m model and a backtest of the 15m tier on the backtest coins. `--tf 1h|15m|both`, `--no-backtest`.
+Report: `reports/trade_count.md`.
+
+### `experiments/flow_archive.py`
+
+Trade flow and footprint from the Binance trade archive (`data.binance.vision`, daily `aggTrades`) as 15m-model features.
+Each day is downloaded into memory and reduced to 15m summaries (aggressor buy / sell USD, trades ≥ $10k and < $2.5k,
+largest trade) and a footprint on a 0.1% log-price grid; cached in `data/flow/<coin>/<date>.pkl`. Features: share and
+delta of large trades, small-trade delta, largest trade and average order size against the coin's 7-day history;
+delta in the top / bottom third of the bar's range, volume share at the top, POC position (bar and last hour). Compares
+base / + flow / + footprint / + both by leave-ticker-out and a backtest on the backtest coins, and shows the features on
+the first bar of impulses vs failed impulses. `--workers N` parallel downloads (default 8), `--no-backtest`.
+Report: `reports/flow_archive.md`.
+
+### `experiments/spring_pattern.py`
+
+The owner's "stop-run below a local low that gets bought back" pattern (a b-shaped bar) and a selling climax followed by a
+positive delta, measured on the cached Binance trade archive (`data/flow/`, from `experiments/flow_archive.py`) and
+Binance 15m candles: forward price after 1/4/12 hours, a trade with the stop under the bar's low (+1R / +2R before the
+stop, average R after fees), the mirror pattern at highs, controls (any pierce, wick, breakdown, random bars), and how
+often the pattern precedes labeled impulses. Report: `reports/spring_pattern.md`, events `reports/spring_events_A.csv`.
+
+### `experiments/spring_context.py`
+
+The same stop-run pattern only in the model's context (a Candidate or Alert within the last 6 hours), on the backtest
+coins outside training with the working models (`backtest.tiers_and_bars`), against the model's own entry (first Alert
+bar, k·ATR stop), a plain wick below the low in context, the pattern outside context and random context bars; also with
+a next-bar confirmation and split into two halves of the period. `--days N` (default 40). Report:
+`reports/spring_context.md`, events `reports/spring_context_events.csv`.
 
 ### `experiments/feature_corr.py`
 

@@ -2,6 +2,7 @@
 # Ноутбук → сервер: код проєкту (і за прапорцями — розмітка, моделі, бектести). Запуск з Git Bash у папці проєкту:
 #   bash tools/deploy.sh                 — лише код (усе, що в git, + нові файли, не ігноровані .gitignore)
 #   bash tools/deploy.sh --restart       — + перезапустити скринер і дашборд (новий код починає працювати)
+#                                          і запустити нові сервіси compose, яких ще немає на сервері
 #   bash tools/deploy.sh --labels        — ЛИШЕ розмітка і списки (pumps.csv, tickers.txt, excluded.txt, reviews.csv)
 #                                          + на сервері load_pumps.py (журнал одразу бачить нову розмітку)
 #                                          і fetch.py --new (годинна історія нових тікерів навчання)
@@ -94,5 +95,7 @@ if [ "$labels" = 1 ]; then
 fi
 if [ "$restart" = 1 ]; then
   ssh_ "cd $DIR && docker compose -f docker-compose.server.yml restart screener dashboard"
+  # нові сервіси з docker-compose.server.yml (напр. traderec) — створити й запустити; робочі без змін не чіпає
+  ssh_ "cd $DIR && docker compose -f docker-compose.server.yml up -d"
 fi
 echo "готово"
