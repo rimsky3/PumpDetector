@@ -43,6 +43,21 @@ Before retraining, label fresh signals on training tickers if they were pumps (s
 
 On the server: `docker compose -f docker-compose.server.yml exec -T liqrec python liq_recorder.py --stats`. See docs/liquidations.md.
 
+### `trade_backfill.py` — footprint history from the Binance trade archive
+
+Replays the daily Binance `aggTrades` archive (the same trades as the live stream) into `trade_bars` in the recorder's
+exact format (checked bar by bar against the recorder's own aggregation), then finds historical b / p marks there
+(`live = false`). Days that already have ≥ 280 five-minute bars are skipped; recorder rows are never overwritten. The
+screener runs it as a separate low-priority process: at start (all list coins, 30 days), for coins newly added to the
+list, and once a day after 03:00 UTC for yesterday.
+
+| Option | What it does |
+|---|---|
+| `BASE …` | coins (default: the screener's list — watchlist + auto) |
+| `--days N` | last N full days (default 30) |
+| `--yesterday` | only yesterday (the daily run) |
+| `--no-marks` | footprint only, no historical marks |
+
 ### `trade_recorder.py` — own trade feed (server container `traderec`)
 
 | Option | What it does |
@@ -273,6 +288,14 @@ coins outside training with the working models (`backtest.tiers_and_bars`), agai
 bar, k·ATR stop), a plain wick below the low in context, the pattern outside context and random context bars; also with
 a next-bar confirmation and split into two halves of the period. `--days N` (default 40). Report:
 `reports/spring_context.md`, events `reports/spring_context_events.csv`.
+
+### `experiments/entry_model.py`
+
+The "entry model": a small LightGBM trained only on bars in the model's context (Candidate / Alert within 6 h), target
+"+2R before a stop under this bar's low (at least 0.5 ATR) within 12 h", footprint, trade-flow and model-state features;
+trained on one half of the coins in the first half of the period, tested on the other coins in the second half (and
+vice versa), trades one at a time per coin, against rule b, the main model's entry and random context bars. The frame
+is cached in `reports/entry_model_frame.pkl`. `--days N` (default 40). Report: `reports/entry_model.md`.
 
 ### `experiments/feature_corr.py`
 

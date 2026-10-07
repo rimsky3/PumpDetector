@@ -12,6 +12,7 @@ dashboard's numbers. The screener and the dashboard are unchanged.
 | 🔴 Alert | on | ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, the 15m bar |
 | 🟠 Candidate | off | the same without a position: the stop "if entering now" (price − k·ATR) |
 | 🟣 Volume 5m | on | volume × weekly norm, 15-minute price change, hourly OI change |
+| 🟢 b / p | on | footprint pattern (`footprint.py`, docs/trades.md): **b** — a stop-run below the 2-hour low that was bought back, with the pierced low, the share of the bar's volume below it and its delta, volume × norm, the model context (Alert / Candidate within 6 h) and the stop under the bar's low; **p** — the same at the highs (a warning for longs) |
 
 One message per signal episode (the same episodes as the dashboard's sound notifications). On start the bot only
 remembers the current episodes, and episodes older than 45 minutes after their bar closed are never sent, so a restart
@@ -24,7 +25,8 @@ scanner added, **📌 add to watchlist** (`/api/watchlist/add`).
 
 The chat keyboard has **📋 Status** (current Alerts and Candidates), **📊 Results** (today / yesterday / week / month:
 closed trades, win rate, profit factor, sum, average, stops, best and worst trade, open trades — the journal's
-"live + history" scope for the main mode) and **⚙️ Settings** (toggle each notification type, list muted tickers).
+"live + history" scope for the main mode; plus the b / p marks of the period from `/api/fp_stats`: how many, how many
+finished, reached +2R / stopped / 12 hours, average R) and **⚙️ Settings** (toggle each notification type, list muted tickers).
 `/status`, `/results` and `/settings` do the same.
 
 ## Privacy and state

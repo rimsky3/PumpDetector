@@ -134,6 +134,19 @@ Candidate followed within 2 hours in 46% of cases (6% after a random moment), an
   new event while the page is open; like the other sounds it needs one click on the page after a reload.
 - `python wake.py AIN --days 3` lists a coin's events from the database.
 
+## Footprint marks b / p (since 2026-10-07)
+
+Right after the 15m scores of a full cycle the screener runs `footprint.detect`: for each list coin that had a Candidate
+or an Alert within the last 6 hours (24 bars, including the bar just closed) it checks the bar that just closed for the
+owner's "stop-run that gets bought back" pattern — **b**: the bar pierces the 2-hour low, ≥ 30% of the bar's volume
+traded below that low, the bar closes back above it, ≤ 20% of the volume sits in the top third of the bar, volume ≥ 2×
+the previous day's median; **p**: the mirror at the highs. Candles and volume come from the Binance 15m candles, the
+footprint from `trade_bars` (the trade recorder's 5-minute footprints summed into the 15m bar — a bar is checked only if
+all three 5-minute bars were recorded). Marks go to the `fp_marks` table; the dashboard shows them under (b) or above
+(p) the candle with details on hover, the bot sends them (setting "b / p"), and the outcome of each mark (+2R before the
+stop under the bar's low, stop, or 12 hours) is computed on read by `footprint.outcome`. Without the recorder running
+(`trade_bars` missing or empty) nothing is marked. Why only in context and what the history says: docs/trades.md.
+
 ## Market scanner
 
 `scanner.py` fills the list automatically. Every 15-minute screener cycle it takes all Binance USDT perps (one request)

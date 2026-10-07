@@ -38,8 +38,8 @@ MODEL, MODE = "tier15", "market"          # основна модель і ре�
 SEND_MAX_AGE_MIN = 45                     # старіші епізоди не надсилаємо (після простою — без «зливи» старих сигналів)
 MUTE_HOURS = 2
 POLL_SEC = 5
-DEFAULTS = {"alert": True, "cand": False, "wake": True}
-TITLES = {"alert": "🔴 Alert", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m"}
+DEFAULTS = {"alert": True, "cand": False, "wake": True, "fp": True}
+TITLES = {"alert": "🔴 Alert", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p"}
 MENU = [["📋 Статус", "📊 Результати", "⚙️ Налаштування"]]
 
 
@@ -172,9 +172,10 @@ class Bot:
         rows = {r["ticker"]: r for r in lst.get("rows", [])}
         s = self.st.d
         fresh = []
-        for kind, items in (("alert", lst.get("alerts", [])), ("cand", lst.get("cands", [])), ("wake", lst.get("wakes", []))):
+        for kind, items in (("alert", lst.get("alerts", [])), ("cand", lst.get("cands", [])), ("wake", lst.get("wakes", [])),
+                            ("fp", lst.get("fps", []))):
             for e in items:
-                key = f"{kind}|{e['ticker']}|{e['ts']}"
+                key = f"{kind}|{e['ticker']}|{e['ts']}" + (f"|{e['kind']}" if kind == "fp" else "")
                 if key in s["sent"]:
                     continue
                 with self.st.lock:
@@ -202,7 +203,9 @@ class Bot:
     def send_signal(self, kind: str, e: dict, row: dict):
         tk = e["ticker"]
         t = ts_of(e["ts"])
-        if kind == "wake":
+        if kind == "fp":
+            text = self.fp_text(e)
+        elif kind == "wake":
             head = f"🟣 <b>Прокидається</b> · <b>{html.escape(tk)}</b>"
             body = (f"обсяг ×{e.get('vol_x', 0):.1f} до тижня · ціна {pct(e.get('ret15'))} за 15 хв · OI {pct(e.get('oi1h'))} за год\n"
                     f"5m-бар до {t:%H:%M} UTC" if t else "")
@@ -213,6 +216,23 @@ class Bot:
             text = f"{head} · {lv}\n15m-бар {t:%H:%M}–{(t + timedelta(minutes=15)):%H:%M} UTC" if t else f"{head} · {lv}"
         self.send(text, self.signal_buttons(tk, row.get("source") == "auto"))
         print(f"[{now():%H:%M:%S}] надіслано {kind} {tk}", flush=True)
+
+    @staticmethod
+    def fp_text(e: dict) -> str:
+        """Мітка футпрінту (footprint.py): b — «залочка» на лоу (підказка на лонг), p — те саме на хаях."""
+        tk, t, c, stop = html.escape(e["ticker"]), ts_of(e["ts"]), e.get("close"), e.get("stop")
+        ctx = "Alert" if e.get("ctx") == "alert" else "Кандидат"
+        bar = f"15m-бар {t:%H:%M}–{(t + timedelta(minutes=15)):%H:%M} UTC" if t else ""
+        if e.get("kind") == "b":
+            return (f"🟢 <b>b · залочка</b> · <b>{tk}</b>\n"
+                    f"Прокол лоу {px(e.get('level'))} і викуп: під лоу {e.get('beyond', 0):.0%} обсягу бару "
+                    f"(дельта {e.get('beyond_delta', 0):+.0%}), обсяг ×{e.get('vol_x', 0):.1f}, закриття {px(c)}\n"
+                    f"Контекст: {ctx} за 6 год · стоп під лоу {px(stop)} ({pct(stop / c - 1) if c and stop else '—'})\n"
+                    f"{bar}\n<i>Підказка з футпрінту, не сигнал моделі — перевір стакан.</i>")
+        return (f"🟠 <b>p · на хаях</b> · <b>{tk}</b>\n"
+                f"Прокол хаю {px(e.get('level'))} і продаж: над хаєм {e.get('beyond', 0):.0%} обсягу бару "
+                f"(дельта {e.get('beyond_delta', 0):+.0%}), обсяг ×{e.get('vol_x', 0):.1f}, закриття {px(c)} — нижче хаю\n"
+                f"Контекст: {ctx} за 6 год · покупців на хаях поглинули — обережно з входом, подумай про вихід\n{bar}")
 
     def notifier(self):
         last_pulse, first, last_full = None, True, 0.0
@@ -231,8 +251,9 @@ class Bot:
     # ---------- команди і кнопки ----------
     def settings_markup(self) -> list:
         s = self.st.d["settings"]
-        row = [{"text": ("✅ " if s.get(k, DEFAULTS[k]) else "⬜ ") + TITLES[k], "callback_data": f"set:{k}"} for k in ("alert", "cand", "wake")]
-        return [row[:2], row[2:] + [{"text": "🔕 Заглушені", "callback_data": "muted"}]]
+        row = [{"text": ("✅ " if s.get(k, DEFAULTS[k]) else "⬜ ") + TITLES[k], "callback_data": f"set:{k}"}
+               for k in ("alert", "cand", "wake", "fp")]
+        return [row[:2], row[2:], [{"text": "🔕 Заглушені", "callback_data": "muted"}]]
 
     def results_markup(self) -> list:
         return [[{"text": "Сьогодні", "callback_data": "res:today"}, {"text": "Вчора", "callback_data": "res:yday"},
@@ -268,6 +289,15 @@ class Bot:
             op = ", ".join(f"{html.escape(r['ticker'])} {pct(r.get('result_pct'))}" for r in opened[:8])
             lines.append(f"Відкриті ({len(opened)}): {op}")
         lines.append("<i>live + історія, як у журналі дашборда</i>")
+        try:                                            # мітки футпрінту b / p: результат «+2R / стоп / 12 год»
+            fs = self.get(f"/api/fp_stats?from={a:%Y-%m-%d}&to={b:%Y-%m-%d}", timeout=60)
+            for k, name in (("b", "🟢 b (залочка)"), ("p", "🟠 p (на хаях)"), ("b_hist", "▫️ b · історія"), ("p_hist", "▫️ p · історія")):
+                x = fs.get(k) or {}
+                if x.get("n"):
+                    lines.append(f"{name}: {x['n']} міток, завершено {x['done']}: +2R {x['target']}, стоп {x['stop']}, "
+                                 f"12 год {x['time']}" + (f" · сер. {x['avg_R']:+.2f}R" if x.get("avg_R") is not None else ""))
+        except Exception as ex:
+            print(f"! b/p статистика: {ex}", flush=True)
         return "\n".join(lines)
 
     def status(self) -> str:

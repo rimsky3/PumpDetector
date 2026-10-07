@@ -38,35 +38,21 @@ import train
 from backtest import tiers_and_bars
 from features import load_pumps
 from fetch import read_tickers_file
-from spring_pattern import CACHE, FEE, HORIZON, bar_metrics, load_coin, summary
+import footprint as FP
+from footprint import HORIZON, bar_metrics
+from spring_pattern import CACHE, load_coin, summary
 
 pd.DataFrame.to_markdown = lambda self, *a, **k: "```\n" + self.to_string() + "\n```"
 OUT = os.path.join("reports", "spring_context.md")
-CTX_BARS = 24
+CTX_BARS = FP.CTX_BARS          # контекст — як у скринері (footprint.py)
 
 
 def trade(b: pd.DataFrame, i: int, stop: float, base: str, kind: str) -> dict | None:
-    """Вхід на закритті бару i, стоп stop; ціна через 1/4/12 год і R (вихід +2R / стоп / 12 год)."""
-    c, hi, lo = b["price"].to_numpy(), b["high"].to_numpy(), b["low"].to_numpy()
-    if i + HORIZON >= len(b) or not (stop < c[i]):
+    """Вхід на закритті бару i, стоп stop — footprint.outcome; лише повний горизонт 12 год."""
+    if i + HORIZON >= len(b):
         return None
-    R = c[i] - stop
-    r = {f"ret_{h}h": c[i + 4 * h] / c[i] - 1 for h in (1, 4, 12)}
-    r["ret_4h_atr"] = (c[i + 16] - c[i]) / b["atr"].iloc[i]
-    res, hit1, hit2 = None, False, False
-    for j in range(i + 1, i + HORIZON + 1):
-        if lo[j] <= stop:
-            res = -1.0
-            break
-        hit1 |= hi[j] - c[i] >= R
-        if hi[j] - c[i] >= 2 * R:
-            hit2, res = True, 2.0
-            break
-    if res is None:
-        res = (c[i + HORIZON] - c[i]) / R
-    r.update({"hit1R": hit1 or hit2, "hit2R": hit2, "R": res - FEE * c[i] / R, "R_pct": R / c[i], "base": base,
-              "ts": b.index[i], "kind": kind})
-    return r
+    r = FP.outcome(b, i, stop)
+    return r | {"base": base, "ts": b.index[i], "kind": kind} if r else None
 
 
 def main() -> None:
@@ -102,7 +88,7 @@ def main() -> None:
             ctx = sig.rolling(CTX_BARS, min_periods=1).max().astype(bool)
             ok = b["L"].notna() & b["vol_ratio"].notna() & b["atr"].notna()
             wick = (b["low"] < b["L"]) & (b["price"] > b["L"]) & ok
-            A = wick & (b["below_share"] >= 0.3) & (b["top_share"] <= 0.2) & (b["vol_ratio"] >= 2)
+            A = FP.patterns(b)["b"] & ok           # правило b — footprint.py
             nxt_ok = (b["delta"].shift(-1) > 0) & (b["price"].shift(-1) > b["high"])
             first_alert = (alert == 1) & (alert.shift(1, fill_value=0).rolling(4, min_periods=1).max() == 0)
             n_ctx += int(ctx.sum()); n_bars += len(b)

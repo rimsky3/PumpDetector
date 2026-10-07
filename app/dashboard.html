@@ -92,10 +92,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .ohlc { display: flex; flex-wrap: wrap; align-content: flex-start; gap: 3px 14px; font-size: 11px; color: var(--fg2); height: 36px; overflow: hidden; }
 .ohlc b { color: var(--fg); font-weight: 500; }
 .ohlc b.wake { color: var(--wake); }
+.ohlc b.fpb { color: var(--ok); } .ohlc b.fpp { color: var(--amber); }   /* мітки футпрінту b / p (footprint.py) */
 .chart-card { flex: 1; min-height: 420px; background: var(--card); border-radius: 10px; position: relative; overflow: hidden; display: flex; flex-direction: column; }
 #chart { flex: 1; min-height: 380px; position: relative; }
 .tool { height: 30px; width: 34px; display: flex; align-items: center; justify-content: center; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); }
 .tool[aria-pressed="true"] { background: #2962ff; border-color: #2962ff; color: #fff; }
+.fptool { font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 .chart-help { position: absolute; left: 10px; top: 8px; z-index: 5; }
 .hint { font-size: 11px; color: var(--fg3); margin: 0; }
 .error { font-size: 13px; color: var(--hot-soft); background: var(--alert-bg); border-radius: 8px; padding: 10px 14px; }
@@ -314,6 +316,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 <script src="/vendor/lightweight-charts.standalone.production.js"></script>
 <script src="/js/ruler.js"></script>
 <script src="/js/profile.js"></script>
+<script src="/js/footprint.js"></script>
 </head>
 <body>
 <div id="topbar" aria-hidden="true"><i></i></div>
@@ -466,9 +469,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           <button data-tf="5m">5m</button><button data-tf="15m">15m</button><button data-tf="1h">1h</button>
         </div>
         <button class="help" data-help="tf" aria-label="Що це?">?</button>
-        <label class="persel">Період <select id="daySel"><option value="1">1д</option><option value="3">3д</option><option value="7">7д</option><option value="30">30д</option></select></label>
         <button class="tool" id="rulerBtn" aria-pressed="false" title="Лінійка: виміряти відрізок (або Shift + клік на графіку)" aria-label="Лінійка"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 17 17 3l4 4L7 21z"></path><path d="m7 13 2 2M10 10l2 2M13 7l2 2"></path></svg></button>
         <button class="help" data-help="ruler" aria-label="Що це?">?</button>
+        <button class="tool fptool" id="fpBtn" aria-pressed="false" title="Футпрінт: обсяг купівель / продажів на рівнях ціни в кожній свічці" aria-label="Футпрінт">FP</button>
+        <button class="help" data-help="fp" aria-label="Що це?">?</button>
         <div class="seg sm" id="vpSeg" role="group" aria-label="Профіль обсягу за період">
           <button data-vp="off" aria-pressed="true" title="Профіль обсягу вимкнено">VP</button><button data-vp="day" title="Профіль обсягу на кожен день UTC">День</button><button data-vp="week" title="Профіль обсягу на кожен тиждень (з понеділка, UTC)">Тиж</button>
         </div>
@@ -661,7 +665,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     view: "forecast", model: "tier15",
     // режим — окремо для кожної вкладки (власник 02.10): Прогноз, Журнал і Бектест не перемикають одне одного
     modes: { forecast: LS.get("pd-mode-forecast", LS.get("pd-strategy", null)), journal: LS.get("pd-mode-journal", null),
-             backtest: LS.get("pd-mode-backtest", null) }, chartTf: null, days: LS.get("pd-days", 3), oiUsd: LS.get("pd-oiusd", false),
+             backtest: LS.get("pd-mode-backtest", null) }, chartTf: null, days: LS.get("pd-days", 3), fp: LS.get("pd-fp", false), oiUsd: LS.get("pd-oiusd", false),
     // вікна графіка: 1 або 2; «Повна інфо» (позиція, угоди, «прокидається», мітки сканера); активне вікно
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
     meta: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])),
@@ -676,6 +680,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const is15 = () => st.model === "tier15";
   const fmtPx = (v) => v == null ? "—" : Math.abs(v) < 1e-9 ? "0" : v >= 1000 ? v.toFixed(1) : v >= 100 ? v.toFixed(2) : v >= 1 ? v.toFixed(3) : v.toPrecision(4);
   const fmtPct = (v, d = 1) => v == null ? "—" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(d) + "%";
+  // мітка футпрінту b / p (footprint.py): що пробито, скільки обсягу за рівнем, контекст, стоп і чим скінчилось
+  const fpText = (f) => {
+    const res = { target: "дійшло до +2R", stop: "стоп", time: `12 год: ${f.R?.toFixed(2)}R`, open: `триває: ${f.R?.toFixed(2)}R` }[f.reason];
+    return `${f.kind === "b" ? "прокол лоу" : "прокол хаю"} ${fmtPx(f.level)} · ${f.kind === "b" ? "під" : "над"} рівнем ${Math.round((f.beyond || 0) * 100)}% обсягу`
+      + ` (дельта ${fmtPct(f.beyond_delta, 0)}) · обсяг ×${(f.vol_x || 0).toFixed(1)} · ${f.ctx === "alert" ? "Alert" : "Кандидат"} за 6 год`
+      + ` · стоп ${fmtPx(f.stop)} (${fmtPct(f.stop / f.close - 1)})` + (res ? ` · ${res}` : "") + (f.live === false ? " · історія (з архіву)" : "");
+  };
   const fmtNum = (v) => v == null ? "—" : Math.abs(v) >= 1e9 ? (v / 1e9).toFixed(2) + "B" : Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + "M"
     : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(1) + "K" : v.toFixed(Math.abs(v) >= 10 ? 0 : 2);
   const fmtP = (v) => v == null ? "—" : v.toFixed(2);
@@ -717,7 +728,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const modelInfo = () => (st.meta?.models || []).find((m) => m.name === st.model);
 
   // ---------- підказки «?» ----------
+  const FP_TITLE = "Футпрінт: обсяг купівель / продажів на рівнях ціни в кожній свічці";
   const HELP = {
+    fp: "FP — футпрінт, як кластери в ATAS: у кожній свічці обсяг агресивних продажів (ліворуч від центру, червоне) і купівель (праворуч, зелене) на рівнях ціни через 0.1%; рамка — POC бару (рівень з найбільшим обсягом). На широких свічках — числа ($, k / M). Видно лише, коли графік наближено (колесо миші): на віддаленому свічки завузькі. Дані — угоди Binance: живий записувач + історія з архіву Binance для монет зі списку (за 30 днів); для інших монет — лише з моменту запуску записувача. Вимкнено — нічого не завантажується й не малюється. Мітки b / p на графіку — з того самого футпрінту.",
     backtest: "Бектест — модель проходить історію монет, яких не бачила в навчанні: усі USDT-перпи Binance з середнім оборотом від заданого, OI не більше, ніж у сканері, без тікерів навчання і виключених. Список задається правилом ДО прогону, тож вибору «де був памп» немає. Угоди — тими самими правилами, що й «Позиція моделі». Без прослизання, стакану і твого фільтру стаканом; той самий період ринку, що й навчання.",
     btEquity: "Накопичена сума результатів закритих угод по днях (дата виходу), у % — як якби кожна угода була однією позицією однакового розміру. Сума ≠ дохідність рахунку; для порівняння прогонів і моделей.",
     btCompare: "Два прогони поруч: A — відкритий ліворуч, B — вибраний у «Порівняти з». Зелене — B краще. Чесно лише для однієї смуги монет і вікна (напр., поточна модель і кандидат на тих самих монетах). На кривій B — синій пунктир. Різниця в кілька десятків відсотків суми — ще шум.",
@@ -735,7 +748,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     vp: "Профіль обсягу, як в ATAS: скільки обсягу пройшло на кожному рівні ціни. «День» / «Тиж» — профіль на кожен день або тиждень UTC (зліва від свічок періоду). Кнопка з гістограмою або клавіша V — профіль фрагмента: клік — початок, клік — кінець; межі тягнуться мишею, × або Del (курсор над фрагментом) — прибрати; фрагменти зберігаються для тікера. Помаранчева лінія — POC (рівень з найбільшим обсягом; у фрагмента продовжується праворуч пунктиром), пунктир — межі value area (70% обсягу), яскравіші рівні — усередині неї. Будується з 5m-свічок Binance + Bybit (немає 5m — з 15m / 1h): обсяг свічки розподілено по її діапазону, тому це наближення до тикового профілю ATAS.",
     ruler: "Лінійка, як у TradingView: Shift + клік на графіку (або кнопка) — початок, рух миші — кінець, клік — зафіксувати, ще клік або Esc — прибрати. Показує зміну ціни, кількість барів і час, обсяг, зміну OI у USD і в монетах, максимальну ймовірність і скільки годин сигнал був вище порогу.",
     full: "«Повна інфо» увімкнена — на графіку і в заголовку вікна позиція моделі, угоди, стоп і ціль, «прокидається» (фіолетові свічки), мітки сканера; ліворуч — історія угод і «Модель бачить OI». Вимкнена — лише свічки, OI, обсяг, ймовірність і зони сигналу: вікно відкривається в 2–3 рази швидше. Кнопки ▢ / ▢▢ — одне або два вікна графіка; активне (рамка) отримує тікер зі списку і ↑/↓, Tab — інше вікно; [ — згорнути / розгорнути ліву панель.",
-    chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди.",
+    chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди. Зелена «b» під свічкою — «залочка» з футпрінту: ціна проколола лоу попередніх 2 год, під лоу пройшло ≥ 30% обсягу бару (стопи, ліквідації, шорти на пробій), але бар закрився вище, обсяг унизу бару, обсяг ≥ 2× норми; лише коли за 6 год був Кандидат або Alert. Стоп — під лоу бару b. На історії (218 монет, місяць) у такому контексті +2R раніше за стоп у 38% проти 29% у входу моделі — це підказка, не сигнал моделі; перевіряй стакан. Помаранчева «p» над свічкою — те саме на хаях: покупців над хаєм поглинули. Наведи на бар — деталі й чим скінчилась мітка (+2R / стоп / 12 год). Мітки з'являються лише з моменту запуску записувача угод.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
     filters: "Фільтр списку: усі тікери, лише Alert, Alert і кандидати, або обрані ★ (зірочка в рядку або клавіша F). Для годинних моделей «Кандидат» — P вище половини порогу.",
     notify: "Три незалежні перемикачі; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-сигналах. Alert — два високі тони і системне сповіщення браузера. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила: один нижчий тон; раніше на ~15 хв, але хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах; не сигнал на вхід. Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
@@ -998,7 +1011,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const chartEl = q(".chart"), ohlcEl = q(".ohlc");
     const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null };
     let chart = null, S = {}, priceLines = [], markersApi = null, probMarkers = null, idx = new Map(), rangeKey = null;
-    let ruler = null, vp = null, wakeAt = new Map();
+    let ruler = null, vp = null, fpv = null, wakeAt = new Map(), fpAt = new Map(), candleCol = null;
+    // з футпрінтом тіла свічок порожні (лише контур), як у кластерах ATAS — інакше заливка зливається з рівнями
+    const hollow = (on) => {
+      if (!S.candles || !candleCol) return;
+      S.candles.applyOptions(on ? { upColor: "rgba(0,0,0,0)", downColor: "rgba(0,0,0,0)", borderVisible: true, borderUpColor: candleCol.up, borderDownColor: candleCol.down }
+        : { upColor: candleCol.up, downColor: candleCol.down, borderVisible: false });
+    };
     const isActive = () => activePane() === P;
 
     // рядки лінійки: ціна, бари і час, обсяг, OI (USD і монети), ймовірність моделі
@@ -1039,6 +1058,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       S.zones.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
       S.candles = chart.addSeries(LWC.CandlestickSeries, { upColor: C.up, downColor: C.down, wickUpColor: C.up, wickDownColor: C.down, borderVisible: false,
         priceFormat: { type: "custom", formatter: fmtPx, minMove: 1e-8 } }, 0);
+      candleCol = { up: C.up, down: C.down };
       markersApi = LWC.createSeriesMarkers(S.candles, []);
       S.oi = chart.addSeries(LWC.CandlestickSeries, { title: "OI", upColor: C.oi, downColor: C.down, wickUpColor: C.oi, wickDownColor: C.down, borderVisible: false,
         priceFormat: { type: "custom", formatter: fmtNum, minMove: 1e-6 } }, 1);
@@ -1065,6 +1085,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           onInfo: (t) => { if (isActive()) $("vpBtn").title = `Профіль фрагмента (V): клік — початок, клік — кінець · ${t}`; } });
         vp.setPeriod(vpPeriod());
       }
+      // футпрінт (app/js/footprint.js, кнопка FP — спільна для вікон): рівні купівель / продажів у свічках
+      if (window.PDFootprint) {
+        fpv = PDFootprint.create({ chart, el: chartEl, series: S.candles, times: () => P.data?.series.t || [], bar: () => P.data?.bar || 900,
+          symbol: () => P.ticker || "", tf: () => P.data?.tf || "15m", onInfo: (t) => { if (isActive()) $("fpBtn").title = t || FP_TITLE; } });
+        fpv.setOn(st.fp); hollow(st.fp);
+      }
     };
     const renderOhlc = (i) => {
       const d = P.data; if (!d || !d.series.t.length) return;
@@ -1081,6 +1107,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (is15() && s.tier) { const tr = s.tier[i]; if (tr) add("", tr === 2 ? "Alert" : "Кандидат", tr === 2 ? "hot" : "amber"); }
       const wk = wakeAt.get(s.t[i]);
       if (wk) add("прокидається", `обсяг ×${wk.vol_x.toFixed(1)} до тижня${wk.vol_x4h != null ? `, ×${wk.vol_x4h.toFixed(1)} до 4 год` : ""} · ціна ${fmtPct(wk.ret15)} · OI ${fmtPct(wk.oi1h)}`, "wake");
+      (fpAt.get(s.t[i]) || []).forEach((f) => add(f.kind === "b" ? "b · залочка" : "p · на хаях", fpText(f), f.kind === "b" ? "fpb" : "fpp"));
       if (is15() && d.rolling && i === s.t.length - 1) {          // останній бар: ковзна 5-хв оцінка, якщо новіша
         const rl = d.rolling;
         add("P 5m", fmtP(rl.p15), rl.tier === "alert" ? "hot" : rl.tier === "candidate" ? "amber" : "");
@@ -1102,6 +1129,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       // «прокидається»: 5m-бар спрацювання → бар графіка, що його містить
       const wakeCol = cssVar("--wake"), tfs = d.bar || 900;
       wakeAt = new Map((is15() ? d.wake || [] : []).map((w) => [Math.floor(w.ts / tfs) * tfs, w]));
+      // мітки футпрінту b / p: 15m-бар патерну → бар графіка, на якому він закривається (5m — третій, 1h — година)
+      fpAt = new Map();
+      (d.fp || []).forEach((f) => { const tt = Math.floor((f.ts + 899) / tfs) * tfs; fpAt.set(tt, [...(fpAt.get(tt) || []), f]); });
       // ковзні 5-хв Кандидат / Alert → бар графіка, що містить кінець вікна (найсильніший, якщо кілька)
       const rollAt = new Map();
       (is15() ? d.rolling_sig || [] : []).forEach((r) => {
@@ -1150,6 +1180,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         if (tr.exit_ts && tr.exit_ts >= t0) marks.push({ time: tr.exit_ts, position: "aboveBar", shape: "arrowDown", color: h ? dim : fg2, text: `${tr.reason === "stop" ? (tr.partial_ts ? "Б/з" : "Стоп") : "Вихід"} ${fmtPct(tr.result_pct)}${sfx}` });
       });
       wakeAt.forEach((w, time) => marks.push({ time, position: "belowBar", shape: "circle", color: wakeCol, text: `×${w.vol_x.toFixed(1)}` }));
+      // b — під свічкою, p — над; на одному барі з «Вхід» / «Вихід» LWC ставить мітки стовпчиком, не одна на одну
+      // історичні (знайдені пізніше з архіву, live = false) — бліді, як угоди «іст.»
+      fpAt.forEach((arr, time) => arr.forEach((f) => { const a = f.live === false ? .45 : 1; marks.push(f.kind === "b"
+        ? { time, position: "belowBar", shape: "arrowUp", color: rgba(cssVar("--ok"), a), text: "b" }
+        : { time, position: "aboveBar", shape: "arrowDown", color: rgba(cssVar("--amber"), a), text: "p" }); }));
       // коли сканер з поточними порогами додав би тікер у список (лише авто-тікери) — на бар графіка, що містить цей момент
       (d.scanner_entries || []).forEach((ts) => {
         let lo = 0, hi = s.t.length - 1, j = -1;
@@ -1170,6 +1205,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (key !== rangeKey) { rangeKey = key; setRange(); if (ruler) ruler.clear(); }
       if (ruler) ruler.redraw();
       if (vp) vp.reload();
+      if (fpv) fpv.reload();
       renderOhlc(null);
       live.redraw();               // setData прибирає бари, яких ще немає в базі, і незакриту свічку — повертаємо їх
     };
@@ -1358,6 +1394,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       load, renderHead, renderChart, setRange, live,
       toggleRuler: () => { if (ruler) ruler.toggle(); }, toggleVp: () => { if (vp) vp.toggle(); },
       setVpPeriod: (p) => { if (vp) vp.setPeriod(p); },
+      setFp: (v) => { if (fpv) fpv.setOn(v); hollow(v); },
     });
     return P;
   };
@@ -1414,6 +1451,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   PANES.push(makePane(0), makePane(1));
   $("rulerBtn").addEventListener("click", () => activePane().toggleRuler());
   $("vpBtn").addEventListener("click", () => activePane().toggleVp());
+  $("fpBtn").addEventListener("click", () => {
+    st.fp = !st.fp; LS.set("pd-fp", st.fp); $("fpBtn").setAttribute("aria-pressed", String(st.fp));
+    PANES.forEach((p) => p.setFp(st.fp));
+  });
   $("vpSeg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-vp]"); if (!b) return;
     LS.set("pd-vp-period", b.dataset.vp); pressIn("vpSeg", "vp", b.dataset.vp);
@@ -1866,7 +1907,6 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
   // ---------- керування «Прогнозу» ----------
   const pressIn = (segId, attr, val) => document.querySelectorAll(`#${segId} [data-${attr}]`).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[attr] === String(val))));
-  $("daySel").addEventListener("change", (e) => { st.days = +e.target.value; LS.set("pd-days", st.days); shownPanes().forEach((p) => p.setRange()); });
   document.querySelectorAll("#layoutSeg [data-panes]").forEach((b) => b.addEventListener("click", () => setPanes(+b.dataset.panes)));
   $("fullBtn").addEventListener("click", () => {
     st.full = !st.full; LS.set("pd-full", st.full); $("fullBtn").setAttribute("aria-pressed", String(st.full)); loadTicker();
@@ -2235,7 +2275,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     applyMode();
     PANES.forEach((p, i) => { if (!st.meta.tickers.includes(p.ticker)) p.ticker = i ? null : st.meta.tickers[0] || null; });
     pressIn("oiSeg", "oi", st.oiUsd ? "usd" : "coins"); pressIn("vpSeg", "vp", vpPeriod());
-    $("daySel").value = String(st.days); $("fullBtn").setAttribute("aria-pressed", String(st.full));
+    $("fpBtn").setAttribute("aria-pressed", String(st.fp)); $("fullBtn").setAttribute("aria-pressed", String(st.full));
     applyLayout();
     renderModelSeg(); renderSystem(); renderStatus(); checkRetrain();
     await loadList(); loadScan(false);

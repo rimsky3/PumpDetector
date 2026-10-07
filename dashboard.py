@@ -41,6 +41,7 @@ def last_atr(h: pd.DataFrame) -> float | None:
 from screener import (FETCH_DAYS, INTRADAY_DAYS, SIGNALS_STAMP, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
                       load_models, next_hourly, next_run, score_15m, score_bases, update_15m)
 import fetch_exchange
+import footprint
 import orderbook
 import volume_profile
 import wake
@@ -260,7 +261,25 @@ def watch_list_15m(conn) -> dict:
     cands = [e for e in episodes(cand, BAR_15M) if e["kind"] == "live" and e["ts"] >= recent_cut]
     # «прокидається» за останні 30 хв — для голосового сповіщення («Volume STRK»)
     wakes = [{"ticker": b, "ts": w["at"], "vol_x": w["vol_x"], "ret15": w["ret15"], "oi1h": w["oi1h"]} for b, w in woke.items()]
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands, "wakes": wakes}
+    # живі мітки футпрінту b / p за 6 год (footprint.py) — для сповіщень бота; історичні (з архіву) не надсилаються
+    fps = [{"ticker": r["base_asset"], **{k: r[k] for k in ("ts", "kind", "close", "stop", "level", "beyond", "beyond_delta", "vol_x", "ctx")}}
+           for r in fp_rows(conn, since=pd.Timestamp(now - timedelta(hours=6))) if r.get("live", True)]
+    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands, "wakes": wakes, "fps": fps}
+
+
+def fp_rows(conn, bases: list[str] | None = None, since: pd.Timestamp | None = None, outcomes: bool = False) -> list[dict]:
+    """Мітки b / p з fp_marks (порожньо, якщо таблиці ще немає); outcomes — ще й результат «+2R / стоп / 12 год»."""
+    try:
+        m = footprint.marks(conn, bases, since)
+        if outcomes and len(m):
+            o = footprint.with_outcomes(conn, m)
+            m = o if len(o) else m
+        return m.to_dict("records")
+    except Exception as e:
+        conn.rollback()
+        if "fp_marks" not in str(e):
+            print(f"! мітки b/p: {e}")
+        return []
 
 
 # ---- список тікерів: важка частина рахується у фоні в окремому процесі одразу після нових оцінок (2026-10-06) ----
@@ -362,6 +381,7 @@ def watch_list(conn, model: str) -> dict:
                    for r in res["rows"] if r["ticker"] in keep]
     have = {r["ticker"] for r in res["rows"]}
     res["wakes"] = [w for w in res.get("wakes", []) if w["ticker"] in keep]
+    res["fps"] = [f for f in res.get("fps", []) if f["ticker"] in keep]
     res["pending"] = [{"ticker": b, "source": "auto" if b in auto else "manual", "reason": auto.get(b, {}).get("reason"),
                        "job": ADD_JOBS.get(b)} for b in manual + sorted(auto) if b not in have]
     return res
@@ -520,6 +540,8 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
         if len(troll) else [],
         # «прокидається» (wake.py) на 5m-барах за видимий період: свічка й обсяг на графіку — фіолетові
         "wake": [] if light else wake_marks(conn, base, view.index.min() if len(view) else pd.Timestamp(now)),
+        # мітки футпрінту b («залочка» на лоу) / p (на хаях) за видимий період — під / над свічкою, з результатом
+        "fp": fp_rows(conn, [base], view.index.min() if len(view) else pd.Timestamp(now), outcomes=not light),
         "light": light,
         "series": {
             "t": list(view.index),
@@ -1134,6 +1156,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(lambda c: watch_list(c, model))
         if url.path == "/api/journal":
             return self._route(lambda c: journal_view(c, q))
+        if url.path == "/api/footprint":
+            # футпрінт для графіка (кнопка FP): рівні купівель / продажів по барах ТФ у видимому діапазоні (≤ 3 доби)
+            tf = {"5m": 300, "15m": 900, "1h": 3600}.get(q.get("tf", "15m"), 900)
+            a, b = int(q.get("from", 0)), int(q.get("to", 0))
+            if b <= a:
+                return self._send(400, {"error": "from / to"})
+            a = max(a, b - 3 * 86400)
+            return self._route(lambda c: footprint.levels(c, q.get("symbol", "").upper(), pd.Timestamp(a, unit="s", tz="UTC"),
+                                                          pd.Timestamp(b, unit="s", tz="UTC"), tf))
+        if url.path == "/api/fp_stats":
+            # підсумок міток b / p за дні UTC from…to включно (бот: «📊 Результати»)
+            day = lambda s: pd.Timestamp(s, tz="UTC").normalize()      # noqa: E731
+            a = day(q.get("from")) if q.get("from") else pd.Timestamp.now(tz="UTC").normalize()
+            b = day(q.get("to")) if q.get("to") else a
+            return self._route(lambda c: footprint.stats(c, a, b + pd.Timedelta(days=1)))
         if url.path in ("/api/backtests", "/api/backtest", "/api/backtest/status"):
             try:
                 body = {"/api/backtests": lambda: {"runs": backtest_runs()},

@@ -10,6 +10,9 @@ trade_recorder.py — угоди Binance і Bybit через WebSocket → 5-х�
     max_buy / max_sell ($)              — найбільша угода бару
     buy_n[], sell_n[], buy_usd[], sell_usd[] — розподіл за розміром угоди в $, кошики SIZE_BOUNDS:
         [0] < 500, [1] 500–2.5k, [2] 2.5k–10k, [3] 10k–50k, [4] 50k–250k, [5] ≥ 250k
+    fp_lvl0, fp_buy[], fp_sell[]        — футпрінт: $ агресивних купівель / продажів на рівнях ціни через 0.1%
+        (footprint.level: floor(ln ціни / ln 1.001)); fp_buy[k] — рівень fp_lvl0 + k. 15m-бар = сума трьох 5m
+        (footprint.load_live) — з нього скринер шукає патерни b / p («залочка», footprint.py)
 Сирі угоди не зберігаємо: увесь ринок — ~1000 угод/с у спокійний час, у піки в рази більше (десятки ГБ на місяць).
 
 Потоки (усі USDT-перпи, нові лістинги — раз на 6 год):
@@ -37,6 +40,7 @@ import psycopg
 import requests
 from dotenv import load_dotenv
 
+from footprint import level
 from liq_recorder import Recorder, now_utc
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -70,8 +74,14 @@ CREATE TABLE IF NOT EXISTS trade_bars (
     sell_n    INTEGER[] NOT NULL,
     buy_usd   DOUBLE PRECISION[] NOT NULL,
     sell_usd  DOUBLE PRECISION[] NOT NULL,
+    fp_lvl0   INTEGER,                    -- футпрінт: перший рівень ціни (footprint.level)
+    fp_buy    DOUBLE PRECISION[],         -- $ агресивних купівель на рівнях fp_lvl0, fp_lvl0 + 1, …
+    fp_sell   DOUBLE PRECISION[],
     PRIMARY KEY (exchange, symbol, ts)
 );
+ALTER TABLE trade_bars ADD COLUMN IF NOT EXISTS fp_lvl0 INTEGER;
+ALTER TABLE trade_bars ADD COLUMN IF NOT EXISTS fp_buy DOUBLE PRECISION[];
+ALTER TABLE trade_bars ADD COLUMN IF NOT EXISTS fp_sell DOUBLE PRECISION[];
 CREATE INDEX IF NOT EXISTS trade_bars_ts ON trade_bars (ts);
 CREATE TABLE IF NOT EXISTS trade_ws_coverage (
     exchange  TEXT NOT NULL,
@@ -94,22 +104,25 @@ class TradeRecorder(Recorder):
 
     def __init__(self, db_url: str):
         super().__init__(db_url)
-        self.bars: dict[tuple, list] = {}           # (exchange, symbol, bar) → [n_b, n_s, v_b, v_s, max_b, max_s, bn, sn, bu, su]
+        self.bars: dict[tuple, list] = {}           # (exchange, symbol, bar) → [n_b, n_s, v_b, v_s, max_b, max_s, bn, sn, bu, su, fp]
         self.sym_conn: dict[tuple, str] = {}        # (exchange, symbol) → з'єднання, яке його веде
         self.trades: dict[str, int] = {}
         self.written = 0
 
     # ---------- накопичення ----------
-    def trade(self, exchange: str, symbol: str, t_ms: int, buy: bool, usd: float):
+    def trade(self, exchange: str, symbol: str, t_ms: int, buy: bool, price: float, usd: float):
         key = (exchange, symbol, bar_of(t_ms))
         b = self.bars.get(key)
         if b is None:
-            b = self.bars[key] = [0, 0, 0.0, 0.0, 0.0, 0.0, [0] * NB, [0] * NB, [0.0] * NB, [0.0] * NB]
+            b = self.bars[key] = [0, 0, 0.0, 0.0, 0.0, 0.0, [0] * NB, [0] * NB, [0.0] * NB, [0.0] * NB, {}]
         k = bisect_right(SIZE_BOUNDS, usd)
+        lv = b[10].get(lvl := level(price))
+        if lv is None:
+            lv = b[10][lvl] = [0.0, 0.0]
         if buy:
-            b[0] += 1; b[2] += usd; b[4] = max(b[4], usd); b[6][k] += 1; b[8][k] += usd
+            b[0] += 1; b[2] += usd; b[4] = max(b[4], usd); b[6][k] += 1; b[8][k] += usd; lv[0] += usd
         else:
-            b[1] += 1; b[3] += usd; b[5] = max(b[5], usd); b[7][k] += 1; b[9][k] += usd
+            b[1] += 1; b[3] += usd; b[5] = max(b[5], usd); b[7][k] += 1; b[9][k] += usd; lv[1] += usd
         self.trades[exchange] = self.trades.get(exchange, 0) + 1
 
     def closed_rows(self) -> list[tuple]:
@@ -122,8 +135,11 @@ class TradeRecorder(Recorder):
             live = self.live.get((exchange, self.sym_conn.get((exchange, symbol), "")))
             if live is None or live["started"].timestamp() > bar:
                 continue
+            lo, hi = min(b[10]), max(b[10])
+            fb = [b[10].get(x, (0.0, 0.0))[0] for x in range(lo, hi + 1)]
+            fs = [b[10].get(x, (0.0, 0.0))[1] for x in range(lo, hi + 1)]
             rows.append((exchange, symbol, datetime.fromtimestamp(bar, tz=timezone.utc), b[0], b[1], b[2], b[3],
-                         b[4] or None, b[5] or None, b[6], b[7], b[8], b[9]))
+                         b[4] or None, b[5] or None, b[6], b[7], b[8], b[9], lo, fb, fs))
         return rows
 
     # ---------- запис ----------
@@ -132,8 +148,8 @@ class TradeRecorder(Recorder):
             if rows:
                 conn.cursor().executemany("""
                     INSERT INTO trade_bars (exchange, symbol, ts, n_buy, n_sell, v_buy, v_sell, max_buy, max_sell,
-                                            buy_n, sell_n, buy_usd, sell_usd)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", rows)
+                                            buy_n, sell_n, buy_usd, sell_usd, fp_lvl0, fp_buy, fp_sell)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""", rows)
             for exchange, cn, started, symbols in live:
                 conn.execute("""INSERT INTO trade_ws_coverage (exchange, conn, started, last_seen, symbols) VALUES (%s,%s,%s,now(),%s)
                                 ON CONFLICT (exchange, conn, started) DO UPDATE SET last_seen = now(), symbols = EXCLUDED.symbols""",
@@ -197,7 +213,8 @@ class TradeRecorder(Recorder):
     def on_binance(self, m: dict):
         if m.get("e") != "aggTrade":
             return                                # відповіді на SUBSCRIBE ({"result": null, "id": …})
-        self.trade("Binance", m["s"], m["T"], not m["m"], float(m["p"]) * float(m["q"]))
+        p = float(m["p"])
+        self.trade("Binance", m["s"], m["T"], not m["m"], p, p * float(m["q"]))
 
     async def binance(self):
         def make_sub(chunk):
@@ -214,7 +231,8 @@ class TradeRecorder(Recorder):
         if not str(m.get("topic", "")).startswith("publicTrade."):
             return
         for d in m.get("data", []):
-            self.trade("Bybit", d["s"], d["T"], d["S"] == "Buy", float(d["p"]) * float(d["v"]))
+            p = float(d["p"])
+            self.trade("Bybit", d["s"], d["T"], d["S"] == "Buy", p, p * float(d["v"]))
 
     async def bybit(self):
         def make_sub(chunk):

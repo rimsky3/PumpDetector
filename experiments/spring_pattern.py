@@ -40,18 +40,15 @@ import pandas as pd
 import psycopg
 from dotenv import load_dotenv
 
+import footprint as FP
 from features import load_pumps, query_df
 from fetch import read_tickers_file
-from risk import atr
+from footprint import FEE, HORIZON, bar_metrics
 
 pd.DataFrame.to_markdown = lambda self, *a, **k: "```\n" + self.to_string() + "\n```"
 
 CACHE = os.path.join("data", "flow")
 OUT = os.path.join("reports", "spring_pattern.md")
-LVL = np.log(1.001)
-LOOK = 8                     # 2 год попереднього діапазону
-FEE = 0.001
-HORIZON = 48                 # 12 год
 
 
 def load_coin(conn, base: str) -> tuple[pd.DataFrame, pd.DataFrame] | None:
@@ -74,74 +71,29 @@ def load_coin(conn, base: str) -> tuple[pd.DataFrame, pd.DataFrame] | None:
     return b, fp[fp["ts"].isin(b.index)]
 
 
-def bar_metrics(b: pd.DataFrame, fp: pd.DataFrame) -> pd.DataFrame:
-    """На кожен бар: попередні лоу/хай, частка обсягу під лоу / над хаєм, дельта там, обсяг у верхній / нижній третині."""
-    b = b.copy()
-    b["vol"] = b["v_buy"] + b["v_sell"]
-    b["delta"] = b["v_buy"] - b["v_sell"]
-    b["L"] = b["low"].shift(1).rolling(LOOK, min_periods=LOOK).min()
-    b["H"] = b["high"].shift(1).rolling(LOOK, min_periods=LOOK).max()
-    b["vol_ratio"] = b["vol"] / b["vol"].shift(1).rolling(96, min_periods=48).median()
-    b["atr"] = atr(b)
-    f = fp.merge(b[["L", "H", "low", "high"]], left_on="ts", right_index=True)
-    f["p_lo"], f["p_hi"] = np.exp(f["lvl"] * LVL), np.exp((f["lvl"] + 1) * LVL)
-    f["vol"], f["d"] = f["buy"] + f["sell"], f["buy"] - f["sell"]
-    mid = (f["p_lo"] + f["p_hi"]) / 2
-    pos = (mid - f["low"]) / (f["high"] - f["low"])
-    below, above = f["p_hi"] <= f["L"] * 1.0005, f["p_lo"] >= f["H"] * 0.9995    # рівень (0.1%) майже цілком за межею
-    g = lambda m, col: f[col].where(m, 0).groupby(f["ts"]).sum()
-    tot = f.groupby("ts")["vol"].sum()
-    b["below_share"] = g(below, "vol") / tot
-    b["below_delta"] = g(below, "d") / tot
-    b["above_share"] = g(above, "vol") / tot
-    b["top_share"] = g(pos >= 2 / 3, "vol") / tot
-    b["bot_share"] = g(pos <= 1 / 3, "vol") / tot
-    return b
-
-
 def events(b: pd.DataFrame) -> dict[str, pd.Series]:
-    pierce, piercedH = b["low"] < b["L"], b["high"] > b["H"]
-    A = pierce & (b["below_share"] >= 0.3) & (b["price"] > b["L"]) & (b["top_share"] <= 0.2) & (b["vol_ratio"] >= 2)
-    U = piercedH & (b["above_share"] >= 0.3) & (b["price"] < b["H"]) & (b["bot_share"] <= 0.2) & (b["vol_ratio"] >= 2)
+    """A / U — правило footprint.patterns (b / p); B і контрольні групи — лише для цього експерименту."""
+    pat = FP.patterns(b)
+    pierce = b["low"] < b["L"]
     fall = (b["price"].shift(1) - b["open"].shift(2)) <= -2 * b["atr"].shift(1)
     climax = fall & (b["vol_ratio"].shift(1) >= 3) & (b["vol_ratio"].shift(2) >= 3) & ((b["delta"].shift(1) + b["delta"].shift(2)) < 0)
     flush_low = pd.concat([b["low"].shift(1), b["low"].shift(2)], axis=1).min(axis=1)
     B = climax & (b["delta"] > 0.03 * b["vol"]) & (b["low"] >= flush_low - b["atr"])
     ok = b["L"].notna() & b["vol_ratio"].notna() & b["atr"].notna()
-    return {"A прокол з викупом": A & ok, "B кульмінація + дельта": B & ok, "U прокол хаю (шорт)": U & ok,
+    return {"A прокол з викупом": pat["b"] & ok, "B кульмінація + дельта": B & ok, "U прокол хаю (шорт)": pat["p"] & ok,
             "к: усі бари": ok, "к: будь-який прокол лоу": pierce & ok,
             "к: тінь під лоу (закриття > L)": pierce & (b["price"] > b["L"]) & ok, "к: пробій (закриття < L)": pierce & (b["price"] <= b["L"]) & ok}
 
 
 def outcomes(b: pd.DataFrame, mask: pd.Series, short: bool, base: str) -> pd.DataFrame:
-    c, hi, lo, a = b["price"].to_numpy(), b["high"].to_numpy(), b["low"].to_numpy(), b["atr"].to_numpy()
+    """Угода від закриття кожного бару маски: стоп під лоу (над хаєм для шорту), footprint.outcome; лише повний горизонт."""
     rows = []
     for i in np.flatnonzero(mask.to_numpy()):
         if i + HORIZON >= len(b):
             continue
-        sgn = -1 if short else 1
-        r = {f"ret_{h}h": sgn * (c[i + 4 * h] / c[i] - 1) for h in (1, 4, 12)}
-        r["ret_4h_atr"] = sgn * (c[i + 16] - c[i]) / a[i]
-        stop = hi[i] * 1.001 if short else lo[i] * 0.999
-        R = abs(c[i] - stop)
-        if R <= 0:
-            continue
-        res, hit1, hit2 = None, False, False
-        for j in range(i + 1, i + HORIZON + 1):
-            adverse = hi[j] >= stop if short else lo[j] <= stop
-            fav = (c[i] - lo[j]) if short else (hi[j] - c[i])
-            if adverse:                      # стоп у тому самому барі, що й ціль, — рахуємо стоп (обережно)
-                res = -1.0
-                break
-            hit1 |= fav >= R
-            if fav >= 2 * R:
-                hit2, res = True, 2.0
-                break
-        if res is None:
-            res = sgn * (c[i + HORIZON] - c[i]) / R
-        r.update({"hit1R": hit1 or hit2, "hit2R": hit2, "R": res - FEE * c[i] / R, "R_pct": R / c[i], "base": base,
-                  "ts": b.index[i], "below_delta": b["below_delta"].iloc[i]})
-        rows.append(r)
+        r = FP.outcome(b, i, FP.stop_of(b, i, "p" if short else "b"), short=short)
+        if r:
+            rows.append(r | {"base": base, "ts": b.index[i], "below_delta": b["below_delta"].iloc[i]})
     return pd.DataFrame(rows)
 
 

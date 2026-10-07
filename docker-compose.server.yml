@@ -79,11 +79,9 @@ services:
         condition: service_healthy
     mem_limit: 250m
 
-  # угоди Binance + Bybit (WebSocket) → 5-хв зведення trade_bars; docs/trades.md
-  # ВИМКНЕНО (профіль trades): історію дають архіви бірж; запис потрібен лише для живих ознак потоку — запускати,
-  # коли експеримент на архівах покаже користь: docker compose -f docker-compose.server.yml --profile trades up -d traderec
+  # угоди Binance + Bybit (WebSocket) → 5-хв зведення з футпрінтом trade_bars; з нього скринер шукає мітки b / p
+  # (footprint.py); історію (бектести) дають архіви бірж; docs/trades.md
   traderec:
-    profiles: ["trades"]
     build: .
     image: pump-detector
     restart: unless-stopped

@@ -20,7 +20,7 @@ labeling, training, backtests and experiments stay on the laptop.
 | `db` | `postgres:17` | tuned for 4 GB (shared_buffers 512 MB); port 5432 is **not** published |
 | `screener` | `python screener.py --loop` | `restart: unless-stopped`; the only screener — never run a second one on the laptop (one Coinalyze key, 40 calls/min) |
 | `liqrec` | `python liq_recorder.py` | own liquidation feed over WebSocket (docs/liquidations.md); ~45 MB |
-| `traderec` | `python trade_recorder.py` | own trade feed (Binance + Bybit) → 5-minute summaries `trade_bars` (docs/trades.md); **off** (compose profile `trades`) until flow features prove useful — history comes from the exchanges' archives |
+| `traderec` | `python trade_recorder.py` | own trade feed (Binance + Bybit) → 5-minute summaries with a footprint `trade_bars`; the screener's b / p marks need it (docs/trades.md) |
 | `dashboard` | `python dashboard.py --host 0.0.0.0 --no-browser` | published on `127.0.0.1:8766` of the server only; reached through an SSH tunnel |
 
 The image (`Dockerfile`) holds Python 3.14 and the pinned libraries from `requirements.lock.txt` — the same versions

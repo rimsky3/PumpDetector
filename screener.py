@@ -32,6 +32,7 @@ import threading
 from dotenv import load_dotenv
 
 import fetch_exchange
+import footprint
 import orderbook
 import wake
 import scanner
@@ -366,6 +367,43 @@ class Background:
 
 
 BG: Background | None = None      # створюється в main() у режимі --loop; без нього все — як раніше, послідовно
+
+FP_BACKFILL_HOUR = 3              # архів угод Binance за вчора викладають уночі — дозаповнюємо після 03:00 UTC
+
+
+class FootprintHistory:
+    """Історія футпрінту з архіву Binance (trade_backfill.py) — ОКРЕМИМ процесом з нижчим пріоритетом (розбір архіву —
+    процесор; у потоці скринера він гальмував би 15m-оцінку через GIL). Нові тікери списку (і всі при старті) — 30 днів;
+    раз на добу після FP_BACKFILL_HOUR — вчорашній день для всіх (закриває дірки, коли записувач угод не працював)."""
+
+    def __init__(self):
+        self.known: set[str] = set()
+        self.pending: set[str] = set()
+        self.day = None
+        self.proc = None
+
+    def _spawn(self, args: list[str]) -> None:
+        import subprocess
+        kw = {"preexec_fn": lambda: os.nice(10)} if hasattr(os, "nice") else {}
+        self.proc = subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_backfill.py"),
+                                      *args], **kw)
+        print(f"  історія футпрінту: запущено trade_backfill.py {' '.join(args[:6])}{' …' if len(args) > 6 else ''}")
+
+    def tick(self, bases: list[str]) -> None:
+        self.pending |= set(bases) - self.known
+        self.known |= set(bases)
+        if self.proc is not None and self.proc.poll() is None:
+            return                                   # попередній прогін ще триває
+        now = datetime.now(timezone.utc)
+        if self.pending:
+            todo, self.pending = sorted(self.pending), set()
+            self._spawn(todo)
+        elif now.hour >= FP_BACKFILL_HOUR and self.day != now.date():
+            self.day = now.date()
+            self._spawn(["--yesterday"])
+
+
+FP_HISTORY: FootprintHistory | None = None
 _onboarding: dict = {}             # тікер → коли його завели без годинної історії (вона докачується у фоні)
 
 
@@ -461,6 +499,12 @@ def run_cycle(conn, bases: list[str], models: list[dict], fetch: bool, client: C
                 print(f"  гарячі першими ({', '.join(first)}): оцінено за {(datetime.now(timezone.utc) - started).seconds} с")
         parts = [p for p in parts if len(p)]
         s15 = pd.concat(parts, ignore_index=True) if parts else pd.DataFrame()
+        # патерни футпрінту b / p («залочка») на щойно закритому барі — лише в тікерів з Кандидатом / Alert за 6 год
+        try:
+            footprint.detect(conn, bases, last15, m15)
+        except Exception as e:
+            conn.rollback()
+            print(f"  ! b/p: {e}")
         if fetch:
             try:
                 wake.check(conn, bases)        # 5m щойно оновлено для всього списку
@@ -650,7 +694,15 @@ def main() -> None:
     if args.loop and client is not None:
         BG = Background(db_url, client)
 
+    try:
+        with psycopg.connect(db_url) as conn:
+            footprint.ensure_table(conn)
+    except Exception as e:
+        print(f"! fp_marks: {e}")
     last_hour, last_bg, last_full15 = None, None, None
+    global FP_HISTORY
+    if args.loop and not args.no_fetch:
+        FP_HISTORY = FootprintHistory()
     while True:
         hour = pd.Timestamp(datetime.now(timezone.utc)).floor("h")
         hourly = hour != last_hour          # перший цикл нової години (або перший запуск) — ще й годинний
@@ -668,6 +720,11 @@ def main() -> None:
             continue
         last_full15 = bar15
         bases = cycle_bases()               # watchlist перечитується щоциклу: новий тікер — без перезапуску
+        if FP_HISTORY is not None:          # історія футпрінту / міток b / p з архіву — окремим процесом
+            try:
+                FP_HISTORY.tick(bases)
+            except Exception as e:
+                print(f"  ! історія футпрінту: {e}")
         try:
             with psycopg.connect(db_url) as conn:
                 run_cycle(conn, bases, models, not args.no_fetch, client, m15, hourly)

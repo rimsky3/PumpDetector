@@ -155,8 +155,14 @@ CREATE TABLE IF NOT EXISTS trade_bars (
     sell_n    INTEGER[] NOT NULL,
     buy_usd   DOUBLE PRECISION[] NOT NULL,
     sell_usd  DOUBLE PRECISION[] NOT NULL,
+    fp_lvl0   INTEGER,                    -- футпрінт: перший рівень ціни (footprint.level)
+    fp_buy    DOUBLE PRECISION[],         -- $ агресивних купівель на рівнях fp_lvl0, fp_lvl0 + 1, …
+    fp_sell   DOUBLE PRECISION[],
     PRIMARY KEY (exchange, symbol, ts)
 );
+ALTER TABLE trade_bars ADD COLUMN IF NOT EXISTS fp_lvl0 INTEGER;
+ALTER TABLE trade_bars ADD COLUMN IF NOT EXISTS fp_buy DOUBLE PRECISION[];
+ALTER TABLE trade_bars ADD COLUMN IF NOT EXISTS fp_sell DOUBLE PRECISION[];
 CREATE INDEX IF NOT EXISTS trade_bars_ts ON trade_bars (ts);
 CREATE TABLE IF NOT EXISTS trade_ws_coverage (
     exchange  TEXT NOT NULL,
@@ -165,4 +171,22 @@ CREATE TABLE IF NOT EXISTS trade_ws_coverage (
     last_seen TIMESTAMPTZ NOT NULL,       -- з'єднання ще живе станом на цей момент
     symbols   INTEGER,
     PRIMARY KEY (exchange, conn, started)
+);
+
+-- Мітки патернів футпрінту b / p («залочка», footprint.py, з 2026-10-07): скринер пише їх для тікерів з Кандидатом / Alert
+-- за 6 год; дашборд — мітка під / над свічкою, бот — сповіщення; результат мітки рахується при читанні (footprint.outcome).
+CREATE TABLE IF NOT EXISTS fp_marks (
+    base_asset  TEXT NOT NULL,
+    ts          TIMESTAMPTZ NOT NULL,        -- відкриття 15m-бару з патерном
+    kind        TEXT NOT NULL,               -- b (залочка на лоу) / p (на хаях)
+    close       DOUBLE PRECISION,            -- закриття бару = ціна входу підказки
+    stop        DOUBLE PRECISION,            -- b: під лоу бару, p: над хаєм (STOP_PAD)
+    level       DOUBLE PRECISION,            -- пробитий лоу (b) / хай (p) попередніх 2 год
+    beyond      DOUBLE PRECISION,            -- частка обсягу бару за рівнем
+    beyond_delta DOUBLE PRECISION,           -- дельта за рівнем (купівлі − продажі), частка обсягу бару
+    edge        DOUBLE PRECISION,            -- частка обсягу на протилежному краї бару
+    vol_x       DOUBLE PRECISION,            -- обсяг бару / медіана доби
+    ctx         TEXT,                        -- alert / candidate — контекст моделі за 6 год
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (base_asset, ts, kind)
 );
