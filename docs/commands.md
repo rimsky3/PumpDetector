@@ -254,6 +254,17 @@ look-ahead), states ordered from "falling" to "rising". Reports the state profil
 the start of impulses, and base vs base + state probabilities: leave-ticker-out and a backtest on the backtest coins
 (current and partial exit). `--states N` — number of hidden states (default 4). Report: `reports/hmm_regimes.md`.
 
+### `experiments/market_regime.py`
+
+Market regime (risk on / risk off) against the model's trades. Hourly market features known at the hour's close: BTC
+24-hour return, distance to its 7-day mean and 7-day high, BTC volatility against its 30-day norm (Binance 1h, cached in
+`data/market_btc.pkl`), and the altcoin market from the 205 coins of the long backtest cache (`data/long_bt`): share of
+coins up over 24 hours and 7 days, median 24-hour return, alts minus BTC. Each trade gets the last hour that closed
+before its entry. Trade sets: the 6-month long backtest (`reports/long_backtest_trades.csv`) and a September backtest
+run. Reports terciles per feature with month-by-month stability, a preset risk-on / risk-off combination, and a filter
+"skip the Alert when more than 50 / 60 / 70% of alts are up over 7 days". `--bt PATH` — September run (default: the
+newest market run with turnover ≥ 20 M); `--refresh-btc` — download BTC again. Report: `reports/market_regime.md`.
+
 ### `experiments/trade_count.py`
 
 The number of trades as features: on 1h from Coinalyze `tx` / `btx` (all exchanges), on 15m from Binance klines (trade
@@ -317,6 +328,20 @@ order book filter (bid / ask ratio ≥ 1 at the signal) — with the shared part
 `strategies.json` (a new experiment is a new entry); `python strategies.py` prints it. The same mode selector drives the
 dashboard's Forecast (position, trade marks), Journal (statistics per mode) and Backtest (`backtest.py --strategy <id>`;
 the order book filter reads the Binance `bookDepth` archive there).
+
+Mode `market_cool` ("ринок не гарячий", key `market_max: 0.6`) takes an Alert only when at most 60% of altcoins are up
+over 7 days at the close of the signal bar (`market.py`; unknown state — the signal is taken).
+
+### `market.py` — altcoin market state
+
+| Usage | Meaning |
+|---|---|
+| `python market.py` | update `market_breadth`: hourly closes of ~250 liquid Binance alts (30-day average turnover 5 M – 1 B $, no stablecoins) and BTC → share of alts up over 24 h / 7 days, median alt move, alts vs BTC, BTC trend and volatility. First run downloads 60 days (~2 min, rate-limited to ~900 weight/min); later runs fetch only new hours. Closes are cached in `reports/market_closes.pkl` |
+| `python market.py --show` | print the latest state, download nothing |
+
+State: **Hot** — more than 60% of alts up over 7 days, **Cold** — below 40%, otherwise Neutral. The screener (`--loop`)
+updates it in its own thread at HH:01; the dashboard reads it at `/api/market`; journal, dashboard positions and
+`backtest.py` use it for the `market_cool` mode. Background: `experiments/market_regime.py`.
 
 ### `orderbook.py`
 

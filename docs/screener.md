@@ -80,6 +80,16 @@ the next run (15m modes only). For past signals without an order book snapshot t
 OB filter takes the signal. In Backtest the retrained model waiting for "Прийняти" is called "нова версія" to avoid
 confusion with the Candidate signal tier.
 
+## Altcoin market state (since 2026-10-07)
+
+`market.py` runs in its own screener thread every hour at HH:01 (and at start; the first run downloads 60 days): hourly
+closes of ~250 liquid Binance alts and BTC → `market_breadth` — share of alts up over 7 days and 24 hours, median alt
+move, alts vs BTC, BTC trend and volatility. **Hot** = more than 60% of alts up over 7 days, **Cold** = below 40%.
+In the 6-month backtest Alerts in a Hot market were worse (profit factor 0.78 vs 1.09, every month), in the live journal
+of 24.09–06.10 they were better (1.52 vs 1.04) — so it is shown as context and tested live: the journal has the mode
+"15m + 1h · ринок не гарячий" (`market_cool`), which skips Alerts while the market is Hot. The live list (Binance) and
+the experiment's list (Bybit cache) agree: correlation 0.997, same Hot / not-Hot state in 98.7% of hours.
+
 ## Order book and limit hint (since 2026-10-02)
 
 - **OB** — the bid / ask ratio within ±2% of the mid price, Binance + Bybit summed (`orderbook.py`, public order book

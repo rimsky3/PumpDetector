@@ -42,6 +42,7 @@ from screener import (FETCH_DAYS, INTRADAY_DAYS, SIGNALS_STAMP, STATUS_FILE, WAT
                       load_models, next_hourly, next_run, score_15m, score_bases, score_bases_own, update_15m)
 import fetch_exchange
 import footprint
+import market
 import orderbook
 import volume_profile
 import wake
@@ -505,7 +506,8 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
         pos = {"open": False, "trades": []}
     else:
         pos = position_state(h, score, 1.0, k, exit_bars, PARTIAL_EXIT, strategies.entry_rule(strat),
-                             orderbook.allow_fn(book_rows) if strat.get("ob") else None)
+                             market.both(orderbook.allow_fn(book_rows) if strat.get("ob") else None,
+                                         market.strategy_allow(conn, strat)))
     last = t.iloc[-1] if len(t) else None
     streak = 0
     if last is not None:
@@ -1297,6 +1299,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, scan_view(q))
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
+        if url.path == "/api/market":          # стан ринку альтів (кнопка «Market» над графіком): market_breadth
+            return self._route(lambda c: market.api(c, int(q.get("days", 7))))
         if url.path == "/api/book":            # біди / аски ±2% наживо (Binance + Bybit), кеш кілька секунд
             return self._route(lambda c: orderbook.live(c, q.get("symbol", "").upper()) or {"ratio": None})
         if url.path == "/api/profile":          # профіль обсягу: дні / тижні / фрагмент (app/js/profile.js)

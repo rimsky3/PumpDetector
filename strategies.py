@@ -7,6 +7,7 @@ strategies.py — режими: модель + правила угод. Один
     signal   alert — вхід на Alert (15m + підтвердження 1h); candidate — на Кандидаті (лише 15m, раніше, але шумніше)
     entry    market — по ринку за закриттям бару сигналу; limit — лімітна заявка −0.5 ATR, дійсна 1 год (risk.LIMIT_ENTRY)
     ob       true — сигнал береться лише при біди / аски ±2% ≥ 1 у момент сигналу (невідомо — береться)
+    market_max  0.6 — сигнал береться лише, коли ≤ 60% альтів дорожчі, ніж тиждень тому (market.py; невідомо — береться)
 Вихід для 15m-режимів спільний: risk.PARTIAL_EXIT (½ на +3 ATR, далі беззбиток; решта — 4 бари без сигналу або стоп).
 
 Список — strategies.json (новий експеримент = новий рядок; без файлу — DEFAULT). Результати режимів — notes/experiments.md.
@@ -27,6 +28,9 @@ DEFAULT = [
      "note": "вересень PF 0.96 проти 0.86, але на 6 міс. не підтвердився (3 з 7 місяців)"},
     {"id": "ob_limit", "title": "15m + 1h · OB + ліміт", "model": "tier15", "signal": "alert", "entry": "limit", "ob": True,
      "note": "вересень PF 1.08; 6 міс. — 1.00"},
+    {"id": "market_cool", "title": "15m + 1h · ринок не гарячий", "model": "tier15", "signal": "alert", "entry": "market",
+     "ob": False, "market_max": 0.6,
+     "note": "Alert лише коли ≤ 60% альтів у плюсі за 7 дн: 6 міс. PF 1.09 проти 0.78 у гарячому ринку, 6 з 6 місяців"},
     {"id": "cand", "title": "15m · вхід на Кандидаті", "model": "tier15", "signal": "candidate", "entry": "market", "ob": False,
      "note": "раніший вхід (без підтвердження 1h), більше фальстартів"},
     {"id": "lightgbm", "title": "LightGBM 1h · порівняння", "model": "lightgbm"},
@@ -66,7 +70,7 @@ def entry_rule(s: dict) -> dict | None:
 
 
 def public(s: dict) -> dict:
-    return {k: s.get(k) for k in ("id", "title", "model", "signal", "entry", "ob", "main", "note")}
+    return {k: s.get(k) for k in ("id", "title", "model", "signal", "entry", "ob", "market_max", "main", "note")}
 
 
 if __name__ == "__main__":

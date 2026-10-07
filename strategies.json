@@ -37,6 +37,16 @@
   "note": "вересень PF 1.08; 6 міс. — 1.00"
  },
  {
+  "id": "market_cool",
+  "title": "15m + 1h · ринок не гарячий",
+  "model": "tier15",
+  "signal": "alert",
+  "entry": "market",
+  "ob": false,
+  "market_max": 0.6,
+  "note": "Alert лише коли ≤ 60% альтів у плюсі за 7 дн: 6 міс. PF 1.09 проти 0.78 у гарячому ринку, 6 з 6 місяців"
+ },
+ {
   "id": "cand",
   "title": "15m · вхід на Кандидаті",
   "model": "tier15",

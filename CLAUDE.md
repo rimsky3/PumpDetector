@@ -176,6 +176,16 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 - label.py 15m-модель на тікері (/api/model15, 2026-09-30; запускається автоматично при відкритті, кнопка «Перерахувати модель 15m»): 15m + 1h LightGBM на льоту по всій історії тікера (у signals НЕ пише),
   рівні — tiers.tier_frame, підсумок і епізоди проти поточної розмітки (train.event_metrics / signal_episodes, BAR_15M),
   прапорець in_training. Holdout-список відкладено до ~25–30 тікерів (власник погодився); до того чесна перевірка — журнал.
+- РЕЖИМ РИНКУ (2026-10-07, experiments/market_regime.py, reports/market_regime.md): BTC (тренд / від хаю / волатильність) —
+  шум; класичний risk on ГІРШИЙ (PF 0.89 проти 1.04). Ширина ринку альтів за 7 дн > 60% → Alert PF 0.78 / решта 1.09
+  (6 міс.), вересень 1.00 / 1.69; решта краща в 6 з 6 місяців (пороги 60–70%). АЛЕ журнал 24.09–06.10 — навпаки
+  (гарячий 1.52 / решта 1.04, без топ-3 1.13 / 0.87) → лише контекст + жива перевірка.
+  market.py (власник 07.10): ~250 ліквідних альтів Binance (сер. оборот 5 млн – 1 млрд $, кеш сканера) + BTC, 1h-закриття
+  (reports/market_closes.pkl) → market_breadth (schema.sql); screener — потік market.watcher щогодини о HH:01; ознаки —
+  market.features (спільні з experiments/market_regime.py; живий список ≈ експеримент: ρ 0.997, стан 98.7%).
+  Hot > 60% альтів у плюсі за 7 дн, Cold < 40%. /api/market (market.api). Режим strategies market_cool (market_max 0.6):
+  market.strategy_allow / both — журнал, позиція дашборда, backtest.py. Кнопка «Market ▾» праворуч від «OI монети / USD» —
+  макет https://claude.ai/artifact/Acyn8HgbQDgmb338tPtf9j (A шкала / B графік тижня / C альти·BTC), чекає вибору власника.
 - ВАЖЛИВІСТЬ ПО ГРУПАХ (2026-10-07, власник): train.FEATURE_GROUPS / feature_group / gain_shares / group_shares / group_table;
   /compare — блок «На що дивиться модель» (15m і 1h: групи поточна проти нової, підсумок, ⚠ одна ознака ≥ 40%, топ-10 змін),
   label._importance; звіт train.py — таблиці груп для 1h і 15m. Причина: розмітка змінює FI (ліквідації 1h 18.5% → 3% після

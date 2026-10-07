@@ -37,6 +37,7 @@ import train
 from features import (FEATURES, FEATURES_15M, INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, build_15m, build_hourly_own,
                       load_raw)
 from fetch import Coinalyze, collect_liquidations, excluded_tickers, find_markets, read_tickers_file, upsert_markets
+import market
 import orderbook
 import strategies
 from risk import PARTIAL_EXIT, position_state, trade_stats
@@ -151,6 +152,7 @@ def run_ticker(conn, base: str, m15: dict, m1: dict, days: int, entry: str, stra
                               AND quote_asset = 'USDT' LIMIT 1""", (base,)).fetchone()
         if row:
             allow = orderbook.archive_allow_fn(row[0], list(score.index[score >= 1]))
+    allow = market.both(allow, market.strategy_allow(conn, strat))     # режим «ринок не гарячий»
     pos = position_state(h, score, 1.0, m15.get("risk", {}).get("k"), m15.get("exit_bars", 4), PARTIAL_EXIT,
                          strategies.entry_rule(strat) if strat is not None else None, allow)
     trades = []

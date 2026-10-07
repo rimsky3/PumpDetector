@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 import numpy as np
 import pandas as pd
 
+import market
 import orderbook
 import strategies
 from features import aggregate, in_pump, load_pumps, load_raw, query_df
@@ -146,6 +147,7 @@ def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict 
                     allow = orderbook.allow_fn(orderbook.history(conn, base, g.index.min().to_pydatetime()))
                 except Exception:
                     conn.rollback()
+            allow = market.both(allow, market.strategy_allow(conn, strat, 15 if tf15 else 60))   # «ринок не гарячий»
         else:
             entry, allow = (LIMIT_ENTRY if model == LIMIT_MODEL else None), None
         pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None, entry, allow)

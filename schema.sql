@@ -190,3 +190,14 @@ CREATE TABLE IF NOT EXISTS fp_marks (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (base_asset, ts, kind)
 );
+
+-- Стан ринку альтів щогодини (market.py; дашборд — кнопка «Market», журнал — режим «ринок не гарячий»)
+CREATE TABLE IF NOT EXISTS market_breadth (
+    ts TIMESTAMPTZ PRIMARY KEY,          -- відкриття години; значення відомі на її закритті (ts + 1 год)
+    n INT,                               -- скільки альтів з історією за 7 днів
+    breadth_24h DOUBLE PRECISION, breadth_7d DOUBLE PRECISION,       -- частка альтів у плюсі за 24 год / 7 днів
+    alt_med_24h DOUBLE PRECISION, alt_med_7d DOUBLE PRECISION,       -- медіанна зміна альтів
+    alt_vs_btc_24h DOUBLE PRECISION,     -- медіана альтів мінус BTC за 24 год
+    btc_ret_24h DOUBLE PRECISION, btc_vs_ma7d DOUBLE PRECISION, btc_dd_7d DOUBLE PRECISION, btc_vol_x DOUBLE PRECISION,
+    updated_at TIMESTAMPTZ DEFAULT now()
+);

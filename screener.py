@@ -711,6 +711,9 @@ def main() -> None:
     global FP_HISTORY
     if args.loop and not args.no_fetch:
         FP_HISTORY = FootprintHistory()
+        # стан ринку альтів (кнопка «Market» у дашборді, режим журналу «ринок не гарячий») — свій потік, щогодини о HH:01
+        import market
+        market.watcher(db_url)
     while True:
         hour = pd.Timestamp(datetime.now(timezone.utc)).floor("h")
         hourly = hour != last_hour          # перший цикл нової години (або перший запуск) — ще й годинний
