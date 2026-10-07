@@ -388,9 +388,9 @@ class FootprintHistory:
     def _spawn(self, args: list[str]) -> None:
         import subprocess
 
-        def limits():                 # у дочірньому процесі (лише Linux / сервер): нижчий пріоритет і стеля пам'яті
+        def limits():                 # у дочірньому процесі (лише Linux / сервер): найнижчий пріоритет і стеля пам'яті
             import resource
-            os.nice(10)
+            os.nice(19)               # лише вільний процесор: графіки дашборда й оцінка скринера — першими (07.10)
             resource.setrlimit(resource.RLIMIT_DATA, (self.MEM_LIMIT, self.MEM_LIMIT))
         kw = {"preexec_fn": limits} if hasattr(os, "nice") else {}
         self.proc = subprocess.Popen([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "trade_backfill.py"),

@@ -622,6 +622,9 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   Тепер: latest_signals(base) — версія серед рядків тікера (CTE, індекс; результат ідентичний), ticker() — single-flight
   (_inflight: однаковий ключ чекає першого), «＋ у watchlist» → quick_add (markets 2 виклики + 15m/5m бірж 10 днів +
   score_15m + score_bases_own; БЕЗ 60 днів Coinalyze — їх дозбирає скринер; раніше refresh у дашборді ловив 429 разом зі скринером).
+  quick_add — ОКРЕМИЙ процес (`dashboard.py --quick-add TK`, nice 10; ADD_PROCS / add_status → pending.job): потоком у процесі
+  дашборда ділив GIL із запитами графіків — графіки гальмували під час додавання (BEAT: тікер у списку за ~65 с).
+  Дозаповнення історії футпрінту (FootprintHistory) — nice 19. PostgreSQL на сервері — max_parallel_workers_per_gather 0.
 - ЛІКВІДАЦІЇ — ІНВЕРСНІ КОНТРАКТИ (2026-10-07): liq_recorder рахував OKX *-USD-SWAP і Binance COIN-M (*USD_PERP, потік
   !forceOrder їх теж віддає) як «контракти × розмір × ціна» → роздуті суми ($19 млрд OKX за добу). Тепер інверсні: usd =
   контракти × розмір (OKX ctType inverse / ctVal USD; Binance dapi exchangeInfo contractSize, BTC 100 / решта 10), qty = usd / ціна.

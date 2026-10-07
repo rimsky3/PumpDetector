@@ -398,7 +398,7 @@ def watch_list(conn, model: str) -> dict:
     res["wakes"] = [w for w in res.get("wakes", []) if w["ticker"] in keep]
     res["fps"] = [f for f in res.get("fps", []) if f["ticker"] in keep]
     res["pending"] = [{"ticker": b, "source": "auto" if b in auto else "manual", "reason": auto.get(b, {}).get("reason"),
-                       "job": ADD_JOBS.get(b)} for b in manual + sorted(auto) if b not in have]
+                       "job": add_status(b)} for b in manual + sorted(auto) if b not in have]
     return res
 
 
@@ -909,7 +909,7 @@ def scan_view(q: dict) -> dict:
             "presets": {k: {"name": v, "params": scanner.PRESETS.get(k, cfg["custom"])} for k, v in scanner.PRESET_NAMES.items()},
             "preview": scanner.preview(p, set(manual)), "recall": scanner.recall_for(p, cfg["ttl_hours"]),
             "auto": [{"ticker": b, **r} for b, r in sorted(auto.items(), key=lambda x: x[1]["last_hit"], reverse=True)],
-            "manual": manual, "jobs": ADD_JOBS}
+            "manual": manual, "jobs": {b: add_status(b) for b in set(ADD_JOBS) | set(ADD_PROCS)}}
 
 
 def add_to_watchlist(base: str) -> dict:
@@ -923,17 +923,39 @@ def add_to_watchlist(base: str) -> dict:
     if base not in binance_bases():
         raise ValueError(f"{base}: немає серед USDT-перпів Binance")
     set_ticker_in_file(os.path.join(ROOT, WATCHLIST_FILE), base, True, "додано з дашборду")
+    # окремим процесом з нижчим пріоритетом: потік у процесі дашборда (ознаки, модель) ділив з запитами графіків
+    # один GIL — поки додавався тікер, графіки гальмували (07.10, BEAT)
+    import subprocess
+    import tempfile
+    log = open(os.path.join(tempfile.gettempdir(), f"pd_add_{base}.log"), "w", encoding="utf-8")
+    kw = {"preexec_fn": lambda: os.nice(10)} if hasattr(os, "nice") else {}
+    ADD_PROCS[base] = (subprocess.Popen([sys.executable, os.path.abspath(__file__), "--quick-add", base],
+                                        stdout=log, stderr=subprocess.STDOUT, cwd=ROOT, **kw), log.name)
     ADD_JOBS[base] = "loading"
-
-    def work():
-        try:
-            with psycopg.connect(State.db_url) as conn:
-                quick_add(conn, base)
-            ADD_JOBS[base] = "done"
-        except Exception as e:
-            ADD_JOBS[base] = f"{type(e).__name__}: {e}"
-    threading.Thread(target=work, daemon=True).start()
     return {"ok": True, "ticker": base}
+
+
+ADD_PROCS: dict = {}         # тікер → (процес quick_add, файл журналу)
+
+
+def add_status(base: str) -> str | None:
+    """Стан «＋ у watchlist»: loading / done / остання строка помилки процесу quick_add."""
+    item = ADD_PROCS.get(base)
+    if item is not None:
+        p, log = item
+        rc = p.poll()
+        if rc is None:
+            return "loading"
+        ADD_PROCS.pop(base, None)
+        if rc == 0:
+            ADD_JOBS[base] = "done"
+        else:
+            try:
+                lines = [x.strip() for x in open(log, encoding="utf-8", errors="replace") if x.strip()]
+            except OSError:
+                lines = []
+            ADD_JOBS[base] = lines[-1][:200] if lines else f"помилка (код {rc})"
+    return ADD_JOBS.get(base)
 
 
 def quick_add(conn, base: str) -> None:
@@ -1316,6 +1338,9 @@ def main() -> None:
                         help="адреса, на якій слухати (у Docker-контейнері на сервері — 0.0.0.0; назовні порт однаково "
                              "прив'язаний лише до 127.0.0.1 сервера, див. docker-compose.server.yml)")
     parser.add_argument("--no-browser", action="store_true", help="не відкривати браузер автоматично")
+    parser.add_argument("--quick-add", metavar="TICKER",
+                        help="лише швидке додавання тікера (контракти, 15m/5m з бірж, оцінка) і вихід — так його запускає сам "
+                             "дашборд окремим процесом після «＋ у watchlist», щоб не гальмувати графіки")
     args = parser.parse_args()
 
     load_dotenv(os.path.join(ROOT, ".env"))
@@ -1325,6 +1350,10 @@ def main() -> None:
         sys.exit("Заповни DATABASE_URL у файлі .env")
     State.models = load_models()
     State.m15 = load_model_15m()
+    if args.quick_add:                          # окремий процес «＋ у watchlist» (add_to_watchlist)
+        with psycopg.connect(State.db_url) as conn:
+            quick_add(conn, args.quick_add.upper())
+        return
     if State.m15 is None:
         print("15m-моделі немає (python train.py) — показую лише годинні моделі")
     threading.Thread(target=rescore_on_start, daemon=True).start()

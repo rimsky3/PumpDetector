@@ -553,6 +553,8 @@ rules (`risk.position_state`), 0.1% fee. Writes `reports/backtests/<time>_<model
 |---|---|---|
 | `--port N` | 8766 | port on 127.0.0.1 |
 | `--no-browser` | off | do not open the browser |
+| `--host ADDR` | 127.0.0.1 | address to listen on (0.0.0.0 in the server container) |
+| `--quick-add TICKER` | — | only the quick part of adding a ticker (exchange contracts, 15m/5m from the exchanges, the 15m and own-hourly score) and exit; the dashboard runs this itself as a separate low-priority process after "+ to watchlist", so charts are not slowed down. Coinalyze history is collected later by the screener |
 
 `http://127.0.0.1:8766/#forecast/NMR` opens a ticker, `#journal` the journal. Loads models at start: restart it
 after `train.py`.
