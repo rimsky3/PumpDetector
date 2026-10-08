@@ -230,6 +230,14 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 - РАННІЙ ВИХІД НА 5m (2026-10-08, experiments/exit_5m.py, reports/exit_5m.md): 6 міс., 399 монет чесного списку, входи робочої
   моделі; n червоних 5m з OI (монети) ↓ без нового хаю: A5 0.92 = A15 (рушій звірено), E2 0.89 (пилка, 166 великих зрізано),
   E3 0.92, E4 0.93 (шум), без OI 0.90, «чекати згасання Alert» не допомагає → вихід НЕ змінено. Кеш 5m — data/exit5m/.
+- MOVERS НА ГРАФІКУ І В СПИСКУ (2026-10-08, власник: рамка лише для росту, поріг як у кнопки): movers.save пише ще «all»
+  (метрики всіх ~254 монет, 109 КБ; /api/movers віддає без нього), movers.info(base) → чіп (горизонт з max |z| ≥ Z_MOVER 2.5,
+  frame = z ≥ 2.5 за FRAME_H 1H / 4H; кеш за mtime). dashboard: /api/list → row.mover, /api/ticker → mover (поза кешем
+  ticker()); dashboard.html — --mover #c792ea, .trow.mover рамка (inset box-shadow, поєднується з sel / other), .tk-mover чіп
+  після стопу (neg — червоний), moverTitle — підказка. Статистика порогів за 2 тижні: z ≥ 2 / 2.5 / 3 / 4 — 8–10 / 5–7 / 4–5 / 2–3 монет.
+- МЕНШИЙ СТОП (2026-10-08, experiments/stop_size.py, reports/stop_size.md; exit_5m.sim5 wait_on, stop_pct): k × 100/75/50/35% —
+  PF 0.92 / 0.92 / 0.90 / 0.88, по стопу 37 / 51 / 68 / 79%; «чекати згасання Alert» після стопу +0.01; стоп ≥ 10% — 2% угод
+  (медіана 2.7%) → стоп НЕ змінено; перевага власника — вихід за стаканом, не розмір стопу.
 - DRIVERS (2026-10-08, власник: варіант A + ⚠ з C, макет https://claude.ai/artifact/Rf29hSf9fmsTynMqcT3yMj, «англійський
   термін»): drivers.py — TreeSHAP 15m-моделі (booster.predict(pred_contrib=True); точно = P), share = внесок / Σ|внесків|
   (не ΔP: при P≈1 сигмоїда в стелі), групи train.FEATURE_GROUPS → GROUP_EN, FEATURE_EN (назва + формат значення),

@@ -395,7 +395,9 @@ def watch_list(conn, model: str) -> dict:
     keep = set(manual) | set(auto)
     res["rows"] = [r | {"source": "auto" if r["ticker"] in auto else "manual",
                         "reason": auto.get(r["ticker"], {}).get("reason"), "expires": auto.get(r["ticker"], {}).get("expires"),
-                        "held": auto.get(r["ticker"], {}).get("held")}
+                        "held": auto.get(r["ticker"], {}).get("held"),
+                        # Movers (movers.info): рамка в списку — ріст понад ринок, z ≥ 2.5 за 1H / 4H; з файлу щогодини
+                        "mover": movers.info(r["ticker"])}
                    for r in res["rows"] if r["ticker"] in keep]
     have = {r["ticker"] for r in res["rows"]}
     res["wakes"] = [w for w in res.get("wakes", []) if w["ticker"] in keep]
@@ -1311,7 +1313,7 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
         if url.path == "/api/movers":          # монети з власним рухом (кнопка «Movers»): reports/movers.json від market.py
-            return self._send(200, movers.load())
+            return self._send(200, {k: v for k, v in movers.load().items() if k != "all"})   # «all» — для чіпа / рамки, не таблиці
         if url.path == "/api/market":          # стан ринку альтів (кнопка «Market» над графіком): market_breadth
             return self._route(lambda c: market.api(c, int(q.get("days", 7))))
         if url.path == "/api/book":            # біди / аски ±2% наживо (Binance + Bybit), кеш кілька секунд
@@ -1320,8 +1322,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(lambda c: volume_profile.api(c, q))
         if url.path == "/api/ticker":
             days = max(1, min(60, int(q.get("days", 30))))
-            return self._route(lambda c: ticker(c, q.get("symbol", "").upper(), model, days, q.get("tf"), q.get("strategy"),
-                                                q.get("light") == "1"))
+            sym = q.get("symbol", "").upper()
+            # чіп «MOVER» у заголовку вікна — поза кешем ticker(): movers оновлюються щогодини, незалежно від оцінок
+            return self._route(lambda c: {**ticker(c, sym, model, days, q.get("tf"), q.get("strategy"), q.get("light") == "1"),
+                                          "mover": movers.info(sym)})
         return self._send(404, {"error": "не знайдено"})
 
     def do_POST(self):

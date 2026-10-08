@@ -109,6 +109,13 @@ idiosyncratic return over 1, 4 and 24 hours, the residual z-score, and Amihud il
 norm → `reports/movers.json`. The dashboard shows it as the **Movers ▾** table (sortable, horizon switch, IN LIST /
 add to watchlist). It describes the market, it is not a model signal.
 
+Since 2026-10-08 the mark follows the coin outside the table: `movers.json` also keeps the metrics of all ~250 coins
+(`all`), and `movers.info(base)` gives a chip for the pane header — `MOVER 4H · z +4.1 · idio +12%` (the horizon with the
+largest |z| ≥ 2.5; red when the coin falls harder than the market; hover: beta, R², ILLIQ, turnover) — and a lilac
+frame (`--mover`) around the watchlist row when the coin rises on its own, z ≥ 2.5 over 1H or 4H (24H moves get only the
+chip, so the frame does not stay on all day). The threshold is the one behind the Movers button, so the button count and
+the frames agree. Over two weeks (Sep–Oct) 5–7 of ~253 coins were above it at any moment.
+
 ## Drivers card (since 2026-10-08)
 
 Under the probability card the dashboard shows **DRIVERS** for the last scored 15m bar (`drivers.py`): a stacked bar of

@@ -12,6 +12,7 @@
   --accent: #d85a30; --accent-fg: #4a1b0c;
   --hot: #e24b4a; --hot-soft: #f09595; --warm: #f0997b; --amber: #ef9f27; --ok: #97c459; --muted: #5f5e5a; --oi: #1baf7a;
   --alert-bg: #4a1b0c; --cand-bg: #412402; --ok-bg: #173404; --live-bg: #0c2a44; --link: #85b7eb;
+  --mover: #c792ea;  /* Movers (movers.py): рамка рядка в списку, чіп у заголовку вікна, заголовок таблиці Movers */
   --wake: #a78bfa;   /* «прокидається» (wake.py): свічка, обсяг, крапка в списку */
   color-scheme: dark;
 }
@@ -145,7 +146,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .mv-btn .mk-dot { background: #c792ea; } .mv-btn .mk-st { color: #c792ea; }
 .mv-pop { width: 640px; }
 .mv-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-.mv-ttl { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #c792ea; }
+.mv-ttl { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--mover); }
 .mv-seg { display: inline-flex; gap: 3px; padding: 2px; background: var(--side); border-radius: 7px; }
 .mv-seg button { height: 24px; border: 0; border-radius: 5px; background: transparent; color: var(--fg2); font-size: 11.5px; padding: 0 9px; }
 .mv-seg button[aria-pressed="true"] { background: var(--line2); color: var(--fg); }
@@ -193,6 +194,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .pnhead .tk-pos { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--ok-bg); color: var(--ok); }
 .pnhead .tk-pos.neg { background: var(--alert-bg); color: var(--hot-soft); }
 .pnhead .tk-stop { color: var(--warm); }
+.pnhead .tk-mover { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--mover); color: var(--mover); white-space: nowrap; cursor: default; }
+.pnhead .tk-mover.neg { border-color: var(--hot-soft); color: var(--hot-soft); }
 .act-tag { margin-left: auto; font-size: 11px; color: var(--warm); border: 1px solid var(--accent); border-radius: 10px; padding: 1px 8px; }
 .fullbtn { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); font-size: 12px; }
 .fullbtn .sw { position: relative; width: 26px; height: 14px; border-radius: 7px; background: var(--line3); }
@@ -334,6 +337,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .trow:hover .rm { display: flex; }
 .trow .rm:hover { color: var(--hot); border-color: var(--hot); }
 .trow.sel { background: var(--line); box-shadow: inset 2px 0 0 var(--accent); }
+/* Movers: монета росте понад ринок (z ≥ 2.5 за 1H / 4H) — бузкова рамка; поєднується з позначками вибору / другого вікна */
+.trow.mover { box-shadow: inset 0 0 0 1px var(--mover); border-radius: 4px; }
+.trow.sel.mover { box-shadow: inset 2px 0 0 var(--accent), inset 0 0 0 1px var(--mover); }
+.trow.other.mover { box-shadow: inset 2px 0 0 var(--line3), inset 0 0 0 1px var(--mover); }
 .trow .star { background: none; border: 0; padding: 0; font-size: 12px; color: var(--line2); }
 .trow .star.on { color: var(--amber); }
 .trow .name { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
@@ -601,6 +608,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <span class="live-dot off" title="Жива свічка з бірж">live</span>
         <span class="pill none tk-status">—</span><span class="tk-p"></span>
         <span class="tk-pos" hidden></span><span class="small tk-stop" hidden></span>
+        <span class="tk-mover" hidden></span>
         <span class="badge tk-ins" hidden title="Ця година була в навчанні моделі">in-sample</span>
         <span class="act-tag" hidden>активне</span>
       </div>
@@ -990,6 +998,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const left = st.meta ? Math.max(0, st.meta.next_scan - Date.now() / 1000) : 0;
     $("countdown").textContent = st.meta ? `скан через ${Math.floor(left / 60)}:${pad(Math.floor(left % 60))}` : "—";
   };
+
+  // ---------- Movers: чіп у заголовку вікна і рамка в списку (movers.info) ----------
+  const moverTitle = (mv) => `Mover ${mv.h}H (movers.py, оновлення щогодини${mv.ts ? ", " + fmtTs(mv.ts).slice(-5) + " UTC" : ""}): ` +
+    `власний рух ${fmtPct(mv.idio)} понад ринок (усього ${fmtPct(mv.tot)}), resid. z ${mv.z.toFixed(1)}σ — наскільки це незвично для монети\n` +
+    `beta ${mv.beta == null ? "—" : mv.beta.toFixed(2)} · R² ${mv.r2 == null ? "—" : mv.r2.toFixed(2)} · ILLIQ ${mv.liq}` +
+    `${mv.illiq_x ? " ×" + mv.illiq_x.toFixed(1) : ""} · оборот 24 год ${mv.turnover_24h ? "$" + (mv.turnover_24h / 1e6).toFixed(1) + "M" : "—"}`;
 
   // ---------- Drivers: внески ознак у P (drivers.py) ----------
   const DRV_COL = { "Open interest": "--oi", "Volume": "--link", "Price": "--pop", "Own move": "--wake", "Funding": "--accent", "Long / short": "--warm" };
@@ -1493,7 +1507,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       q(".tk-name").textContent = P.data ? P.data.ticker : (P.ticker || "—");
       q(".act-tag").hidden = !(st.panes > 1 && isActive());
       root.classList.toggle("active", st.panes > 1 && isActive());
-      const d = P.data; if (!d) return;
+      const d = P.data; if (!d) { q(".tk-mover").hidden = true; return; }
       q(".tk-price").textContent = fmtPx(d.price);
       const ch = q(".tk-chg"); ch.textContent = fmtPct(d.chg_24h); ch.className = "tk-chg " + pctCls(d.chg_24h);
       q(".tk-ins").hidden = !d.in_sample;
@@ -1508,6 +1522,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (showPos) {
         posEl.textContent = `позиція ${fmtPct(pos.result_pct)}`; posEl.className = "tk-pos" + (pos.result_pct < 0 ? " neg" : "");
         stopEl.textContent = `стоп ${pos.partial_ts ? "б/з" : pos.p_ts ? "б/з (p)" : fmtPx(pos.stop)}`;
+      }
+      // Movers: монета зараз рухається незвично для себе відносно ринку альтів (movers.py, |z| ≥ 2.5)
+      const mv = d.mover, mvEl = q(".tk-mover"); mvEl.hidden = !mv;
+      if (mv) {
+        mvEl.textContent = `MOVER ${mv.h}H · z ${mv.z >= 0 ? "+" : ""}${mv.z.toFixed(1)} · idio ${fmtPct(mv.idio)}`;
+        mvEl.className = "tk-mover" + (mv.z < 0 ? " neg" : "");
+        mvEl.title = moverTitle(mv);
       }
     };
 
@@ -1676,7 +1697,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const colors = { alert: cssVar("--hot"), candidate: cssVar("--amber"), calm: cssVar("--muted"), none: cssVar("--muted") };
     rows.forEach((r) => {
       const other = st.panes > 1 && PANES[1 - st.active]?.ticker === r.ticker;
-      const row = el("div", "trow" + (r.ticker === st.ticker ? " sel" : other ? " other" : ""));
+      const row = el("div", "trow" + (r.ticker === st.ticker ? " sel" : other ? " other" : "") + (r.mover?.frame ? " mover" : ""));
+      if (r.mover) row.title = moverTitle(r.mover);
       row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(r.ticker === st.ticker));
       const star = el("button", "star" + (st.fav.has(r.ticker) ? " on" : ""), "★");
       star.setAttribute("aria-label", st.fav.has(r.ticker) ? `Прибрати ${r.ticker} з обраних` : `Додати ${r.ticker} в обрані`);

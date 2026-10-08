@@ -119,7 +119,8 @@ def stage_data(coins: list[str]) -> None:
 # ---------------------------------------------------------------- симуляція на 5m
 
 def sim5(h15: pd.DataFrame, score: pd.Series, h5: pd.DataFrame, k: float, exit_bars: int, early: int = 0,
-         oi: bool = True, wait: bool = False, tp_atr: float = 3.0, frac: float = 0.5) -> list[dict]:
+         oi: bool = True, wait: bool = False, tp_atr: float = 3.0, frac: float = 0.5,
+         wait_on: tuple = ("early",)) -> list[dict]:
     """Позиція як risk.position_state з частковим виходом, перевірки — на 5m-барах; вхід і вихід за моделлю — на
     закриттях 15m. early > 0 — ранній вихід за правилом власника."""
     a = atr(h15).reindex(h15.index).to_numpy()
@@ -139,7 +140,7 @@ def sim5(h15: pd.DataFrame, score: pd.Series, h5: pd.DataFrame, k: float, exit_b
                 continue
             if not np.isnan(p) and p >= 1 and not np.isnan(c15[i]) and not np.isnan(a[i]):
                 e = c15[i]
-                tr = {"e": e, "stop": e - k * a[i], "tp": e + tp_atr * a[i], "part": 0.0, "i0": i,
+                tr = {"e": e, "stop": e - k * a[i], "tp": e + tp_atr * a[i], "part": 0.0, "i0": i, "sd": k * a[i] / e,
                       "high": np.nanmax(hi5[i]) if np.isfinite(hi5[i]).any() else e}
                 below, cnt = 0, 0
             continue
@@ -171,8 +172,8 @@ def sim5(h15: pd.DataFrame, score: pd.Series, h5: pd.DataFrame, k: float, exit_b
         if exit_px is not None:
             rest = exit_px / tr["e"] - 1
             out.append({"ret": tr["part"] + (1 - (frac if tr["part"] else 0)) * rest - P.FEE, "reason": reason,
-                        "took": bool(tr["part"]), "bars": i - tr["i0"], "ts": idx[tr["i0"]]})
-            waiting = wait and reason == "early" and not np.isnan(p) and p >= 1
+                        "took": bool(tr["part"]), "bars": i - tr["i0"], "ts": idx[tr["i0"]], "stop_pct": -tr["sd"]})
+            waiting = wait and reason in wait_on and not np.isnan(p) and p >= 1
             tr = None
     return out
 

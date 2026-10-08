@@ -33,7 +33,8 @@ MIN_OBS = 120             # менше спостережень — бета н�
 ILLIQ_NORM = 720          # 30 днів для норми ILLIQ
 HORIZONS = (1, 4, 24)
 TOP = 25                  # скільки монет на кожен горизонт у файлі
-Z_MOVER = 2.5             # |z| від цього — «mover» (число на кнопці)
+Z_MOVER = 2.5             # |z| від цього — «mover» (число на кнопці, чіп на графіку, рамка в списку)
+FRAME_H = (1, 4)          # рамка в списку дашборда — лише за поточним рухом (1H / 4H); 24H тримав би рамку цілу добу
 BTC = "BTCUSDT"
 
 
@@ -103,6 +104,10 @@ def save(closes: pd.DataFrame, qvol: pd.DataFrame) -> dict:
         out["rows"][str(H)] = [{k: clean(v) for k, v in r.items()} | {"liq": liquidity_label(r.get("illiq_x"))}
                                for r in d.to_dict("records")]
         out[f"movers_{H}"] = int((df[col].abs() >= Z_MOVER).sum())
+    # усі монети коротко — для чіпа на графіку і рамки в списку дашборда (info), не лише топ-25
+    keep = ["beta", "r2", "illiq_x", "turnover_24h"] + [f"{c}_{H}" for H in HORIZONS for c in ("tot", "idio", "z")]
+    out["all"] = {r["base"]: {k: (round(clean(r.get(k)), 5) if isinstance(clean(r.get(k)), float) else clean(r.get(k)))
+                              for k in keep if k in r} for r in df.to_dict("records")}
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT + ".tmp", "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)
@@ -116,6 +121,33 @@ def load() -> dict:
             return json.load(f)
     except (OSError, ValueError):
         return {"error": "немає даних (market.py ще не порахував movers)"}
+
+
+_cache: dict = {}
+
+
+def info(base: str) -> dict | None:
+    """Чіп «MOVER» для тікера (дашборд: заголовок вікна графіка, рамка в списку) або None, якщо монета зараз не mover.
+    Горизонт — з найбільшим |z| серед тих, що ≥ Z_MOVER; frame — ріст понад ринок (z ≥ Z_MOVER) за 1H або 4H.
+    Файл перечитується лише після оновлення (щогодини)."""
+    try:
+        mt = os.path.getmtime(OUT)
+    except OSError:
+        return None
+    if _cache.get("mt") != mt:
+        _cache.update(mt=mt, data=load())
+    d = _cache["data"]
+    r = (d.get("all") or {}).get(base)
+    if not r:
+        return None
+    zs = {H: r.get(f"z_{H}") for H in HORIZONS if r.get(f"z_{H}") is not None}
+    best = max((H for H, z in zs.items() if abs(z) >= Z_MOVER), key=lambda H: abs(zs[H]), default=None)
+    if best is None:
+        return None
+    return {"h": best, "z": zs[best], "idio": r.get(f"idio_{best}"), "tot": r.get(f"tot_{best}"), "beta": r.get("beta"),
+            "r2": r.get("r2"), "illiq_x": r.get("illiq_x"), "liq": liquidity_label(r.get("illiq_x")),
+            "turnover_24h": r.get("turnover_24h"), "ts": d.get("ts"),
+            "frame": any((zs.get(H) or 0) >= Z_MOVER for H in FRAME_H)}
 
 
 def main() -> None:
