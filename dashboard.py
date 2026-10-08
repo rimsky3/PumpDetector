@@ -234,6 +234,8 @@ def watch_list_15m(conn) -> dict:
         # «тихо N год» (бліді рядки — кандидати на «×»): скільки годин без Кандидата / Alert і без «прокидається»
         act = g.loc[g["tier"] != "calm", "ts"]
         last_act = act.max() if len(act) else g["ts"].min()
+        # секція NOW у списку: Alert / Candidate тримається ще годину після закриття останнього сигнального бару
+        last_sig = {"close": act.max() + BAR_15M, "tier": g.loc[g["ts"] == act.max(), "tier"].iloc[-1]} if len(act) else None
         if base in woke_day:
             last_act = max(last_act, pd.Timestamp(woke_day[base]["at"]))
         quiet_h = (g["ts"].iloc[-1] + BAR_15M - last_act) / pd.Timedelta(hours=1)
@@ -252,7 +254,7 @@ def watch_list_15m(conn) -> dict:
             "streak": streak, "streak_min": streak * 15, "in_sample": bool(last["in_sample"]), "last_bar": last["ts"],
             "spark": spark.tolist(), "chg_24h": chg, "oi_24h": oi24,
             "p1h": last["p1h"], "thr1h": last["thr1h"], "need1h": share() * last["thr1h"] if pd.notna(last["thr1h"]) else None,
-            "wake": woke.get(base), "roll": roll, "quiet_h": round(float(quiet_h), 1),
+            "wake": woke.get(base), "roll": roll, "quiet_h": round(float(quiet_h), 1), "last_sig": last_sig,
         })
     order = {"alert": 0, "candidate": 1, "calm": 2}
     rows.sort(key=lambda r: (order.get(r["status"], 3), -(r["probability"] or 0)))
@@ -282,6 +284,10 @@ def watch_list_15m(conn) -> dict:
     # живі мітки футпрінту b / p за 6 год (footprint.py) — для сповіщень бота; історичні (з архіву) не надсилаються
     fps = [{"ticker": r["base_asset"], **{k: r[k] for k in ("ts", "kind", "close", "stop", "level", "beyond", "beyond_delta", "vol_x", "ctx")}}
            for r in fp_rows(conn, since=pd.Timestamp(now - timedelta(hours=6))) if r.get("live", True)]
+    last_fp = {f["ticker"]: f for f in sorted(fps, key=lambda f: f["ts"])}       # мітка рядка: b · Reclaim / p — остання
+    for r in rows:
+        f = last_fp.get(r["ticker"])
+        r["fp"] = {"kind": f["kind"], "at": pd.Timestamp(f["ts"]) + BAR_15M} if f else None
     return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands, "wakes": wakes, "fps": fps}
 
 
@@ -393,17 +399,26 @@ def watch_list(conn, model: str) -> dict:
     res = dict(_watch_list_cached(conn, model))
     manual, auto = list_sources()
     keep = set(manual) | set(auto)
-    res["rows"] = [r | {"source": "auto" if r["ticker"] in auto else "manual",
-                        "reason": auto.get(r["ticker"], {}).get("reason"), "expires": auto.get(r["ticker"], {}).get("expires"),
-                        "held": auto.get(r["ticker"], {}).get("held"),
-                        # Movers (movers.info): рамка в списку — ріст понад ринок, z ≥ 2.5 за 1H / 4H; з файлу щогодини
-                        "mover": movers.info(r["ticker"])}
-                   for r in res["rows"] if r["ticker"] in keep]
+    woke = scanner.load_woke()      # події каналу WOKE (і ручних тікерів): first — «Woke · 3h» і година в секції NOW
+
+    def src(b: str) -> dict:
+        a = auto.get(b, {})
+        w = woke.get(b)
+        return {"source": "auto" if b in auto else "manual", "channel": scanner.channel(a) if a else None,
+                "reason": a.get("reason"), "expires": a.get("expires"), "held": a.get("held"),
+                "wokeup": {"first": w["first"], "last": w["last"], "reason": w.get("first_reason") or w["reason"]} if w else None}
+    # Movers (movers.info): рамка в списку — ріст понад ринок, z ≥ 2.5 за 1H / 4H; з файлу щогодини
+    res["rows"] = [r | src(r["ticker"]) | {"mover": movers.info(r["ticker"])} for r in res["rows"] if r["ticker"] in keep]
     have = {r["ticker"] for r in res["rows"]}
     res["wakes"] = [w for w in res.get("wakes", []) if w["ticker"] in keep]
     res["fps"] = [f for f in res.get("fps", []) if f["ticker"] in keep]
-    res["pending"] = [{"ticker": b, "source": "auto" if b in auto else "manual", "reason": auto.get(b, {}).get("reason"),
-                       "job": add_status(b)} for b in manual + sorted(auto) if b not in have]
+    res["pending"] = [{"ticker": b, **src(b), "job": add_status(b)} for b in manual + sorted(auto) if b not in have]
+    # для бота: перші спрацювання WOKE за 6 год (повторні — не новина)
+    cut = pd.Timestamp(datetime.now(timezone.utc) - timedelta(hours=6))
+    res["wokeups"] = [{"ticker": b, "ts": w["first"], "reason": w.get("first_reason") or w["reason"],
+                       **{k: w.get(k) for k in ("turnover_avg", "pace", "vol_x", "price_pct", "oi_pct")},
+                       "source": "auto" if b in auto else "manual"}
+                      for b, w in woke.items() if b in keep and pd.Timestamp(w["first"]) >= cut]
     return res
 
 
@@ -1277,7 +1292,7 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/pulse":
             # дешева перевірка «чи є нове» (без бази): mtime мітки нових оцінок скринера і подій «прокидається»
             mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else 0      # noqa: E731
-            return self._send(200, {"sig": mt(SIGNALS_STAMP), "wake": mt(wake.EVENTS_FILE)})
+            return self._send(200, {"sig": mt(SIGNALS_STAMP), "wake": mt(wake.EVENTS_FILE), "woke": mt(scanner.WOKE_FILE)})
         if url.path == "/api/meta":
             return self._route(meta)
         if url.path == "/api/list":

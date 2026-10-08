@@ -238,6 +238,19 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
 - МЕНШИЙ СТОП (2026-10-08, experiments/stop_size.py, reports/stop_size.md; exit_5m.sim5 wait_on, stop_pct): k × 100/75/50/35% —
   PF 0.92 / 0.92 / 0.90 / 0.88, по стопу 37 / 51 / 68 / 79%; «чекати згасання Alert» після стопу +0.01; стоп ≥ 10% — 2% угод
   (медіана 2.7%) → стоп НЕ змінено; перевага власника — вихід за стаканом, не розмір стопу.
+- КАНАЛ «ПРОКИНУЛАСЬ» / WOKE (2026-10-08, experiments/wake_channel.py, reports/wake_channel.md; власник: OGN +90% повз сканер —
+  фільтр ліквідності за сер. оборотом 30 дн відсікає тихі монети, що ожили): сер. < min_turnover І темп 4 год × 6 ≥ 20 млн І обсяг
+  ×10 І ціна +5% І OI +20% за 4 год — 10/день, +10% за 24 год у 42% (база 12%), +30% 13% (2%), медіана 24 год −4.7%; угоди власника
+  на тихих монетах — 24 з 26 спіймано, за ~9.5 год до входу. У РОБОТІ (власник 08.10): scanner.WOKE / woke_passes / woke_hits /
+  record_woke → reports/woke_events.json (усі тікери, і ручні; first / last / причина англійською); scan() бере ще монети з
+  оборотом 24 год ≥ pace/6; auto-записи channel "liquid" | "woke" (старі = liquid), стелі max_auto 30 / WOKE_CAP 15, TTL 48 год
+  (touch продовжує), woke + звичайний фільтр → liquid; × блокує обидва канали. Бот: тип woke (🟪, українською, age без −15 хв).
+- СПИСОК СЕКЦІЯМИ (2026-10-08, власник: варіант A, макет https://claude.ai/artifact/RVd76VjNUuDnFfRAkHe9qi; написи списку
+  АНГЛІЙСЬКОЮ): вкладки прибрано → NOW / WOKE UP / WATCHLIST / QUIET, кожна згортається (pd-sec; QUIET згорнута), ★ «Favorites
+  only» (pd-fav-only), ↑/↓ лише по відкритих. NOW: Alert/Candidate горить або згас < 1 год (row.last_sig), Vol 5m 30 хв,
+  b · Reclaim 1 год (row.fp), перше WOKE 1 год (row.wokeup.first); p — лише мітка, у NOW не піднімає. WOKE UP — auto channel woke
+  (другий рядок — причина); ручна монета з WOKE лишається у WATCHLIST з міткою «Woke · 3h». Тег «A» замість «АВТО».
+  /api/list: channel, wokeup, last_sig, fp, wokeups (для бота); /api/pulse → woke (mtime woke_events.json).
 - DRIVERS (2026-10-08, власник: варіант A + ⚠ з C, макет https://claude.ai/artifact/Rf29hSf9fmsTynMqcT3yMj, «англійський
   термін»): drivers.py — TreeSHAP 15m-моделі (booster.predict(pred_contrib=True); точно = P), share = внесок / Σ|внесків|
   (не ΔP: при P≈1 сигмоїда в стелі), групи train.FEATURE_GROUPS → GROUP_EN, FEATURE_EN (назва + формат значення),

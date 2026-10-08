@@ -12,6 +12,7 @@ dashboard's numbers. The screener and the dashboard are unchanged.
 | 🔴 Alert | on | ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, **Drivers** (top 3 features behind P, the strongest one against it, and `⚠ No volume behind this signal` when volume pulls P down), the 15m bar |
 | 🟠 Candidate | off | the same without a position: the stop "if entering now" (price − k·ATR) |
 | 🟣 Volume 5m | on | volume × weekly norm, 15-minute price change, hourly OI change |
+| 🟪 WOKE | on | the first trigger of the scanner's WOKE channel (docs/screener.md): a dormant coin came alive — average turnover → current pace, 4-hour volume × norm, price and OI over 4 hours, the model's P against its threshold, and the note that it is not an entry signal (42% gave +10% within a day, the median day was −5%). In Ukrainian, like the rest of the bot |
 | 🟢 b / p | on | footprint pattern (`footprint.py`, docs/trades.md): **b** — a stop-run below the 2-hour low that was bought back, with the pierced low, the share of the bar's volume below it and its delta, volume × norm, the model context (Alert / Candidate within 6 h) and the stop under the bar's low; **p** — the same at the highs (a warning for longs) |
 
 One message per signal episode (the same episodes as the dashboard's sound notifications). On start the bot only

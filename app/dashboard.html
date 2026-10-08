@@ -302,6 +302,28 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .scb .auto-list { color: var(--fg3); font-size: 11px; line-height: 1.5; }
 .scb .auto-list b { color: var(--fg2); font-weight: 500; cursor: pointer; }
 .tag-auto { font-size: 9px; font-weight: 600; letter-spacing: .04em; padding: 1px 5px; border-radius: 4px; background: var(--live-bg); color: var(--link); flex: none; }
+/* секції списку (2026-10-08): NOW / WOKE UP / WATCHLIST / QUIET, кожна згортається стрілкою (localStorage pd-sec) */
+.sec { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 10px 14px 5px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; }
+.sec .arr { width: 10px; font-size: 10px; flex: none; }
+.sec .nm { font-size: 11px; font-weight: 700; letter-spacing: .08em; flex: none; }
+.sec .cnt { font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 8px; flex: none; }
+.sec .hint { font-size: 11px; color: var(--fg3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sec.now { color: var(--hot); } .sec.now .cnt { background: var(--alert-bg); color: var(--hot-soft); }
+.sec.woke { color: var(--mover); } .sec.woke .cnt { background: #2a1f33; color: var(--mover); }
+.sec.list { color: var(--pop); } .sec.list .cnt { background: var(--line); color: var(--fg2); }
+.sec.quiet { color: var(--fg3); } .sec.quiet .cnt { background: var(--card); color: var(--fg3); }
+.trow.two { height: auto; min-height: 36px; padding-block: 5px; row-gap: 1px; }
+.trow .why { grid-column: 2 / -1; font-size: 11px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trow .chip { font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 10px; line-height: 16px; flex: none; }
+.chip.alert { background: var(--alert-bg); color: var(--hot-soft); }
+.chip.cand { background: var(--cand-bg); color: var(--amber); }
+.chip.past { opacity: .6; }
+.chip.woke { border: 1px solid var(--mover); color: var(--mover); line-height: 14px; }
+.chip.vol { background: #221d33; color: var(--wake); }
+.chip.b { background: var(--ok-bg); color: var(--ok); }
+.chip.p { background: var(--cand-bg); color: var(--amber); }
+.favbtn { width: 34px; height: 34px; flex: none; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); }
+.favbtn[aria-pressed="true"] { color: var(--amber); border-color: var(--amber); }
 .trow.pend { cursor: default; color: var(--fg3); }
 .trow.pend .msg { grid-column: 3 / -1; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .empty .btn2 { margin-top: 8px; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--accent); background: transparent; color: var(--warm); font-size: 12px; }
@@ -320,7 +342,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .notify-row .notify { justify-content: center; gap: 6px; padding: 0 6px; font-size: 11.5px; white-space: nowrap; min-width: 0; }
 .notify-row .nb-alert[aria-pressed="true"] { background: var(--alert-bg); border-color: #7a2c14; color: var(--hot-soft); }
 .notify-row .nb-wake[aria-pressed="true"] { background: rgba(167,139,250,.14); border-color: rgba(167,139,250,.5); color: var(--wake); }
-.cols, .trow { display: grid; grid-template-columns: 18px minmax(0, 1fr) 56px 40px 58px 54px; gap: 6px; align-items: center; padding: 0 14px; }
+.cols, .trow { display: grid; grid-template-columns: 16px minmax(0, 1fr) 52px 36px 48px 46px; gap: 5px; align-items: center; padding: 0 10px; }
 .cols { padding-block: 6px; font-size: 10px; color: var(--fg3); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .cols button { background: none; border: 0; padding: 0; font-size: 10px; color: var(--fg3); text-align: right; }
 .cols button[aria-pressed="true"] { color: var(--fg); }
@@ -622,15 +644,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   <aside class="right" id="rightPanel" aria-label="Тікери">
     <div class="rtop">
       <div class="search">
-        <input id="search" placeholder="Пошук тікера" aria-label="Пошук тікера" autocomplete="off">
+        <input id="search" placeholder="Search ticker" aria-label="Search ticker" autocomplete="off">
+        <button class="favbtn" id="favBtn" aria-pressed="false" aria-label="Favorites only" title="Favorites only"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.8 5.8 6.2.9-4.5 4.4 1.1 6.2L12 17.4l-5.6 2.9 1.1-6.2L3 9.7l6.2-.9z"></path></svg></button>
         <button class="btn-primary" id="refreshBtn">Refresh</button>
         <button class="help" data-help="search" aria-label="Що це?">?</button>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <div class="seg" id="tabSeg" role="group" aria-label="Фільтр" style="flex:1">
-          <button data-tab="all" aria-pressed="true">Усі</button><button data-tab="alert">Alert</button><button data-tab="cand">Кандидати</button><button data-tab="auto" title="Лише тікери, додані сканером ринку">Авто</button><button data-tab="fav" aria-label="Обрані">★</button>
-        </div>
-        <button class="help" data-help="filters" aria-label="Що це?">?</button>
       </div>
       <div class="status"><span style="display:flex;align-items:center;gap:6px"><span class="dot" id="freshDot"></span><span id="freshTxt">—</span></span><span id="countdown">—</span></div>
       <div class="notify-row" role="group" aria-label="Звук і сповіщення">
@@ -663,11 +680,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       </details>
     </div>
     <div class="cols" role="row">
-      <span></span><span style="display:flex;align-items:center;gap:6px">Тікер <button class="help" data-help="list" aria-label="Що це?">?</button></span><span>P, 24 год</span>
-      <button data-sort="p" aria-pressed="true">P ↓</button><button data-sort="oi">Δ OI 24г</button><button data-sort="chg">24 год</button>
+      <span></span><span style="display:flex;align-items:center;gap:6px">Ticker <button class="help" data-help="list" aria-label="Що це?">?</button></span><span>P · 24h</span>
+      <button data-sort="p" aria-pressed="true">P ↓</button><button data-sort="oi">ΔOI 24h</button><button data-sort="chg">24h</button>
     </div>
     <div class="tlist" id="tlist" role="listbox" aria-label="Тікери"></div>
-    <div class="keys"><span><b>↑ ↓</b> наступний тікер</span><span><b>Enter</b> Refresh</span><span><b>F</b> в обрані</span></div>
+    <div class="keys"><span><b>↑ ↓</b> next (open sections)</span><span><b>Enter</b> Refresh</span><span><b>F</b> Favorite</span></div>
     <div class="recent">
       <div class="t">Останні сигнали <button class="help" data-help="recent" aria-label="Що це?">?</button></div>
       <div id="recent"></div>
@@ -774,7 +791,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
              backtest: LS.get("pd-mode-backtest", null) }, days: LS.get("pd-days", 3), link: LS.get("pd-link", true), oiUsd: LS.get("pd-oiusd", false),
     // вікна графіка: 1 або 2; «Повна інфо» (позиція, угоди, «прокидається», мітки сканера); активне вікно
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
-    meta: null, list: null, tab: "all", sort: "p", search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(),
+    meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
+    secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(),
     notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), seen: new Set(LS.get("pd-seen", [])),
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
@@ -844,7 +862,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     btTickers: "Сума результатів угод по кожній монеті. Клік — відкрити монету в розмітці (модель на графіку). Стабільно збиткові монети — кандидати на «Виключити».",
     seen: "Яку частку open interest тікера (середнє за 30 днів, усі біржі) бачить модель. 15m-модель бере лише Binance і Bybit; сірі біржі вона не бачить. Якщо частка мала, імпульс може початись там раніше, ніж модель його помітить.",
     history: "Як модель торгувала б цей тікер на всьому відрізку, де вона його оцінювала (разом з історією при додаванні в список): закриті угоди за тими самими правилами, що й «Позиція моделі». Одна монета за тиждень — це 1–3 угоди: контекст, а не доказ. Якщо тікер у навчанні, модель бачила ці імпульси, і цифри завищені.",
-    scan: "Сканер ринку кожні 15 хв проглядає всі USDT-перпи Binance і сам додає в список ті, що «прокидаються»: ліквідна монета (середній денний оборот за 30 днів, а не за поточну добу: на тихому старті руху добовий оборот ще малий) і обсяг у кілька разів вищий за норму, або OI і ціна ростуть разом. Такий тікер позначено «АВТО»; він тримається в списку заданий час після останнього спрацювання (або поки модель дає сигнал). Сповіщення — лише на Alert моделі, не на вхід у список.",
+    scan: "Сканер ринку кожні 15 хв проглядає всі USDT-перпи Binance і сам додає в список ті, що «прокидаються»: ліквідна монета (середній денний оборот за 30 днів, а не за поточну добу: на тихому старті руху добовий оборот ще малий) і обсяг у кілька разів вищий за норму, або OI і ціна ростуть разом. Такий тікер позначено «A» (секція WATCHLIST); тихі монети, що ожили, — окремий канал WOKE (секція WOKE UP, див. «?» списку); він тримається в списку заданий час після останнього спрацювання (або поки модель дає сигнал). Сповіщення — лише на Alert моделі, не на вхід у список.",
     model: "Режим = модель + правила угод. Сигнали (Alert, Кандидат) однакові для всіх режимів «15m + 1h»: режим змінює лише, які сигнали беруться і як: вхід по ринку чи лімітом −0.5 ATR, фільтр стакану OB ≥ 1, вхід на Alert чи на Кандидаті. Вихід спільний (½ на +3 ATR, далі беззбиток). Той самий вибір — у «Прогнозі» (позиція, мітки угод), «Журналі» (статистика) і «Бектесті». Список — strategies.json: новий експеримент = новий рядок. Годинні моделі — лише для порівняння.",
     drivers: "Drivers — чому модель дала саме таку P на цьому барі. LightGBM розкладає кожен прогноз точно на внески ознак (SHAP): смуга зверху — частка кожної групи в усіх поштовхах (OI, обсяг, ціна, власний рух…), «Pushing up» — ознаки, що підняли P, «Pulling down» — що опустили; довжина смужки — сила внеску, поруч — значення ознаки зараз. Наведи на рядок — що означає ознака. ⚠ «No volume behind this signal» — P вище порогу, а обсяг тягне вниз або нічого не дає: це не той сплеск з обсягом, на який ти зазвичай входиш (CHIP 06.10). Рахується для останнього оціненого 15m-бару, на тих самих ознаках, що й скринер.",
     prob: "Для «15m + 1h»: P — оцінка 15-хвилинної моделі, що зараз триває імпульс. Вище порогу — «Кандидат» (рано, частіше хибно: перевір стакан). Якщо ще й годинна модель ≥ ¾ свого порогу (рядок «1h» нижче) — «Alert». Число поруч зі статусом — скільки часу поспіль тримається рівень.",
@@ -858,9 +876,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     full: "«Повна інфо» увімкнена — на графіку і в заголовку вікна позиція моделі, угоди, стоп і ціль, «прокидається» (фіолетові свічки), мітки сканера; ліворуч — історія угод і «Модель бачить OI». Вимкнена — лише свічки, OI, обсяг, ймовірність і зони сигналу: вікно відкривається в 2–3 рази швидше. Кнопки ▢ / ▢▢ — одне або два вікна графіка; активне (рамка) отримує тікер зі списку і ↑/↓, Tab — інше вікно; [ — згорнути / розгорнути ліву панель.",
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди. Зелена «b» під свічкою — «залочка» з футпрінту: ціна проколола лоу попередніх 2 год, під лоу пройшло ≥ 30% обсягу бару (стопи, ліквідації, шорти на пробій), але бар закрився вище, обсяг унизу бару, обсяг ≥ 2× норми; лише коли за 6 год був Кандидат або Alert. Стоп — під лоу бару b. На історії (218 монет, місяць) у такому контексті +2R раніше за стоп у 38% проти 29% у входу моделі — це підказка, не сигнал моделі; перевіряй стакан. Помаранчева «p» над свічкою — те саме на хаях: покупців над хаєм поглинули. Наведи на бар — деталі й чим скінчилась мітка (+2R / стоп / 12 год). Мітки з'являються лише з моменту запуску записувача угод.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
-    filters: "Фільтр списку: усі тікери, лише Alert, Alert і кандидати, або обрані ★ (зірочка в рядку або клавіша F). Для годинних моделей «Кандидат» — P вище половини порогу.",
     notify: "Три незалежні перемикачі; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-сигналах. Alert — два високі тони і системне сповіщення браузера. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила: один нижчий тон; раніше на ~15 хв, але хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах; не сигнал на вхід. Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
-    list: "Тікери скринера (watchlist.txt), спершу Alert, потім кандидати. Міні-графік — ймовірність за 24 год з пунктиром порогу. Δ OI 24г — зміна open interest за добу. Клік по заголовку — сортування, ↑/↓ — наступний тікер.",
+    list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
     period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду). Кнопка «Дати…» — конкретний день, тиждень, місяць чи рік (дні UTC, за моментом входу в угоду).",
     kinds: "Live + історія (за замовчуванням) — усі оцінки на барах, яких модель не бачила: так оцінюється сама модель. Історія — бари, оцінені пізніше (скринер не працював, сканер додав тікер пізніше): рішення моделі на тих самих даних те саме, різниця лише в тому, коли сигнал дійшов до тебе. Лише live — що ти реально міг отримати вчасно. In-sample — бари з навчання, лише для порівняння.",
@@ -1648,22 +1665,55 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   });
 
   // ---------- права панель: список тікерів ----------
-  const visibleRows = () => {
-    const rows = (st.list?.rows || []).filter((r) => {
-      if (st.gone.has(r.ticker)) return false;            // щойно прибраний «×» — не чекаємо відповіді сервера
-      if (st.search && !r.ticker.includes(st.search)) return false;
-      if (st.tab === "alert") return r.status === "alert";
-      if (st.tab === "cand") return r.status === "alert" || r.status === "candidate";
-      if (st.tab === "fav") return st.fav.has(r.ticker);
-      if (st.tab === "auto") return r.source === "auto";
-      return true;
+  // секції списку: NOW (подія за останню годину) → WOKE UP (канал «Прокинулась») → WATCHLIST → QUIET
+  const SECS = [
+    { key: "now", name: "NOW", hint: "Signal or event in the last hour" },
+    { key: "woke", name: "WOKE UP", hint: "Dormant coins coming alive · 48h · cap 15" },
+    { key: "list", name: "WATCHLIST", hint: "Liquid · scanner + manual" },
+    { key: "quiet", name: "QUIET", hint: "No signals for 24h+" },
+  ];
+  const HOUR = 3600e3;
+  const msSince = (t) => t == null ? Infinity : Date.now() - (typeof t === "number" ? t * 1000 : Date.parse(t));
+  const agoShort = (ms) => ms < 5 * 60e3 ? "just now" : ms < HOUR ? `${Math.round(ms / 60e3)}m` : `${Math.floor(ms / HOUR)}h`;
+  // події рядка, що тримають його в NOW: сигнал моделі (+1 год після згасання), Vol 5m, b, перше спрацювання WOKE
+  const rowEvents = (r) => {
+    const ev = {};
+    if (r.status === "alert" || r.status === "candidate") ev.sig = { tier: r.status, live: true };
+    else if (r.last_sig && msSince(r.last_sig.close) < HOUR) ev.sig = { tier: r.last_sig.tier, live: false, ago: msSince(r.last_sig.close) };
+    if (r.wake) ev.vol = r.wake;
+    if (r.fp && msSince(r.fp.at) < HOUR) ev.fp = { kind: r.fp.kind, ago: msSince(r.fp.at) };
+    if (r.wokeup) ev.woke = { ago: msSince(r.wokeup.first), reason: r.wokeup.reason };
+    return ev;
+  };
+  const sectionOf = (r, ev) => {
+    if (ev.sig || ev.vol || ev.fp?.kind === "b" || (ev.woke && ev.woke.ago < HOUR)) return "now";   // p у NOW не піднімає
+    if (r.source === "auto" && r.channel === "woke") return "woke";
+    if (r.status === "calm" && r.quiet_h != null && r.quiet_h >= 24) return "quiet";
+    return "list";
+  };
+  const sortKey = () => ({ p: (r) => r.probability ?? -1, oi: (r) => r.oi_24h ?? -1e9, chg: (r) => r.chg_24h ?? -1e9 }[st.sort]);
+  // {now: [...], woke: [...], ...}; пошук і «Favorites only» — по всіх секціях
+  const sectionRows = () => {
+    const out = { now: [], woke: [], list: [], quiet: [] };
+    (st.list?.rows || []).forEach((r) => {
+      if (st.gone.has(r.ticker)) return;              // щойно прибраний «×» — не чекаємо відповіді сервера
+      if (st.search && !r.ticker.includes(st.search)) return;
+      if (st.favOnly && !st.fav.has(r.ticker)) return;
+      const ev = rowEvents(r);
+      out[sectionOf(r, ev)].push({ r, ev });
     });
-    const key = { p: (r) => r.probability ?? -1, oi: (r) => r.oi_24h ?? -1e9, chg: (r) => r.chg_24h ?? -1e9 }[st.sort];
-    return rows.sort((a, b) => key(b) - key(a));
+    const key = sortKey();
+    Object.values(out).forEach((a) => a.sort((x, y) => key(y.r) - key(x.r)));
+    return out;
+  };
+  // порядок для ↑/↓ і Enter у пошуку: лише відкриті секції (під час пошуку — усі)
+  const visibleRows = () => {
+    const sec = sectionRows();
+    return SECS.flatMap((x) => st.search || st.secOpen[x.key] ? sec[x.key].map((o) => o.r) : []);
   };
   const sparkSvg = (vals, thr, color) => {
     const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 56 20"); svg.setAttribute("width", "56"); svg.setAttribute("height", "20"); svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("viewBox", "0 0 56 20"); svg.setAttribute("width", "52"); svg.setAttribute("height", "20"); svg.setAttribute("aria-hidden", "true");
     const ln = document.createElementNS(ns, "line"); const ty = (18 - thr * 16).toFixed(1);
     [["x1", 0], ["x2", 56], ["y1", ty], ["y2", ty], ["stroke", cssVar("--line2")], ["stroke-dasharray", "2 2"]].forEach(([k, v]) => ln.setAttribute(k, v));
     svg.appendChild(ln);
@@ -1676,62 +1726,88 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     }
     return svg;
   };
+  const renderRow = (box, r, ev) => {
+    const colors = { alert: cssVar("--hot"), candidate: cssVar("--amber"), calm: cssVar("--muted"), none: cssVar("--muted") };
+    const other = st.panes > 1 && PANES[1 - st.active]?.ticker === r.ticker;
+    const row = el("div", "trow" + (r.ticker === st.ticker ? " sel" : other ? " other" : "") + (r.mover?.frame ? " mover" : ""));
+    row.dataset.tk = r.ticker;
+    row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(r.ticker === st.ticker));
+    const star = el("button", "star" + (st.fav.has(r.ticker) ? " on" : ""), "★");
+    star.setAttribute("aria-label", st.fav.has(r.ticker) ? `Remove ${r.ticker} from favorites` : `Add ${r.ticker} to favorites`);
+    star.addEventListener("click", (e) => { e.stopPropagation(); toggleFav(r.ticker); });
+    const name = el("span", "name"), dot = el("span", "dot");
+    dot.style.background = r.status !== "calm" ? colors[r.status] : r.wake ? cssVar("--wake") : r.channel === "woke" ? cssVar("--mover") : cssVar("--line2");
+    name.append(dot, r.ticker);
+    const chip = (cls, text, title) => { const c = el("span", "chip " + cls, text); if (title) c.title = title; name.appendChild(c); };
+    if (ev.sig) chip((ev.sig.tier === "alert" ? "alert" : "cand") + (ev.sig.live ? "" : " past"),
+      (ev.sig.tier === "alert" ? "Alert" : "Candidate") + (ev.sig.live ? "" : ` · ${agoShort(ev.sig.ago)}`),
+      ev.sig.live ? "" : "Signal faded; the row stays in NOW for 1 hour after the last signal bar");
+    if (ev.fp) chip(ev.fp.kind, ev.fp.kind === "b" ? `b · Reclaim · ${agoShort(ev.fp.ago)}` : `p · ${agoShort(ev.fp.ago)}`,
+      ev.fp.kind === "b" ? "Footprint b: low swept and reclaimed (Alert / Candidate context). A hint, not a model signal — check the order book."
+        : "Footprint p: buyers absorbed at the highs — careful with entries, consider the exit.");
+    if (ev.vol) chip("vol", `Vol 5m ×${Math.round(ev.vol.vol_x)}`,
+      `Volume 5m ${ev.vol.minutes}m ago: ×${ev.vol.vol_x.toFixed(1)}, price ${fmtPct(ev.vol.ret15)} in 15m, OI ${fmtPct(ev.vol.oi1h)} in 1h`);
+    if (ev.woke) chip("woke", `Woke · ${agoShort(ev.woke.ago)}`, "Dormant coin came alive (WOKE channel). Where to look, not an entry signal.");
+    if (r.source === "auto" && r.channel !== "woke") name.appendChild(el("span", "tag-auto", "A"));
+    // ковзна 5-хв оцінка, новіша за офіційний бар: сірим, кольоровим — якщо вона вже Кандидат / Alert
+    if (r.roll && Math.abs(r.roll.p15 - (r.probability ?? 0)) >= 0.05) {
+      const rr = el("span", "roll " + (r.roll.tier === "alert" ? "hot" : r.roll.tier === "candidate" ? "amber" : "dim"), `5m ${fmtP(r.roll.p15)}`);
+      rr.title = `Rolling 5-min window to ${fmtTs(r.roll.close).slice(-5)} UTC: P ${fmtP(r.roll.p15)}. The P column is the last regular 15m bar, as on the chart.`;
+      name.appendChild(rr);
+    }
+    const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
+    const oi = el("span", "num " + (r.oi_24h >= 0.15 ? "warm" : r.oi_24h < 0 ? "dim" : ""), fmtPct(r.oi_24h));
+    const chg = el("span", "num " + pctCls(r.chg_24h), fmtPct(r.chg_24h));
+    // × — прибрати зі списку (блок до нового спрацювання сканера); «Undo» — у тості внизу
+    const rm = el("button", "rm", "×"); rm.setAttribute("aria-label", `Remove ${r.ticker} from the list`);
+    rm.title = "Remove from the list: comes back only if the scanner fires again";
+    rm.addEventListener("click", (e) => { e.stopPropagation(); removeTicker(r.ticker); });
+    const quiet = r.status === "calm" && r.quiet_h != null && r.quiet_h >= 24;
+    if (quiet) row.classList.add("quiet");
+    row.append(star, name, sparkSvg(r.spark, r.threshold, colors[r.status]), p, oi, chg, rm);
+    // другий рядок на всю ширину — причина WOKE (у WOKE UP і в NOW першу годину)
+    if (ev.woke && (r.channel === "woke" || ev.woke.ago < HOUR) && ev.woke.reason) { row.appendChild(el("span", "why", ev.woke.reason)); row.classList.add("two"); }
+    row.title = `${{ alert: "Alert", candidate: "Candidate", calm: "Calm" }[r.status] || r.status}${r.in_sample ? " · in-sample" : ""}`
+      + (r.p1h != null ? ` · 1h P ${fmtP(r.p1h)} (Alert needs ≥ ${fmtP(r.need1h)})` : "")
+      + (r.source === "auto" ? `\n${r.channel === "woke" ? "Woke" : "Auto"}: ${r.reason || ""}\nin the list until ${fmtTs(Date.parse(r.expires) / 1000)}${r.held ? " (" + r.held + ")" : ""}` : "")
+      + (quiet ? `\nQuiet for ${Math.round(r.quiet_h)}h: no Candidate / Alert or 5m volume — you can remove it ×` : "")
+      + (r.mover ? "\n" + moverTitle(r.mover) : "");
+    row.addEventListener("click", () => selectTicker(r.ticker));
+    box.appendChild(row);
+  };
   const renderList = () => {
     const box = $("tlist"); box.replaceChildren();
-    const rows = visibleRows();
-    if (!rows.length) {
-      const em = el("div", "empty", st.list ? "Нічого не знайдено." : "Завантаження…");
+    const sec = sectionRows();
+    // тікери зі списку, для яких ще немає оцінок: щойно додані або авто, що чекають циклу скринера
+    const pend = st.search || st.favOnly ? [] : (st.list?.pending || []).filter((x) => !st.gone.has(x.ticker));
+    const total = Object.values(sec).reduce((n, a) => n + a.length, 0);
+    if (!total && !pend.length) {
+      const em = el("div", "empty", st.list ? "Nothing found." : "Loading…");
       // пошук не знайшов тікер у списку — запропонувати додати його у watchlist
       if (st.list && /^[A-Z0-9]{2,15}$/.test(st.search) && !(st.list.pending || []).some((x) => x.ticker === st.search)) {
-        const b = el("button", "btn2", `＋ Додати ${st.search} у watchlist`); b.addEventListener("click", () => addTicker(st.search));
+        const b = el("button", "btn2", `＋ Add ${st.search} to Watchlist`); b.addEventListener("click", () => addTicker(st.search));
         em.append(el("br"), b);
       }
       box.appendChild(em);
     }
-    const colors = { alert: cssVar("--hot"), candidate: cssVar("--amber"), calm: cssVar("--muted"), none: cssVar("--muted") };
-    rows.forEach((r) => {
-      const other = st.panes > 1 && PANES[1 - st.active]?.ticker === r.ticker;
-      const row = el("div", "trow" + (r.ticker === st.ticker ? " sel" : other ? " other" : "") + (r.mover?.frame ? " mover" : ""));
-      if (r.mover) row.title = moverTitle(r.mover);
-      row.setAttribute("role", "option"); row.setAttribute("aria-selected", String(r.ticker === st.ticker));
-      const star = el("button", "star" + (st.fav.has(r.ticker) ? " on" : ""), "★");
-      star.setAttribute("aria-label", st.fav.has(r.ticker) ? `Прибрати ${r.ticker} з обраних` : `Додати ${r.ticker} в обрані`);
-      star.addEventListener("click", (e) => { e.stopPropagation(); toggleFav(r.ticker); });
-      const name = el("span", "name"); const dot = el("span", "dot");
-      dot.style.background = r.status !== "calm" ? colors[r.status] : r.wake ? cssVar("--wake") : cssVar("--line2");
-      if (r.status === "calm" && r.wake) dot.title = `Прокидається ${r.wake.minutes} хв тому: обсяг ×${r.wake.vol_x.toFixed(1)}, ціна ${fmtPct(r.wake.ret15)} за 15 хв, OI ${fmtPct(r.wake.oi1h)} за год`;
-      name.append(dot, r.ticker);
-      if (r.source === "auto") { const t = el("span", "tag-auto", "АВТО"); name.appendChild(t); }
-      // ковзна 5-хв оцінка, новіша за офіційний бар: сірим, кольоровим — якщо вона вже Кандидат / Alert
-      if (r.roll && Math.abs(r.roll.p15 - (r.probability ?? 0)) >= 0.05) {
-        const rr = el("span", "roll " + (r.roll.tier === "alert" ? "hot" : r.roll.tier === "candidate" ? "amber" : "dim"), `5m ${fmtP(r.roll.p15)}`);
-        rr.title = `Ковзне 5-хв вікно до ${fmtTs(r.roll.close).slice(-5)} UTC: P ${fmtP(r.roll.p15)} · ${STATUS[r.roll.tier] || r.roll.tier}. Колонка P — останній звичайний 15m-бар, як на графіку.`;
-        name.appendChild(rr);
-      }
-      const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
-      const oi = el("span", "num " + (r.oi_24h >= 0.15 ? "warm" : r.oi_24h < 0 ? "dim" : ""), fmtPct(r.oi_24h));
-      const chg = el("span", "num " + pctCls(r.chg_24h), fmtPct(r.chg_24h));
-      // × — прибрати зі списку (блок до нового спрацювання сканера); «Повернути» — у підказці внизу
-      const rm = el("button", "rm", "×"); rm.setAttribute("aria-label", `Прибрати ${r.ticker} зі списку`);
-      rm.title = "Прибрати зі списку: повернеться як авто, лише якщо сканер побачить нове спрацювання";
-      rm.addEventListener("click", (e) => { e.stopPropagation(); removeTicker(r.ticker); });
-      const quiet = r.status === "calm" && r.quiet_h != null && r.quiet_h >= 24;
-      if (quiet) row.classList.add("quiet");
-      row.append(star, name, sparkSvg(r.spark, r.threshold, colors[r.status]), p, oi, chg, rm);
-      row.title = `${STATUS[r.status]}${r.in_sample ? " · in-sample" : ""}` + (r.p1h != null ? ` · 1h P ${fmtP(r.p1h)} (для Alert ≥ ${fmtP(r.need1h)})` : "")
-        + (r.source === "auto" ? `\nАвто: ${r.reason || ""}\nу списку до ${fmtTs(Date.parse(r.expires) / 1000)}${r.held ? " (" + r.held + ")" : ""}` : "")
-        + (quiet ? `\nТихо ${Math.round(r.quiet_h)} год: без Кандидата / Alert і «прокидається» — можна прибрати ×` : "");
-      row.addEventListener("click", () => selectTicker(r.ticker));
-      box.appendChild(row);
-    });
-    // тікери зі списку, для яких ще немає оцінок: щойно додані або авто, що чекають циклу скринера
-    if (st.tab === "all" && !st.search) (st.list?.pending || []).forEach((x) => {
-      const row = el("div", "trow pend"); const name = el("span", "name", x.ticker);
-      if (x.source === "auto") name.appendChild(el("span", "tag-auto", "АВТО"));
-      const msg = x.job === "loading" ? "завантажую дані…" : x.job && x.job !== "done" ? x.job
-        : x.source === "auto" ? "чекає циклу скринера" : "немає даних — Refresh";
-      const m = el("span", "msg", msg); m.title = msg;
-      row.append(el("span"), name, m); box.appendChild(row);
+    SECS.forEach((x) => {
+      const rows = sec[x.key], pk = pend.filter((q) => (q.channel === "woke" ? "woke" : "list") === x.key);
+      if (!rows.length && !pk.length && (st.search || st.favOnly)) return;      // пошук — без порожніх секцій
+      const open = !!(st.search || st.secOpen[x.key]);
+      const h = el("button", "sec " + x.key); h.setAttribute("aria-expanded", String(open));
+      h.append(el("span", "arr", open ? "▾" : "▸"), el("span", "nm", x.name), el("span", "cnt", String(rows.length + pk.length)), el("span", "hint", x.hint));
+      h.addEventListener("click", () => { st.secOpen[x.key] = !st.secOpen[x.key]; LS.set("pd-sec", st.secOpen); renderList(); });
+      box.appendChild(h);
+      if (!open) return;
+      rows.forEach((o) => renderRow(box, o.r, o.ev));
+      pk.forEach((q) => {
+        const row = el("div", "trow pend"); const name = el("span", "name", q.ticker);
+        if (q.source === "auto" && q.channel !== "woke") name.appendChild(el("span", "tag-auto", "A"));
+        const msg = q.job === "loading" ? "loading data…" : q.job && q.job !== "done" ? q.job
+          : q.source === "auto" ? "waiting for the screener cycle" : "no data yet — Refresh";
+        const m = el("span", "msg", msg); m.title = q.reason ? `${msg}\n${q.reason}` : msg;
+        row.append(el("span"), name, m); box.appendChild(row);
+      });
     });
     const rec = $("recent"); rec.replaceChildren();
     (st.list?.recent || []).slice(0, 4).forEach((e) => {
@@ -1747,9 +1823,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const removeTicker = async (tk) => {
     const src = (st.list?.rows || []).find((r) => r.ticker === tk)?.source;
     st.gone.add(tk); renderList();
-    $("toastT").textContent = `Прибрано ${tk}`;
-    $("toastS").textContent = (src === "auto" ? "з авто-списку" : "з watchlist") + " · повернеться, лише якщо прокинеться знову";
-    $("toastA").textContent = "Повернути";
+    $("toastT").textContent = `Removed ${tk}`;
+    $("toastS").textContent = (src === "auto" ? "from the auto list" : "from the Watchlist") + " · comes back only if the scanner fires again";
+    $("toastA").textContent = "Undo";
     const done = api("/api/watchlist/remove", { method: "POST", quiet: true, body: JSON.stringify({ symbol: tk }) });
     $("toastA").onclick = async (e) => {
       e.preventDefault(); $("toast").hidden = true;
@@ -1758,12 +1834,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     };
     $("toast").hidden = false;
     clearTimeout(removeTicker.t);
-    removeTicker.t = setTimeout(() => { if ($("toastA").textContent === "Повернути") $("toast").hidden = true; }, 8000);
+    removeTicker.t = setTimeout(() => { if ($("toastA").textContent === "Undo") $("toast").hidden = true; }, 8000);
     try { await done; }
     catch (err) {
       st.gone.delete(tk); renderList();
-      $("toastT").textContent = `Не вдалося прибрати ${tk}`; $("toastS").textContent = err.message || "";
-      $("toastA").textContent = "Закрити"; $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; };
+      $("toastT").textContent = `Could not remove ${tk}`; $("toastS").textContent = err.message || "";
+      $("toastA").textContent = "Close"; $("toastA").onclick = (e) => { e.preventDefault(); $("toast").hidden = true; };
       $("toast").hidden = false; return;
     }
     await loadList();
@@ -1801,14 +1877,15 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const d = SC.data; if (!d) return;
     const p = d.params, pv = d.preview, rc = d.recall;
     $("scPreset").textContent = d.presets[SC.preset]?.name || "—";
-    $("scCount").textContent = d.config.enabled ? `${d.auto.length} авто` : "вимкнено";
+    const nWoke = d.auto.filter((a) => a.channel === "woke").length;
+    $("scCount").textContent = d.config.enabled ? `${d.auto.length - nWoke} авто · ${nWoke} woke` : "вимкнено";
     const box = $("scPresets"); box.replaceChildren();
     Object.entries(d.presets).forEach(([k, v]) => {
       const b = el("button", "", v.name); b.setAttribute("aria-pressed", String(k === SC.preset));
       b.addEventListener("click", () => { SC.preset = k; SC.dirty = true; loadScan(true).then(() => fillCustom(SC.data.config)); if (k === "custom") $("scCustom").open = true; });
       box.appendChild(b);
     });
-    $("scRule").textContent = `Середній оборот за 30 днів ≥ ${mln(p.min_turnover)}; обсяг за 4 год ≥ ×${p.vol_x} від норми (ціна не падає) або OI ≥ +${p.oi_pct}% і ціна ≥ +${p.price_pct}% за 4 год. Без монет з OI > ${mln(p.max_oi)}.`;
+    $("scRule").textContent = `Середній оборот за 30 днів ≥ ${mln(p.min_turnover)}; обсяг за 4 год ≥ ×${p.vol_x} від норми (ціна не падає) або OI ≥ +${p.oi_pct}% і ціна ≥ +${p.price_pct}% за 4 год. Без монет з OI > ${mln(p.max_oi)}. Окремо канал WOKE: монета з середнім оборотом < ${mln(p.min_turnover)}, темп ≥ 20 млн/добу, обсяг 4 год ×10, ціна +5%, OI +20% (48 год, до 15).`;
     const res = $("scRes"); res.replaceChildren();
     if (pv.at) {
       res.append("Пройшли б зараз: ", el("b", "", String(pv.count)), ` з ${pv.checked} перевірених`);
@@ -1824,7 +1901,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     else {
       al.append("В авто-списку: ");
       d.auto.forEach((a, i) => {
-        const b = el("b", "", a.ticker); b.title = `${a.reason}\nу списку до ${fmtTs(Date.parse(a.expires) / 1000)}` + (a.held ? ` (${a.held})` : "");
+        const b = el("b", "", a.ticker + (a.channel === "woke" ? " (woke)" : "")); b.title = `${a.reason}\nу списку до ${fmtTs(Date.parse(a.expires) / 1000)}` + (a.held ? ` (${a.held})` : "");
         b.addEventListener("click", () => selectTicker(a.ticker));
         if (i) al.append(" · "); al.append(b);
       });
@@ -2349,7 +2426,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   loadMovers(); setInterval(loadMovers, 5 * 60 * 1000);
 
   document.querySelectorAll("#oiSeg [data-oi]").forEach((b) => b.addEventListener("click", () => { st.oiUsd = b.dataset.oi === "usd"; LS.set("pd-oiusd", st.oiUsd); pressIn("oiSeg", "oi", b.dataset.oi); renderAllCharts(); }));
-  document.querySelectorAll("#tabSeg [data-tab]").forEach((b) => b.addEventListener("click", () => { st.tab = b.dataset.tab; pressIn("tabSeg", "tab", st.tab); renderList(); }));
+  $("favBtn").setAttribute("aria-pressed", String(st.favOnly));
+  $("favBtn").addEventListener("click", () => { st.favOnly = !st.favOnly; LS.set("pd-fav-only", st.favOnly); $("favBtn").setAttribute("aria-pressed", String(st.favOnly)); renderList(); });
   document.querySelectorAll(".cols [data-sort]").forEach((b) => b.addEventListener("click", () => {
     st.sort = b.dataset.sort;
     document.querySelectorAll(".cols [data-sort]").forEach((x) => { x.setAttribute("aria-pressed", String(x === b)); x.textContent = x.textContent.replace(" ↓", "") + (x === b ? " ↓" : ""); });
@@ -2384,7 +2462,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const i = order.indexOf(st.ticker);
       const j = Math.max(0, Math.min(order.length - 1, (i < 0 ? 0 : i) + (e.key === "ArrowDown" ? 1 : -1)));
       selectTicker(order[j]);
-      const selEl = $("tlist").children[j]; if (selEl) selEl.scrollIntoView({ block: "nearest" });
+      const selEl = $("tlist").querySelector(`[data-tk="${CSS.escape(order[j])}"]`); if (selEl) selEl.scrollIntoView({ block: "nearest" });
     } else if (e.key === "Enter" && tag !== "button" && tag !== "a") { e.preventDefault(); doRefresh(); }
     else if ((e.key === "f" || e.key === "F" || e.key === "а" || e.key === "А") && st.ticker) { e.preventDefault(); toggleFav(st.ticker); }
     else if (e.key === "[" || e.key === "х" || e.key === "Х") { e.preventDefault(); toggleRail(); }
@@ -2722,7 +2800,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (pulseBusy) return;
       pulseBusy = true;
       try {
-        const p = await api("/api/pulse", { quiet: true }), k = `${p.sig}|${p.wake}`;
+        const p = await api("/api/pulse", { quiet: true }), k = `${p.sig}|${p.wake}|${p.woke}`;
         if (pulseKey !== null && k !== pulseKey) {
           await loadList();
           if (st.view !== "journal") loadTicker({ quiet: true });

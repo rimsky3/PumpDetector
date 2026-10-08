@@ -649,7 +649,7 @@ restart it after `train.py`.
 
 | Option | Meaning |
 |---|---|
-| (none) | scan all Binance USDT perps now and print who passes each preset; the auto-list is not changed |
+| (none) | scan all Binance USDT perps now and print who passes each preset and the WOKE channel; the auto-list is not changed |
 | `--apply` | also update `reports/auto_watchlist.json` (what `screener.py` does every 15 minutes) |
 | `--recall` | test every preset on the labeled pumps from the database; writes `reports/scan_recall.json`, shown in the dashboard |
 
@@ -707,3 +707,12 @@ The page has a 1h / 15m / 5m switch; 15m and 5m need `fetch_exchange.py` for tha
 | `docker compose ps` | status (should be healthy) |
 | `docker compose down` | stop; data is kept |
 | `docker compose exec db psql -U postgres -d pump_detector` | SQL console |
+
+### experiments/wake_channel.py
+
+Scanner channel "woke up": coins whose 30-day average turnover is below $20M but which are liquid right now (4h turnover × 6 ≥ $20M) and spike (4h volume ×N vs the 7-day norm, price and OI up over 4h). Tests five threshold variants on the last ~30 days of all Binance USDT perps (15m klines + OI via REST, cache `data/wake_channel/`) against random quiet bars → `reports/wake_channel.md`, events in `reports/wake_channel_events.csv`.
+
+```
+python experiments/wake_channel.py          # whole market, last ~30 days
+python experiments/wake_channel.py --owner  # + does the rule fire before the owner's trades on quiet coins (OI from the Binance archive)
+```

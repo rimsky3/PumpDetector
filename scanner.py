@@ -13,6 +13,11 @@ scanner.py — сканер ринку: які USDT-перпи Binance «про�
 Скан — на закритих 15m-барах (кожні 15 хв); --recall — на годинних даних з бази, вікна ті самі.
 Тікер, що пройшов, живе в авто-списку ttl_hours після останнього спрацювання (або сигналу моделі), максимум max_auto.
 
+Канал «Прокинулась» (WOKE, 2026-10-08, experiments/wake_channel.py): ТИХА монета (середній оборот < min_turnover), що ожила:
+    темп обороту (обсяг 4 год × 6) ≥ 20 млн $/добу  і  обсяг 4 год ≥ ×10 норми  і  ціна за 4 год ≥ +5%  і  OI ≥ +20%.
+На 29 днях: ~10 подій на день, 42% дають +10% за добу (база 12%), але медіана за добу −5% — це «де дивитись», не вхід.
+Окремий канал авто-списку (channel "woke", стеля WOKE_CAP), події — reports/woke_events.json (і для ручних тікерів).
+
 Дані — публічний API Binance (ключ не потрібен, Coinalyze не витрачаємо): 1 запит на весь ринок
 + 2 на кожен перп, що проходить найм'якшу межу обороту (15m-свічки за 7.5 дня і OI за 4 год). Кожні 15 хв (screener.py).
 Середній оборот — денні свічки за 30 завершених днів, раз на добу для кожного перпа (кеш reports/scan_turnover_avg.json).
@@ -55,6 +60,11 @@ PRESETS = {
 PRESET_NAMES = {"strict": "Суворо", "balance": "Баланс", "wide": "Широко", "custom": "Свій"}
 DEFAULT_CONFIG = {"enabled": True, "preset": "balance", "custom": dict(PRESETS["balance"]),
                   "max_oi": 500e6, "max_auto": 30, "ttl_hours": 48}
+# канал «Прокинулась» (WOKE): пороги — варіант A з experiments/wake_channel.py, у налаштування не винесено
+WOKE = {"pace": 20e6, "vol_x": 10.0, "price_pct": 5.0, "oi_pct": 20.0}
+WOKE_CAP = 15                      # стеля каналу: найстаріший за останнім спрацюванням витісняється
+WOKE_TTL_HOURS = 48                # подія живе 48 год після останнього спрацювання (сигнал моделі продовжує — touch)
+WOKE_FILE = os.path.join(ROOT, "reports", "woke_events.json")   # {base: {first, last, reason, ...}} — і ручні тікери
 PARAM_LIMITS = {"min_turnover": (1e6, 1e9), "vol_x": (1.0, 20.0), "oi_pct": (1.0, 100.0), "price_pct": (0.0, 50.0),
                 "max_oi": (10e6, 1e11), "max_auto": (0, 100), "ttl_hours": (1, 24 * 7)}
 
@@ -206,6 +216,7 @@ def metrics_from_bars(h: pd.DataFrame, bph: int = 1) -> dict | None:
     tail = vol.tail(AVG_DAYS * 24 * bph)
     return {
         "turnover": float(vol.tail(24 * bph).sum()),
+        "turnover_4h": float(v4.iloc[-1]),           # для каналу WOKE: темп обороту = обсяг 4 год × 6
         # середній денний за наявну історію (до AVG_DAYS днів); живий скан замінює його денними свічками за 30 днів
         "turnover_avg": float(tail.sum() / (len(tail) / (24 * bph))),
         "vol_x": float(v4.iloc[-1] / norm) if norm and norm > 0 else None,
@@ -267,6 +278,56 @@ def passes(m: dict, p: dict) -> tuple[bool, str]:
     return True, " · ".join(why)
 
 
+def woke_passes(m: dict, liq_floor: float) -> tuple[bool, str]:
+    """Канал WOKE: тиха монета (середній оборот за 30 днів < liq_floor) ожила. Причина — англійською (рядок у списку)."""
+    avg = m.get("turnover_avg")
+    pace = (m.get("turnover_4h") or 0) * 6
+    if avg is None or avg >= liq_floor or pace < WOKE["pace"]:
+        return False, ""
+    if (m.get("vol_x") or 0) < WOKE["vol_x"] or m["price_pct"] < WOKE["price_pct"]:
+        return False, ""
+    if m.get("oi_pct") is None or m["oi_pct"] < WOKE["oi_pct"]:
+        return False, ""
+    return True, (f"Avg ${avg / 1e6:.1f}M → ${pace / 1e6:.0f}M/day · Vol ×{m['vol_x']:.0f} · "
+                  f"Px {m['price_pct']:+.0f}% · OI {m['oi_pct']:+.0f}%")
+
+
+def woke_hits(last: dict, liq_floor: float, exclude: set[str] = frozenset()) -> list[dict]:
+    out = []
+    for m in last.get("rows", []):
+        ok, why = woke_passes(m, liq_floor)
+        if ok and m["base"] not in exclude:
+            out.append({**m, "reason": why})
+    return sorted(out, key=lambda m: -(m.get("vol_x") or 0))
+
+
+def load_woke() -> dict:
+    return _read_json(WOKE_FILE, {})
+
+
+def record_woke(found: list[dict], now: datetime, keep: set[str] = frozenset()) -> list[str]:
+    """Події WOKE (усі тікери, і ручні): перше спрацювання — first (у дашборді «Woke · just now» і година в NOW,
+    Telegram), повторне — лише last. Подія живе WOKE_TTL_HOURS після last; keep — тікери, яких тримає канал (сигнал
+    моделі продовжив), їхня подія не зникає, і повторне спрацювання не вважається новим. Повертає нові."""
+    ev = load_woke()
+    ts = now.isoformat(timespec="minutes")
+    cut = pd.Timestamp(now) - pd.Timedelta(hours=WOKE_TTL_HOURS)
+    ev = {b: e for b, e in ev.items() if pd.Timestamp(e["last"]) > cut or b in keep}
+    new = []
+    for m in found:
+        b = m["base"]
+        rec = {"last": ts, "reason": m["reason"], "turnover_avg": m.get("turnover_avg"),
+               "pace": (m.get("turnover_4h") or 0) * 6, "vol_x": m.get("vol_x"), "price_pct": m.get("price_pct"),
+               "oi_pct": m.get("oi_pct")}
+        if b in ev:
+            ev[b].update(rec)
+        else:
+            ev[b] = {"first": ts, "first_reason": m["reason"], **rec}
+            new.append(b)
+    _write_json(WOKE_FILE, ev)
+    return new
+
+
 def _symbol_metrics(u: dict) -> dict | None:
     end = int(datetime.now(timezone.utc).timestamp() * 1000)
     try:
@@ -297,7 +358,8 @@ def scan(log=print) -> dict:
     cfg = load_config()
     floor = min([p["min_turnover"] for p in PRESETS.values()] + [cfg["custom"]["min_turnover"]])
     uni = universe()
-    cand = [u for u in uni if (liquidity(u) or 0) >= floor * 0.8]      # із запасом
+    # із запасом; + канал WOKE: у тихої монети, що ожила, оборот за 24 год уже ≥ темпу за 4 год
+    cand = [u for u in uni if (liquidity(u) or 0) >= floor * 0.8 or u["turnover"] >= WOKE["pace"] / 6]
     with ThreadPoolExecutor(WORKERS) as ex:
         rows = [m for m in ex.map(_symbol_metrics, cand) if m]
     res = {"at": t0.isoformat(timespec="seconds"), "universe": len(uni), "checked": len(rows),
@@ -376,8 +438,14 @@ def restore_auto(base: str, rec: dict) -> None:
     unblock(base)
 
 
+def channel(rec: dict) -> str:
+    """Канал авто-запису: "liquid" (звичайний сканер; старі записи без поля) або "woke" (тиха монета ожила)."""
+    return rec.get("channel", "liquid")
+
+
 def apply(last: dict, manual: set[str], log=print) -> dict:
-    """Оновити авто-список: нові спрацювання, продовження, прострочені — геть, не більше max_auto."""
+    """Оновити авто-список: нові спрацювання, продовження, прострочені — геть; стеля окремо для каналів
+    liquid (max_auto) і woke (WOKE_CAP). WOKE-монета, що пройшла звичайний фільтр, переходить у liquid."""
     cfg = load_config()
     now = datetime.now(timezone.utc)
     excluded = _excluded()
@@ -386,23 +454,44 @@ def apply(last: dict, manual: set[str], log=print) -> dict:
         _write_json(AUTO_FILE, auto)
         return auto
     ttl = timedelta(hours=cfg["ttl_hours"])
+    ts = now.isoformat(timespec="minutes")
+    p = params(cfg)
+    found = hits(last, p, exclude=set(manual) | excluded)
+    woke = woke_hits(last, p["min_turnover"], exclude=excluded)
+    # події WOKE — для всіх, і ручних (у дашборді мітка «Woke» і година в NOW); тримаються, поки канал тримає тікер
+    new_woke = record_woke(woke, now, keep={b for b, r in auto.items() if channel(r) == "woke"})
+    first = {b: e["first"] for b, e in load_woke().items()}
+    # прибрані «×» — лише після нового спрацювання (будь-якого з каналів)
+    blocked = release_blocks({m["base"] for m in found} | {m["base"] for m in woke}, now)
     new = []
-    found = hits(last, params(cfg), exclude=set(manual) | excluded)
-    blocked = release_blocks({m["base"] for m in found}, now)     # прибрані «×» — лише після нового спрацювання
     for m in [m for m in found if m["base"] not in blocked]:
         b = m["base"]
         if b not in auto:
             new.append(b)
-        auto[b] = {"added": auto.get(b, {}).get("added", now.isoformat(timespec="minutes")),
-                   "last_hit": now.isoformat(timespec="minutes"), "expires": (now + ttl).isoformat(timespec="minutes"),
+        auto[b] = {"added": auto.get(b, {}).get("added", ts), "channel": "liquid",
+                   "last_hit": ts, "expires": (now + ttl).isoformat(timespec="minutes"),
                    "reason": m["reason"], "vol_x": m.get("vol_x"), "oi_pct": m.get("oi_pct"), "turnover": m["turnover"],
                    "turnover_avg": m.get("turnover_avg")}
-    if len(auto) > cfg["max_auto"]:        # стеля: лишаємо найсвіжіші спрацювання
-        keep = sorted(auto, key=lambda b: (auto[b]["last_hit"], auto[b].get("vol_x") or 0), reverse=True)[:int(cfg["max_auto"])]
-        auto = {b: auto[b] for b in keep}
-        new = [b for b in new if b in auto]
+    for m in [m for m in woke if m["base"] not in blocked and m["base"] not in manual]:
+        b = m["base"]
+        if b in auto and channel(auto[b]) == "liquid":
+            continue                      # уже в звичайному каналі — там і лишається
+        if b not in auto:
+            new.append(b)
+        auto[b] = {"added": auto.get(b, {}).get("added", ts), "channel": "woke",
+                   "last_hit": ts, "expires": (now + timedelta(hours=WOKE_TTL_HOURS)).isoformat(timespec="minutes"),
+                   "reason": m["reason"], "vol_x": m.get("vol_x"), "oi_pct": m.get("oi_pct"), "turnover": m["turnover"],
+                   "turnover_avg": m.get("turnover_avg"), "woke_first": first.get(b, ts)}
+    for ch, cap in (("liquid", int(cfg["max_auto"])), ("woke", WOKE_CAP)):    # стеля: лишаємо найсвіжіші спрацювання
+        mine = [b for b in auto if channel(auto[b]) == ch]
+        if len(mine) > cap:
+            for b in sorted(mine, key=lambda b: (auto[b]["last_hit"], auto[b].get("vol_x") or 0), reverse=True)[cap:]:
+                auto.pop(b)
+    new = [b for b in new if b in auto]
     _write_json(AUTO_FILE, auto)
-    log(f"авто-список: {len(auto)}" + (f", нові: {', '.join(new)}" if new else ""))
+    n_woke = sum(channel(r) == "woke" for r in auto.values())
+    log(f"авто-список: {len(auto)} (woke {n_woke})" + (f", нові: {', '.join(new)}" if new else "")
+        + (f"; WOKE-події: {', '.join(new_woke)}" if new_woke else ""))
     return auto
 
 
@@ -487,6 +576,8 @@ def main() -> None:
     for name in PRESETS:
         h = hits(last, {**PRESETS[name], "max_oi": cfg["max_oi"]}, exclude=manual)
         print(f"{PRESET_NAMES[name]:<7} {len(h):>3}: " + ", ".join(m["base"] for m in h[:12]) + (" …" if len(h) > 12 else ""))
+    w = woke_hits(last, params(cfg)["min_turnover"])
+    print(f"WOKE    {len(w):>3}: " + "; ".join(f"{m['base']} ({m['reason']})" for m in w[:8]))
     if args.apply:
         apply(last, manual)
 

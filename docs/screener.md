@@ -179,8 +179,26 @@ dimmed ("quiet N h" on hover, `quiet_h` in `/api/list`). The × on a row (on hov
 (`reports/auto_snooze.json`, `scanner.block` / `release_blocks`): the scanner's windows (4-hour volume and OI) keep a spike
 passing the filter for hours, so while the coin keeps passing it is the same event and stays out; the first scan where it
 no longer passes (and at least `BLOCK_MIN_HOURS` = 1 h after removal, so a flickering filter cannot bring the same spike
-back) lifts the block, and the next pass adds it again as an auto coin. "Повернути" in the toast undoes it
+back) lifts the block, and the next pass adds it again as an auto coin. "Undo" in the toast undoes it
 (`/api/watchlist/undo`). The screener stops scoring the coin from its next cycle.
+
+### Sections (since 2026-10-08)
+
+The filter tabs (all / Alert / candidates / auto / ★) were replaced by four sections; every section collapses with its
+arrow (state in `localStorage` `pd-sec`, QUIET collapsed by default), and ↑/↓ walk the open sections only. Search and the
+★ "Favorites only" button filter across all sections. Labels in the list are in English.
+
+| Section | What goes there |
+|---|---|
+| **NOW** — signal or event in the last hour | Alert / Candidate burning, or faded less than 1 h ago (`last_sig` = close of the last non-calm bar; 4 bars, like the position exit); Vol 5m (≤ 30 min); `b · Reclaim` (≤ 1 h after the bar); the first WOKE trigger (1 h). Several events — the latest one counts. |
+| **WOKE UP** — dormant coins coming alive | auto coins of the WOKE channel (below); a two-line row with the trigger reason |
+| **WATCHLIST** — liquid, scanner + manual | liquid-channel auto coins (tag **A**) and manual coins (`watchlist.txt`, no tag, no TTL) |
+| **QUIET** — no signals for 24 h+ | dimmed rows, candidates for × |
+
+Row chips: `Alert` / `Candidate` (dim with age once faded), `b · Reclaim · 10m`, `p · 25m` (orange; never lifts a row into
+NOW), `Vol 5m ×6`, `Woke · 3h`. A manual coin that triggers WOKE stays in WATCHLIST with the `Woke` chip and spends its first
+hour in NOW. A hot coin moves to NOW, it is never shown twice. `/api/list` rows carry `channel`, `wokeup`
+(`{first, last, reason}`), `last_sig` and `fp` (latest live footprint mark).
 
 ## "Waking up" (5-minute early warning)
 
@@ -264,6 +282,26 @@ OKX can later be tested as a model input.
 The filter is deliberately looser than the model: its job is not to miss a pump; the model decides whether it is one.
 An auto coin stays `ttl_hours` (48) after its last trigger or model signal, at most `max_auto` (30) coins. Alerts,
 not list entries, trigger notifications.
+
+**WOKE channel** (since 2026-10-08, `experiments/wake_channel.py`, `reports/wake_channel.md`). The liquidity floor (30-day
+average turnover) hid quiet coins that suddenly came alive (OGN on 10-07: +96% after the trigger, never in the list). A
+second channel catches exactly them — all at once on the 15m scan:
+
+- 30-day average turnover < `min_turnover` of the active preset (a quiet coin);
+- turnover pace = 4-hour volume × 6 ≥ 20 M$/day;
+- 4-hour volume ≥ ×10 the median 4-hour volume of the previous 7 days;
+- price over 4 hours ≥ +5%, OI (USD) over 4 hours ≥ +20%.
+
+On 29 days of 449 quiet coins: ~10 events a day, 42% gave +10% within 24 h (random bars 12%), 21% gave +20%, but the
+median price 24 h later was −5% and 20% of the move was already done at the trigger — a "where to look" tool, not an entry.
+The owner's own system longs on such coins: 24 of 26 were caught, a median 9.5 h before his entry.
+
+Mechanics (`scanner.woke_passes` / `woke_hits` / `record_woke`, `apply`): the scan also checks coins whose 24 h turnover is
+≥ pace / 6; WOKE events go to `reports/woke_events.json` for every coin, manual ones included (`first`, `last`, reasons and
+metrics); auto records get `channel: "woke"` (old records = `"liquid"`) with their own cap `WOKE_CAP` = 15 (the stalest by
+last trigger drops out) and TTL 48 h, which a model signal extends (`scanner.touch`). A repeat trigger extends it but is not a
+new event. A WOKE coin that passes the regular (liquid) filter moves to the liquid channel. × blocks either channel until a
+new trigger. Thresholds are constants (`scanner.WOKE`), not in the presets.
 
 Presets on the 56 labeled pumps (`python scanner.py --recall`, hourly data from the database, same 4-hour windows; "on time" = the coin
 would have been in the list before the impulse started):
@@ -363,9 +401,9 @@ forth between tickers is instant.
   Apache 2.0, local copy in `app/vendor/`): candles with signal zones, entry and exit markers of every
   simulated trade, the stop line, OI candles (in coins by default, USD on a toggle), volume and the
   hourly probability with the threshold;
-- *right*: the watchlist like a trading terminal — search, **Refresh**, filters (all / Alert /
-  candidates / ★ favourites), sorting by probability, OI change over 24 h or price change over 24 h, a 24-hour
-  probability sparkline per ticker, and the latest signal episodes.
+- *right*: the watchlist like a trading terminal — search, ★ favourites only, **Refresh**, sections NOW / WOKE UP /
+  WATCHLIST / QUIET (see Watchlist), sorting by probability, OI change over 24 h or price change over 24 h within each
+  section, a 24-hour probability sparkline per ticker, and the latest signal episodes.
 
 **Ruler** (like TradingView's measure tool; shared `app/js/ruler.js`, also in the labeling tool): Shift + click on the
 chart or the ruler button, move, click to fix, click again or Esc to remove. Shows the price change, bars and

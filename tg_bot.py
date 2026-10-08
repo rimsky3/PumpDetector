@@ -38,8 +38,8 @@ MODEL, MODE = "tier15", "market"          # основна модель і ре�
 SEND_MAX_AGE_MIN = 45                     # старіші епізоди не надсилаємо (після простою — без «зливи» старих сигналів)
 MUTE_HOURS = 2
 POLL_SEC = 5
-DEFAULTS = {"alert": True, "cand": False, "wake": True, "fp": True}
-TITLES = {"alert": "🔴 Alert", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p"}
+DEFAULTS = {"alert": True, "cand": False, "wake": True, "fp": True, "woke": True}
+TITLES = {"alert": "🔴 Alert", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p", "woke": "🟪 WOKE"}
 MENU = [["📋 Статус", "📊 Результати", "⚙️ Налаштування"]]
 
 
@@ -181,7 +181,7 @@ class Bot:
         s = self.st.d
         fresh = []
         for kind, items in (("alert", lst.get("alerts", [])), ("cand", lst.get("cands", [])), ("wake", lst.get("wakes", [])),
-                            ("fp", lst.get("fps", []))):
+                            ("fp", lst.get("fps", [])), ("woke", lst.get("wokeups", []))):
             for e in items:
                 key = f"{kind}|{e['ticker']}|{e['ts']}" + (f"|{e['kind']}" if kind == "fp" else "")
                 if key in s["sent"]:
@@ -191,7 +191,7 @@ class Bot:
                 t = ts_of(e["ts"])
                 if first or t is None:                      # при старті — лише запам'ятати, без надсилання
                     continue
-                age = (now() - t).total_seconds() / 60 - (15 if kind != "wake" else 0)      # від закриття бару
+                age = (now() - t).total_seconds() / 60 - (15 if kind not in ("wake", "woke") else 0)  # від закриття бару
                 if age > SEND_MAX_AGE_MIN:
                     continue
                 fresh.append((kind, e))
@@ -213,6 +213,8 @@ class Bot:
         t = ts_of(e["ts"])
         if kind == "fp":
             text = self.fp_text(e)
+        elif kind == "woke":
+            text = self.woke_text(e, row)
         elif kind == "wake":
             head = f"🟣 <b>Прокидається</b> · <b>{html.escape(tk)}</b>"
             body = (f"обсяг ×{e.get('vol_x', 0):.1f} до тижня · ціна {pct(e.get('ret15'))} за 15 хв · OI {pct(e.get('oi1h'))} за год\n"
@@ -222,8 +224,23 @@ class Bot:
             lv, _ = self.levels(tk)
             head = "🔴 <b>Alert</b>" if kind == "alert" else "🟠 <b>Кандидат</b> — перевір стакан"
             text = f"{head} · {lv}\n15m-бар {t:%H:%M}–{(t + timedelta(minutes=15)):%H:%M} UTC" if t else f"{head} · {lv}"
-        self.send(text, self.signal_buttons(tk, row.get("source") == "auto"))
+        self.send(text, self.signal_buttons(tk, (row.get("source") or e.get("source")) == "auto"))
         print(f"[{now():%H:%M:%S}] надіслано {kind} {tk}", flush=True)
+
+    @staticmethod
+    def woke_text(e: dict, row: dict) -> str:
+        """Канал WOKE (scanner.py): тиха монета ожила — перше спрацювання. Не сигнал входу (experiments/wake_channel.py)."""
+        mln = lambda v: "—" if v is None else f"{v / 1e6:.1f}" if v < 10e6 else f"{v / 1e6:.0f}"      # noqa: E731
+        sg = lambda v: "—" if v is None else f"{v:+.0f}%"                                         # noqa: E731
+        p, thr = row.get("probability"), row.get("threshold")
+        pl = (f"P моделі {p2(p)} ({'вище' if thr is not None and p >= thr else 'нижче'} порогу {p2(thr)})"
+              if p is not None else "P моделі — ще не оцінено (монета щойно в списку)")
+        return (f"🟪 <b>WOKE</b> · <b>{html.escape(e['ticker'])}</b> — тиха монета ожила\n"
+                f"Оборот: сер. <b>{mln(e.get('turnover_avg'))} млн</b>/добу → зараз <b>{mln(e.get('pace'))} млн</b>/добу\n"
+                f"Обсяг 4 год <b>×{e.get('vol_x') or 0:.0f}</b> до норми · ціна <b>{sg(e.get('price_pct'))}</b> · "
+                f"OI <b>{sg(e.get('oi_pct'))}</b> за 4 год\n{pl}\n"
+                "<i>Не сигнал входу: такі монети в 42% випадків дають +10% за добу, але в медіані за добу ціна −5%. "
+                "Вхід — за стаканом.</i>")
 
     @staticmethod
     def fp_text(e: dict) -> str:
@@ -248,7 +265,7 @@ class Bot:
             try:
                 if self.st.d["owner"]:
                     p = self.get("/api/pulse", timeout=20)
-                    key = f"{p.get('sig')}|{p.get('wake')}"
+                    key = f"{p.get('sig')}|{p.get('wake')}|{p.get('woke')}"
                     if key != last_pulse or time.time() - last_full > 60:
                         self.notify_once(first)
                         first, last_pulse, last_full = False, key, time.time()
@@ -260,8 +277,8 @@ class Bot:
     def settings_markup(self) -> list:
         s = self.st.d["settings"]
         row = [{"text": ("✅ " if s.get(k, DEFAULTS[k]) else "⬜ ") + TITLES[k], "callback_data": f"set:{k}"}
-               for k in ("alert", "cand", "wake", "fp")]
-        return [row[:2], row[2:], [{"text": "🔕 Заглушені", "callback_data": "muted"}]]
+               for k in ("alert", "cand", "wake", "fp", "woke")]
+        return [row[:2], row[2:4], row[4:], [{"text": "🔕 Заглушені", "callback_data": "muted"}]]
 
     def results_markup(self) -> list:
         return [[{"text": "Сьогодні", "callback_data": "res:today"}, {"text": "Вчора", "callback_data": "res:yday"},
