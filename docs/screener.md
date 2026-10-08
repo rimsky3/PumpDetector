@@ -126,6 +126,11 @@ Ukrainian. `⚠ No volume behind this signal` appears when P is above the thresh
 (a signal driven by positioning or correlation rather than a volume spike, e.g. CHIP 06.10 08:45). The owner chose this
 layout (variant A with the warning from C) on the mockup https://claude.ai/artifact/Rf29hSf9fmsTynMqcT3yMj.
 
+**DRIVERS chip** (since 2026-10-08): in the chart window header, next to status and P, the two groups with the largest
+positive share of the drivers — e.g. `DRIVERS · OI 29% · Own move 25%`, coloured like the card's bar, ⚠ in front when the
+signal has no volume behind it; hover for the top four groups and features. Shown only on Candidate / Alert, for any coin —
+including small ones outside the Movers universe (avg turnover < 5 M$), where it is the only hint that a move is the coin's own.
+
 ## ALT-EW index for the 15m model (since 2026-10-08)
 
 The 15m model sees the coin's move relative to the altcoin market (`beta`, `idio_*`, `illiq_x`, `park_*`; see

@@ -213,6 +213,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .pnhead .tk-stop { color: var(--warm); }
 .pnhead .tk-mover { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--mover); color: var(--mover); white-space: nowrap; cursor: default; }
 .pnhead .tk-mover.neg { border-color: var(--hot-soft); color: var(--hot-soft); }
+/* чип Drivers (2026-10-08, власник): дві головні групи внеску в P — чому сигнал, без лівої панелі; лише Candidate / Alert */
+.pnhead .tk-why { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; padding: 2px 9px; border-radius: 20px;
+  border: 1px solid var(--line3); background: var(--card); color: var(--fg2); white-space: nowrap; cursor: default; }
+.pnhead .tk-why[hidden] { display: none; }
+.pnhead .tk-why .k { font-size: 9.5px; letter-spacing: .06em; color: var(--fg3); }
+.pnhead .tk-why .g { display: inline-flex; align-items: center; gap: 5px; color: var(--fg); }
+.pnhead .tk-why .g i { width: 7px; height: 7px; border-radius: 50%; }
+.pnhead .tk-why .g b { font-weight: 500; color: var(--fg2); }
+.pnhead .tk-why .w { color: var(--amber); display: inline-flex; }
+.pnhead .tk-why.warn { border-color: #633806; }
 .fullbtn { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); font-size: 12px; }
 .fullbtn .sw { position: relative; width: 26px; height: 14px; border-radius: 7px; background: var(--line3); }
 .fullbtn .sw i { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--fg); transition: left .15s; }
@@ -645,6 +655,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <span class="pill none tk-status">—</span><span class="tk-p"></span>
         <span class="tk-pos" hidden></span><span class="small tk-stop" hidden></span>
         <span class="tk-mover" hidden></span>
+        <span class="tk-why" hidden></span>
         <span class="badge tk-ins" hidden title="Ця година була в навчанні моделі">in-sample</span>
       </div>
       <div class="ohlc"></div>
@@ -1031,6 +1042,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
   // ---------- Drivers: внески ознак у P (drivers.py) ----------
   const DRV_COL = { "Open interest": "--oi", "Volume": "--link", "Price": "--pop", "Own move": "--wake", "Funding": "--accent", "Long / short": "--warm" };
+  const DRV_SHORT = { "Open interest": "OI", "Long / short": "L/S", "Taker flow": "Flow" };     // короткі назви для чипа DRIVERS
   const WARN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l9 16H3z"></path><path d="M12 10v4"></path><path d="M12 17v.5"></path></svg>';
   const renderDrivers = (dr) => {
     const card = $("drvCard"); card.hidden = !dr; if (!dr) return;
@@ -1528,7 +1540,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const renderHead = () => {
       q(".tk-name").textContent = P.data ? P.data.ticker : (P.ticker || "—");
       root.classList.toggle("active", st.panes > 1 && isActive());
-      const d = P.data; if (!d) { q(".tk-mover").hidden = true; return; }
+      const d = P.data; if (!d) { q(".tk-mover").hidden = true; q(".tk-why").hidden = true; return; }
       const ch = q(".tk-chg"); ch.textContent = fmtPct(d.chg_24h); ch.className = "tk-chg " + pctCls(d.chg_24h);
       q(".tk-ins").hidden = !d.in_sample;
       q(".tk-tf").textContent = `USDT Perp · ${d.tf || "1h"}` + (d.native_tf ? ` · модель ${d.native_tf}` : "");
@@ -1549,6 +1561,26 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         mvEl.textContent = `MOVER ${mv.h}H · z ${mv.z >= 0 ? "+" : ""}${mv.z.toFixed(1)} · idio ${fmtPct(mv.idio)}`;
         mvEl.className = "tk-mover" + (mv.z < 0 ? " neg" : "");
         mvEl.title = moverTitle(mv);
+      }
+      // Drivers: дві найбільші групи, що штовхають P вгору (drivers.py) — лише коли є Candidate / Alert
+      const dr = is15() && (stt === "alert" || stt === "candidate") ? d.drivers : null;
+      const why = q(".tk-why"), top = dr ? dr.groups.filter((g) => g.share > 0).slice(0, 2) : [];
+      why.hidden = !top.length; why.replaceChildren();
+      if (top.length) {
+        const warn = (dr.warnings || []).length > 0;
+        why.className = "tk-why" + (warn ? " warn" : "");
+        if (warn) { const w = el("span", "w"); w.innerHTML = WARN_SVG; why.appendChild(w); }
+        why.appendChild(el("span", "k", "DRIVERS"));
+        top.forEach((g) => {
+          const sp = el("span", "g"), dot = el("i"); dot.style.background = cssVar(DRV_COL[g.group] || "--muted");
+          sp.append(dot, DRV_SHORT[g.group] || g.group, " ", el("b", "", `${Math.round(g.share * 100)}%`)); why.appendChild(sp);
+        });
+        why.title = (dr.warnings || []).map((w) => `⚠ ${w.text}\n`).join("")
+          + `Чому P ${fmtP(dr.p)} (бар ${dr.ts ? fmtTs(dr.ts).slice(-5) + " UTC" : "—"}) — частка внеску групи в усі поштовхи моделі:\n`
+          + dr.groups.filter((g) => g.share > 0).slice(0, 4).map((g) => `  ${g.group} ${Math.round(g.share * 100)}%`).join("\n")
+          + "\nPushing up: " + dr.for.slice(0, 4).map((x) => `${x.label} ${x.text}`).join(" · ")
+          + (dr.against.length ? `\nPulling down: ${dr.against[0].label} ${dr.against[0].text}` : "")
+          + "\nДеталі — картка DRIVERS у лівій панелі.";
       }
     };
 
