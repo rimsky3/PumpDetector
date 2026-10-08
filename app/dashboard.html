@@ -196,7 +196,6 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .pnhead .tk-stop { color: var(--warm); }
 .pnhead .tk-mover { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--mover); color: var(--mover); white-space: nowrap; cursor: default; }
 .pnhead .tk-mover.neg { border-color: var(--hot-soft); color: var(--hot-soft); }
-.act-tag { margin-left: auto; font-size: 11px; color: var(--warm); border: 1px solid var(--accent); border-radius: 10px; padding: 1px 8px; }
 .fullbtn { height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); font-size: 12px; }
 .fullbtn .sw { position: relative; width: 26px; height: 14px; border-radius: 7px; background: var(--line3); }
 .fullbtn .sw i { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--fg); transition: left .15s; }
@@ -610,7 +609,6 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <span class="tk-pos" hidden></span><span class="small tk-stop" hidden></span>
         <span class="tk-mover" hidden></span>
         <span class="badge tk-ins" hidden title="Ця година була в навчанні моделі">in-sample</span>
-        <span class="act-tag" hidden>активне</span>
       </div>
       <div class="ohlc"></div>
       <div class="chart-card">
@@ -1255,12 +1253,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const renderOhlc = (i) => {
       const d = P.data; if (!d || !d.series.t.length) return;
       const s = d.series; if (i == null) i = s.t.length - 1;
-      const pr = (s.prob[st.model] || [])[i], chg = s.open[i] ? s.price[i] / s.open[i] - 1 : null;
+      const pr = (s.prob[st.model] || [])[i];
       const oc = s.coinO[i] ? s.coin[i] / s.coinO[i] - 1 : null;
       ohlcEl.replaceChildren();
       const add = (k, v, cls) => { const w = el("span", "", k ? k + " " : ""); const b = el("b", cls, v); w.appendChild(b); ohlcEl.appendChild(w); };
-      add("", fmtTs(s.t[i]) + " UTC");
-      add("O", fmtPx(s.open[i])); add("H", fmtPx(s.high[i])); add("L", fmtPx(s.low[i])); add("C", fmtPx(s.price[i]), pctCls(chg));
+      // час і O / H / L / C бару прибрано (власник 08.10): час видно на шкалі графіка, ціни — на свічці
       add("OI", `${fmtUsd(s.oi[i])} · ${fmtNum(s.coin[i])}`); add(`OI ${d.tf || "1h"}`, fmtPct(oc), pctCls(oc));
       add("Обсяг", fmtUsd(s.volume[i])); add("P", fmtP(pr), pr != null && pr >= d.threshold ? "hot" : "");
       if (is15() && s.prob.ctx) add("1h", fmtP(s.prob.ctx[i]));
@@ -1505,7 +1502,6 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // заголовок вікна: тікер, ціна, зміна за добу, статус, P, позиція і стоп (останні — лише з «Повна інфо»)
     const renderHead = () => {
       q(".tk-name").textContent = P.data ? P.data.ticker : (P.ticker || "—");
-      q(".act-tag").hidden = !(st.panes > 1 && isActive());
       root.classList.toggle("active", st.panes > 1 && isActive());
       const d = P.data; if (!d) { q(".tk-mover").hidden = true; return; }
       q(".tk-price").textContent = fmtPx(d.price);
