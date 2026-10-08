@@ -158,6 +158,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .nt-row .sw i { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--fg); transition: left .15s; }
 .nt-row[aria-pressed="true"] .sw i { left: 14px; }
 .nt-row.alert[aria-pressed="true"] .sw { background: var(--hot); } .nt-row.alert .nt-k { background: var(--hot); }
+.nt-row.re[aria-pressed="true"] .sw { background: var(--hot-soft); } .nt-row.re .nt-k { background: var(--hot-soft); }
 .nt-row.cand[aria-pressed="true"] .sw { background: var(--amber); } .nt-row.cand .nt-k { background: var(--amber); }
 .nt-row.wake[aria-pressed="true"] .sw { background: var(--wake); } .nt-row.wake .nt-k { background: var(--wake); }
 .nt-row.woke[aria-pressed="true"] .sw { background: var(--mover); } .nt-row.woke .nt-k { background: var(--mover); }
@@ -801,7 +802,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
     meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
     secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(),
-    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), seen: new Set(LS.get("pd-seen", [])),
+    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), seen: new Set(LS.get("pd-seen", [])),
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
 
@@ -884,7 +885,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     full: "«Повна інфо» увімкнена — на графіку і в заголовку вікна позиція моделі, угоди, стоп і ціль, «прокидається» (фіолетові свічки), мітки сканера; ліворуч — історія угод і «Модель бачить OI». Вимкнена — лише свічки, OI, обсяг, ймовірність і зони сигналу: вікно відкривається в 2–3 рази швидше. Кнопки ▢ / ▢▢ — одне або два вікна графіка; активне (рамка) отримує тікер зі списку і ↑/↓, Tab — інше вікно; [ — згорнути / розгорнути ліву панель.",
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди. Зелена «b» під свічкою — «залочка» з футпрінту: ціна проколола лоу попередніх 2 год, під лоу пройшло ≥ 30% обсягу бару (стопи, ліквідації, шорти на пробій), але бар закрився вище, обсяг унизу бару, обсяг ≥ 2× норми; лише коли за 6 год був Кандидат або Alert. Стоп — під лоу бару b. На історії (218 монет, місяць) у такому контексті +2R раніше за стоп у 38% проти 29% у входу моделі — це підказка, не сигнал моделі; перевіряй стакан. Помаранчева «p» над свічкою — те саме на хаях: покупців над хаєм поглинули. Наведи на бар — деталі й чим скінчилась мітка (+2R / стоп / 12 год). Мітки з'являються лише з моменту запуску записувача угод.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
-    notify: "Кнопка «Sound ▾» біля Movers: чотири незалежні перемикачі; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-подіях. Alert — два високі тони і системне сповіщення браузера. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила: один нижчий тон; раніше на ~15 хв, але хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах; не сигнал на вхід. Woke — перше спрацювання каналу WOKE (тиха монета ожила, секція WOKE UP): два висхідні тони і сповіщення з причиною; не сигнал на вхід. На кнопці — скільки увімкнено (off — жодного). Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
+    notify: "Кнопка «Sound ▾» біля Movers: п'ять незалежних перемикачів; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-подіях. Alert — ВХІД МОДЕЛІ: модель без позиції відкриває угоду (та сама мітка «Вхід» на графіку; повторний вхід після стопу теж), два високі тони і системне сповіщення. Re-alert — Alert спалахнув знову, а угода моделі ще відкрита (до 08.10 це приходило як звичайний Alert): один короткий високий тон; за замовчуванням вимкнено. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила, і модель без позиції (у відкритій угоді й одразу після сигналу за останню годину — тиша): один нижчий тон; хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах. Woke — перше спрацювання каналу WOKE (тиха монета ожила): два висхідні тони і сповіщення з причиною. Volume 5m і Woke — не сигнал на вхід. На кнопці — скільки увімкнено (off — жодного). Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
     list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
     period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду). Кнопка «Дати…» — конкретний день, тиждень, місяць чи рік (дні UTC, за моментом входу в угоду).",
@@ -2160,11 +2161,23 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       });
     } catch (e) {}
   };
-  // «Sound ▾» біля Movers: чотири незалежні перемикачі (localStorage pd-notify / -cand / -wake / -woke)
+  // Re-alert — один короткий високий тон (вхід моделі — два)
+  const reTone = () => {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = 880; o.connect(g); g.connect(audioCtx.destination);
+      const t = audioCtx.currentTime; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+      o.start(t); o.stop(t + 0.13);
+    } catch (e) {}
+  };
+  // «Sound ▾» біля Movers: п'ять незалежних перемикачів (localStorage pd-notify / -re / -cand / -wake / -woke).
+  // Alert — лише вхід моделі (/api/list → alerts); Re-alert — новий спалах Alert у відкритій угоді (realerts)
   const NT = { open: false };
   const NT_ROWS = [
-    { key: "notify", ls: "pd-notify", cls: "alert", name: "Alert", desc: "Two high tones + browser notification" },
-    { key: "notifyCand", ls: "pd-notify-cand", cls: "cand", name: "Candidate", desc: "One low tone · 15m model only, check the order book" },
+    { key: "notify", ls: "pd-notify", cls: "alert", name: "Alert", desc: "Model entry (the “Вхід” mark): two high tones + browser notification" },
+    { key: "notifyRe", ls: "pd-notify-re", cls: "re", name: "Re-alert", desc: "Alert again while the model trade is still open · one short high tone" },
+    { key: "notifyCand", ls: "pd-notify-cand", cls: "cand", name: "Candidate", desc: "One low tone · only when the model has no open trade · check the order book" },
     { key: "notifyWake", ls: "pd-notify-wake", cls: "wake", name: "Volume 5m", desc: "Voice: “Volume” + ticker · not an entry signal" },
     { key: "notifyWoke", ls: "pd-notify-woke", cls: "woke", name: "Woke", desc: "Two rising tones · dormant coin came alive (first trigger)" },
   ];
@@ -2192,7 +2205,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         if (!st[r.key]) return;
         // звук дозволено лише після дії користувача — «розігріваємо» цим кліком
         if (r.key === "notifyWake") { say("Volume test"); return; }
-        ({ notify: beep, notifyCand: chime, notifyWoke: wokeTone })[r.key]();
+        ({ notify: beep, notifyRe: reTone, notifyCand: chime, notifyWoke: wokeTone })[r.key]();
         await askPermission();
       });
       p.appendChild(b);
@@ -2223,6 +2236,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     freshW.forEach((w) => st.seen.add(`w|${w.ticker}|${w.ts}`));
     const freshK = (st.list?.wokeups || []).filter((w) => !st.seen.has(`k|${w.ticker}|${w.ts}`));
     freshK.forEach((w) => st.seen.add(`k|${w.ticker}|${w.ts}`));
+    const freshR = (st.list?.realerts || []).filter((w) => !st.seen.has(`r|${w.ticker}|${w.ts}`));
+    freshR.forEach((w) => st.seen.add(`r|${w.ticker}|${w.ts}`));
     const fresh = alerts.filter((a) => !st.seen.has(`${a.ticker}|${a.ts}`));
     const freshC = cands.filter((a) => !st.seen.has(`c|${a.ticker}|${a.ts}`));
     fresh.forEach((a) => st.seen.add(`${a.ticker}|${a.ts}`));
@@ -2231,6 +2246,17 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // при першому завантаженні старі сигнали не озвучуємо — лише ті, що з'являться, поки сторінка відкрита
     if (firstAlertsCheck) { firstAlertsCheck = false; return; }
     if (st.notifyWake) freshW.slice(0, 3).forEach((w) => say(`Volume ${spell(w.ticker)}`));
+    // Re-alert — модель уже в угоді, Alert спалахнув знову: тон і системне сповіщення, без тосту (тост — для входів)
+    if (st.notifyRe && freshR.length && !(st.notify && fresh.length)) {
+      reTone();
+      if ("Notification" in window && Notification.permission === "granted") {
+        freshR.slice(0, 3).forEach((w) => {
+          const tr = w.trade || {};
+          try { const n = new Notification(`Pump Detector: Re-alert ${w.ticker}`, { body: `P = ${fmtP(w.probability)} · model in trade since ${tr.entry_ts ? fmtTs(tr.entry_ts).slice(-5) : "—"} UTC, ${fmtPct(tr.result_pct)} · no new entry`, tag: `pd-r-${w.ticker}-${w.ts}` });
+            n.onclick = () => { window.focus(); selectTicker(w.ticker); }; } catch (e) {}
+        });
+      }
+    }
     // WOKE — лише тон і системне сповіщення (тост лишаємо сигналам моделі)
     if (st.notifyWoke && freshK.length) {
       wokeTone();
@@ -2260,7 +2286,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     }
     if (!alertsOn) return;
     const a = fresh[0];
-    $("toastT").textContent = `Новий Alert: ${a.ticker} · ${fmtP(a.probability)}`;
+    $("toastT").textContent = `Alert · вхід моделі${a.reentry ? " (після стопу)" : ""}: ${a.ticker} · ${fmtP(a.probability)}`;
     const extra = a.limit != null ? ` · ліміт ${fmtPx(a.limit)}` : "";
     $("toastS").textContent = `${fmtTs(a.ts)} UTC${extra}${fresh.length > 1 ? ` · ще ${fresh.length - 1}` : ""}`;
     $("toastA").textContent = "Відкрити";
@@ -2268,7 +2294,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("toast").hidden = false;
     beep();
     if ("Notification" in window && Notification.permission === "granted") {
-      try { const n = new Notification(`Pump Detector: Alert ${a.ticker}`, { body: `P = ${fmtP(a.probability)}${extra} · ${fmtTs(a.ts)} UTC`, tag: `pd-${a.ticker}-${a.ts}` });
+      try { const n = new Notification(`Pump Detector: Alert ${a.ticker} · model entry`, { body: `P = ${fmtP(a.probability)}${extra} · ${fmtTs(a.ts)} UTC`, tag: `pd-${a.ticker}-${a.ts}` });
         n.onclick = () => { window.focus(); selectTicker(a.ticker); }; } catch (e) {}
     }
   };

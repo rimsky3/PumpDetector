@@ -194,13 +194,16 @@ def episodes(sig: pd.DataFrame, bar: pd.Timedelta = pd.Timedelta(hours=1)) -> li
     """Початок кожного епізоду сигналу (сусідні бари з сигналом = один епізод)."""
     out = []
     for base, g in sig.sort_values("ts").groupby("base_asset"):
-        prev_ts, prev_sig = None, False
+        last_sig = None
         for r in g.itertuples():
-            # сусідні = не далі за bar (ковзні 15m-оцінки йдуть щільніше — кожні 5 хв — і теж продовжують епізод)
-            if r.signal and not (prev_sig and prev_ts is not None and r.ts - prev_ts <= bar):
-                kind = "live" if r.live else ("in-sample" if r.in_sample else "history")
-                out.append({"ticker": base, "ts": r.ts, "probability": r.probability, "kind": kind})
-            prev_ts, prev_sig = r.ts, r.signal
+            # той самий епізод — якщо від ПОПЕРЕДНЬОГО СИГНАЛЬНОГО рядка не більше bar. Не «попередній рядок»: між двома
+            # звичайними 15m-барами з Alert стоять ковзні 5-хв оцінки без Alert, і кожна рвала епізод (ORCA 10-06
+            # 10:00 / 10:15 / 10:30 / 10:45 — чотири сповіщення в одному безперервному Alert)
+            if r.signal:
+                if last_sig is None or r.ts - last_sig > bar:
+                    kind = "live" if r.live else ("in-sample" if r.in_sample else "history")
+                    out.append({"ticker": base, "ts": r.ts, "probability": r.probability, "kind": kind})
+                last_sig = r.ts
     return sorted(out, key=lambda e: e["ts"], reverse=True)
 
 
@@ -258,11 +261,19 @@ def watch_list_15m(conn) -> dict:
         })
     order = {"alert": 0, "candidate": 1, "calm": 2}
     rows.sort(key=lambda r: (order.get(r["status"], 3), -(r["probability"] or 0)))
+    t15 = t                                   # лише звичайні 15m-бари — для угод моделі (як позиція на графіку)
     t = pd.concat([t, troll], ignore_index=True) if len(troll) else t     # епізоди — з ковзними: старт на ~5 хв раніше
     al = t.assign(signal=t["tier"] == "alert", probability=t["p15"])
     ep = episodes(al, BAR_15M)
     recent_cut = pd.Timestamp(now - timedelta(hours=6))
     alerts = [e for e in ep if e["kind"] == "live" and e["ts"] >= recent_cut]
+    # старт кожного епізоду «Кандидат або Alert» (15m-модель перетнула поріг) — для сповіщень про Кандидатів
+    cand = t.assign(signal=t["tier"] != "calm", probability=t["p15"])
+    cands = [e for e in episodes(cand, BAR_15M) if e["kind"] == "live" and e["ts"] >= recent_cut]
+    # Сповіщення за угодами моделі (2026-10-08, власник: «заходити з моделлю, а не щоразу, коли P вище порогу»):
+    # Alert — лише ВХІД моделі (та сама угода, що мітка «Вхід» на графіку); новий спалах Alert, поки угода відкрита, —
+    # Re-alert (окремий перемикач, за замовчуванням вимкнений); Кандидат — лише коли модель без позиції і годину тихо.
+    alerts, realerts, cands = split_by_trades(conn, t15, t, hmap, alerts, cands, recent_cut)
     # для сповіщення: OB у момент сигналу і ліміт −0.5 ATR (ковзний бар 5-хв циклу → останній звичайний 15m-бар до нього)
     for e in alerts:
         hb = hmap.get(e["ticker"])
@@ -276,9 +287,6 @@ def watch_list_15m(conn) -> dict:
             base_ts = hb.index[hb.index <= pd.Timestamp(e["ts"])]
             lim = limit_hint(hb, base_ts[-1]) if len(base_ts) else None
             e["limit"] = lim["price"] if lim else None
-    # старт кожного епізоду «Кандидат або Alert» (15m-модель перетнула поріг) — для сповіщень про Кандидатів
-    cand = t.assign(signal=t["tier"] != "calm", probability=t["p15"])
-    cands = [e for e in episodes(cand, BAR_15M) if e["kind"] == "live" and e["ts"] >= recent_cut]
     # «прокидається» за останні 30 хв — для голосового сповіщення («Volume STRK»)
     wakes = [{"ticker": b, "ts": w["at"], "vol_x": w["vol_x"], "ret15": w["ret15"], "oi1h": w["oi1h"]} for b, w in woke.items()]
     # живі мітки футпрінту b / p за 6 год (footprint.py) — для сповіщень бота; історичні (з архіву) не надсилаються
@@ -288,7 +296,58 @@ def watch_list_15m(conn) -> dict:
     for r in rows:
         f = last_fp.get(r["ticker"])
         r["fp"] = {"kind": f["kind"], "at": pd.Timestamp(f["ts"]) + BAR_15M} if f else None
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "cands": cands, "wakes": wakes, "fps": fps}
+    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "realerts": realerts, "cands": cands, "wakes": wakes, "fps": fps}
+
+
+def model_trades(conn, g: pd.DataFrame, h: pd.DataFrame | None) -> list[dict]:
+    """Угоди моделі на тікері за основним режимом — та сама risk.position_state, що позиція й мітки «Вхід» на графіку
+    (ticker_15m); g — рядки tier_frame тікера (звичайні 15m-бари), h — 15m-бари. Закриті + відкрита (з "open")."""
+    if h is None or h.empty or g.empty:
+        return []
+    m15, strat = State.m15, strategies.get(None)
+    pos = position_state(h, g.set_index("ts").sort_index()["alert_score"], 1.0, m15.get("risk", {}).get("k"),
+                         m15.get("exit_bars", 4), PARTIAL_EXIT, strategies.entry_rule(strat),
+                         market.strategy_allow(conn, strat))
+    return list(pos["trades"]) + ([pos] if pos.get("open") else [])
+
+
+def _in_trade(tr: list[dict], ts) -> dict | None:
+    """Угода, відкрита на момент ts (вхід раніше, вихід — не раніше за ts)."""
+    ts = pd.Timestamp(ts)
+    return next((x for x in tr if x["entry_ts"] < ts and (x.get("exit_ts") is None or ts <= x["exit_ts"])), None)
+
+
+def split_by_trades(conn, t15: pd.DataFrame, t: pd.DataFrame, hmap: dict, alerts: list[dict], cands: list[dict],
+                    recent_cut: pd.Timestamp) -> tuple[list[dict], list[dict], list[dict]]:
+    """Епізоди Alert → (входи моделі, Re-alert); Кандидати — без тих, що всередині угоди або після активності за годину.
+    Вхід, що не почав нового епізоду (повторний вхід після стопу посеред безперервного Alert), додається окремо."""
+    bases = {e["ticker"] for e in alerts + cands}
+    trades = {b: model_trades(conn, t15[t15["base_asset"] == b], hmap.get(b)) for b in bases}
+    entries, re = [], []
+    for e in alerts:
+        cur = _in_trade(trades.get(e["ticker"], []), e["ts"])
+        if cur is None:
+            entries.append(e)
+        else:
+            re.append({**e, "trade": {"entry_ts": cur["entry_ts"] + BAR_15M, "entry": cur["entry"],
+                                      "result_pct": cur.get("result_pct"), "open": bool(cur.get("open"))}})
+    for b, tr in trades.items():
+        g = t15[t15["base_asset"] == b].set_index("ts")
+        for x in tr:
+            ets = x["entry_ts"]
+            if ets < recent_cut or ets not in g.index or not bool(g.at[ets, "live"]):
+                continue
+            # ковзне вікно (зсув 5–10 хв) могло почати епізод раніше за бар входу — той самий вхід, той самий ключ
+            if any(e["ticker"] == b and ets - 2 * BAR_15M <= e["ts"] <= ets for e in entries):
+                continue
+            entries.append({"ticker": b, "ts": ets, "probability": float(g.at[ets, "p15"]), "kind": "live", "reentry": True})
+    act = t[t["tier"] != "calm"]
+    def quiet_before(e) -> bool:
+        a = act[(act["base_asset"] == e["ticker"]) & (act["ts"] >= e["ts"] - pd.Timedelta(hours=1)) & (act["ts"] < e["ts"] - BAR_15M)]
+        return a.empty
+    cands = [e for e in cands if _in_trade(trades.get(e["ticker"], []), e["ts"]) is None and quiet_before(e)]
+    key = lambda e: e["ts"]                                                       # noqa: E731
+    return sorted(entries, key=key, reverse=True), sorted(re, key=key, reverse=True), cands
 
 
 def fp_rows(conn, bases: list[str] | None = None, since: pd.Timestamp | None = None, outcomes: bool = False) -> list[dict]:

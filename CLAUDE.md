@@ -600,6 +600,13 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   speechSynthesis «Volume S T R K» для нових /api/list → wakes (за 30 хв, у списку). Сповіщення — З 08.10 ОДНА кнопка «Sound ▾» біля
   Movers у тулбарі (#ntBtn / #ntPop, NT_ROWS; власник: місце для списку), чотири незалежні перемикачі: Alert (pd-notify),
   Candidate (pd-notify-cand), Volume 5m (pd-notify-wake, голос), Woke (pd-notify-woke, wokeTone + Notification з /api/list → wokeups).
+- СПОВІЩЕННЯ = УГОДИ МОДЕЛІ (2026-10-08, власник: «заходжу з моделлю, а не щоразу, коли P вище порогу»): /api/list —
+  dashboard.split_by_trades: alerts = лише ВХІД моделі (model_trades = risk.position_state основного режиму, як «Вхід» на графіку;
+  повторний вхід після стопу посеред безперервного Alert — reentry), realerts = епізод Alert у відкритій угоді (trade: вхід,
+  результат), cands — лише без відкритої угоди і без Кандидата / Alert за годину. Перемикач Re-alert (pd-notify-re, reTone;
+  бот realert, за замовчуванням вимкнено). episodes(): новий епізод — коли від ПОПЕРЕДНЬОГО СИГНАЛЬНОГО рядка > bar (раніше
+  ковзні 5-хв рядки без Alert між звичайними барами рвали епізод — ORCA 4 сповіщення поспіль). Локальна перевірка 05–06.10:
+  32 старі сповіщення → 15 входів + 8 Re-alert. На 7 днях сервера (наближено, 4 бари): 48 → 31.
 - ФОНОВИЙ ПОТІК СКРИНЕРА (2026-10-03, власник: «наступним кроком»): screener.Background (свій конект, черга з ключами
   без дублів) — годинна частина Coinalyze (hourly_coinalyze), історія нових тікерів (coin_history; onboard: find_markets +
   upsert_markets 2 виклики → 15m-дані й оцінка + score_bases_own одразу; _onboarding 3 год), історія тікерів навчання (3 год).

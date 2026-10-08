@@ -9,13 +9,16 @@ dashboard's numbers. The screener and the dashboard are unchanged.
 
 | Type | Default | Message |
 |---|---|---|
-| 🔴 Alert | on | ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, **Drivers** (top 3 features behind P, the strongest one against it, and `⚠ No volume behind this signal` when volume pulls P down), the 15m bar |
-| 🟠 Candidate | off | the same without a position: the stop "if entering now" (price − k·ATR) |
+| 🔴 Alert | on | **model entry** only (since 2026-10-08): the model has no open trade and opens one — the same trade as the "Вхід" mark on the chart (`risk.position_state`, main mode), including a re-entry after a stop. Ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, **Drivers** (top 3 features behind P, the strongest one against it, and `⚠ No volume behind this signal` when volume pulls P down), the 15m bar |
+| 🔁 Re-alert | off | Alert fired again while the model trade is still open (before 2026-10-08 these came as ordinary Alerts): P, the trade's entry time and price, its current result, the bar |
+| 🟠 Candidate | off | the same as Alert without a position: the stop "if entering now" (price − k·ATR). Only when the model has no open trade and there was no Candidate / Alert in the previous hour |
 | 🟣 Volume 5m | on | volume × weekly norm, 15-minute price change, hourly OI change |
 | 🟪 WOKE | on | the first trigger of the scanner's WOKE channel (docs/screener.md): a dormant coin came alive — average turnover → current pace, 4-hour volume × norm, price and OI over 4 hours, the model's P against its threshold, and the note that it is not an entry signal (42% gave +10% within a day, the median day was −5%). In Ukrainian, like the rest of the bot |
 | 🟢 b / p | on | footprint pattern (`footprint.py`, docs/trades.md): **b** — a stop-run below the 2-hour low that was bought back, with the pierced low, the share of the bar's volume below it and its delta, volume × norm, the model context (Alert / Candidate within 6 h) and the stop under the bar's low; **p** — the same at the highs (a warning for longs) |
 
-One message per signal episode (the same episodes as the dashboard's sound notifications). On start the bot only
+One message per signal episode (the same episodes as the dashboard's sound notifications). An episode continues while the
+next signal row (a regular 15m bar or a rolling 5-minute window) comes within one bar of the previous signal row; before
+2026-10-08 any non-signal rolling row in between split it, so one continuous Alert could notify every 15 minutes. On start the bot only
 remembers the current episodes, and episodes older than 45 minutes after their bar closed are never sent, so a restart
 or downtime does not flood the chat. A Candidate is skipped when the same ticker has an Alert in the same batch.
 

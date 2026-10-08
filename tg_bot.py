@@ -38,8 +38,11 @@ MODEL, MODE = "tier15", "market"          # основна модель і ре�
 SEND_MAX_AGE_MIN = 45                     # старіші епізоди не надсилаємо (після простою — без «зливи» старих сигналів)
 MUTE_HOURS = 2
 POLL_SEC = 5
-DEFAULTS = {"alert": True, "cand": False, "wake": True, "fp": True, "woke": True}
-TITLES = {"alert": "🔴 Alert", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p", "woke": "🟪 WOKE"}
+# alert — лише ВХІД моделі (угода, як мітка «Вхід» на графіку); realert — новий спалах Alert, поки угода моделі відкрита
+# (до 2026-10-08 такі приходили як звичайний Alert; власник: «заходжу з моделлю», тож за замовчуванням вимкнено)
+DEFAULTS = {"alert": True, "realert": False, "cand": False, "wake": True, "fp": True, "woke": True}
+TITLES = {"alert": "🔴 Alert", "realert": "🔁 Re-alert", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p",
+          "woke": "🟪 WOKE"}
 MENU = [["📋 Статус", "📊 Результати", "⚙️ Налаштування"]]
 
 
@@ -180,7 +183,8 @@ class Bot:
         rows = {r["ticker"]: r for r in lst.get("rows", [])}
         s = self.st.d
         fresh = []
-        for kind, items in (("alert", lst.get("alerts", [])), ("cand", lst.get("cands", [])), ("wake", lst.get("wakes", [])),
+        for kind, items in (("alert", lst.get("alerts", [])), ("realert", lst.get("realerts", [])),
+                            ("cand", lst.get("cands", [])), ("wake", lst.get("wakes", [])),
                             ("fp", lst.get("fps", [])), ("woke", lst.get("wokeups", []))):
             for e in items:
                 key = f"{kind}|{e['ticker']}|{e['ts']}" + (f"|{e['kind']}" if kind == "fp" else "")
@@ -215,6 +219,13 @@ class Bot:
             text = self.fp_text(e)
         elif kind == "woke":
             text = self.woke_text(e, row)
+        elif kind == "realert":
+            tr = e.get("trade") or {}
+            et = ts_of(tr.get("entry_ts"))
+            text = (f"🔁 <b>Re-alert</b> · <b>{html.escape(tk)}</b> · P {p2(e.get('probability'))}\n"
+                    f"Модель уже в угоді" + (f" з {et:%H:%M} UTC" if et else "") + f" (вхід {px(tr.get('entry'))}, зараз "
+                    f"{pct(tr.get('result_pct'))}) — Alert спалахнув знову, нового входу немає"
+                    + (f"\n15m-бар {t:%H:%M}–{(t + timedelta(minutes=15)):%H:%M} UTC" if t else ""))
         elif kind == "wake":
             head = f"🟣 <b>Прокидається</b> · <b>{html.escape(tk)}</b>"
             body = (f"обсяг ×{e.get('vol_x', 0):.1f} до тижня · ціна {pct(e.get('ret15'))} за 15 хв · OI {pct(e.get('oi1h'))} за год\n"
@@ -222,7 +233,8 @@ class Bot:
             text = head + "\n" + body + "\n<i>Не сигнал на вхід — монета ожила, подивись.</i>"
         else:
             lv, _ = self.levels(tk)
-            head = "🔴 <b>Alert</b>" if kind == "alert" else "🟠 <b>Кандидат</b> — перевір стакан"
+            head = (("🔴 <b>Alert</b> · вхід моделі" + (" (повторний, після стопу)" if e.get("reentry") else ""))
+                    if kind == "alert" else "🟠 <b>Кандидат</b> — перевір стакан")
             text = f"{head} · {lv}\n15m-бар {t:%H:%M}–{(t + timedelta(minutes=15)):%H:%M} UTC" if t else f"{head} · {lv}"
         self.send(text, self.signal_buttons(tk, (row.get("source") or e.get("source")) == "auto"))
         print(f"[{now():%H:%M:%S}] надіслано {kind} {tk}", flush=True)
@@ -277,7 +289,7 @@ class Bot:
     def settings_markup(self) -> list:
         s = self.st.d["settings"]
         row = [{"text": ("✅ " if s.get(k, DEFAULTS[k]) else "⬜ ") + TITLES[k], "callback_data": f"set:{k}"}
-               for k in ("alert", "cand", "wake", "fp", "woke")]
+               for k in ("alert", "realert", "cand", "wake", "fp", "woke")]
         return [row[:2], row[2:4], row[4:], [{"text": "🔕 Заглушені", "callback_data": "muted"}]]
 
     def results_markup(self) -> list:

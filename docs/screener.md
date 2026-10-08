@@ -420,9 +420,13 @@ approximates a tick profile within a level or two.
 Keyboard: **↑/↓** next ticker, **Enter** refresh the ticker, **F** favourite. **Alert notifications**: when a new
 live signal episode starts while the page is open, a sound, a browser notification and an in-page toast
 (opt-in; favourites, sort order and settings are stored in the browser). All sounds live in one **Sound ▾** button next to
-Movers in the top bar (since 2026-10-08; the three buttons in the right panel were removed to give the list more room): four
-independent switches — Alert (two high tones + browser notification), Candidate (one low tone), Volume 5m (voice) and Woke
-(the first WOKE trigger: two rising tones + a notification with the reason). The button shows how many are on ("2/4", "off").
+Movers in the top bar (since 2026-10-08; the three buttons in the right panel were removed to give the list more room): five
+independent switches — Alert (model entry: two high tones + browser notification), Re-alert (Alert again inside an open model
+trade: one short high tone, off by default), Candidate (one low tone, only while the model has no open trade), Volume 5m
+(voice) and Woke (the first WOKE trigger: two rising tones + a notification with the reason). The button shows how many are
+on ("2/5", "off"). `/api/list` splits the live Alert episodes with `dashboard.split_by_trades`: `alerts` = model entries
+(`model_trades` runs the same `risk.position_state` as the chart; a re-entry after a stop inside a continuous Alert is added
+with `reentry: true`), `realerts` = episodes inside an open trade (with `trade`: entry time and price, current result).
 
 | Status | Rule |
 |---|---|
