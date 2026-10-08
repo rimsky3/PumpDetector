@@ -145,6 +145,22 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 /* «Movers ▾» — монети з власним рухом (movers.py): таблиця, варіант A з макета */
 .mv-btn .mk-dot { background: #c792ea; } .mv-btn .mk-st { color: #c792ea; }
 .mv-pop { width: 640px; }
+/* «Sound ▾» біля Movers (2026-10-08, власник: замість трьох кнопок у правій панелі — більше місця для списку) */
+.nt-btn .nt-bell { opacity: .55; } .nt-btn.on .nt-bell { opacity: 1; color: var(--amber); }
+.nt-pop { width: 320px; gap: 6px; }
+.nt-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) 26px; gap: 10px; align-items: center; width: 100%; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid var(--line2); background: var(--side); color: var(--fg2); text-align: left; }
+.nt-row:hover { border-color: var(--line3); }
+.nt-row .nt-k { width: 8px; height: 8px; border-radius: 50%; }
+.nt-row .nt-n { font-size: 12.5px; color: var(--fg); font-weight: 500; }
+.nt-row .nt-d { display: block; font-size: 11px; color: var(--fg3); line-height: 1.35; margin-top: 2px; }
+.nt-row .sw { position: relative; width: 26px; height: 14px; border-radius: 7px; background: var(--line3); }
+.nt-row .sw i { position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--fg); transition: left .15s; }
+.nt-row[aria-pressed="true"] .sw i { left: 14px; }
+.nt-row.alert[aria-pressed="true"] .sw { background: var(--hot); } .nt-row.alert .nt-k { background: var(--hot); }
+.nt-row.cand[aria-pressed="true"] .sw { background: var(--amber); } .nt-row.cand .nt-k { background: var(--amber); }
+.nt-row.wake[aria-pressed="true"] .sw { background: var(--wake); } .nt-row.wake .nt-k { background: var(--wake); }
+.nt-row.woke[aria-pressed="true"] .sw { background: var(--mover); } .nt-row.woke .nt-k { background: var(--mover); }
 .mv-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mv-ttl { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--mover); }
 .mv-seg { display: inline-flex; gap: 3px; padding: 2px; background: var(--side); border-radius: 7px; }
@@ -335,13 +351,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .status { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--fg3); }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .dot.warn { background: var(--amber); } .dot.bad { background: var(--hot); }
-.notify { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 7px; font-size: 11px; text-align: left; background: var(--card); border: 1px solid var(--line2); color: var(--fg2); flex: 1; }
-.notify[aria-pressed="true"] { background: var(--cand-bg); border-color: #633806; color: var(--amber); }
 /* три перемикачі сповіщень в один рядок; увімкнений — кольором свого сигналу */
-.notify-row { display: flex; gap: 6px; align-items: center; }
-.notify-row .notify { justify-content: center; gap: 6px; padding: 0 6px; font-size: 11.5px; white-space: nowrap; min-width: 0; }
-.notify-row .nb-alert[aria-pressed="true"] { background: var(--alert-bg); border-color: #7a2c14; color: var(--hot-soft); }
-.notify-row .nb-wake[aria-pressed="true"] { background: rgba(167,139,250,.14); border-color: rgba(167,139,250,.5); color: var(--wake); }
 .cols, .trow { display: grid; grid-template-columns: 16px minmax(0, 1fr) 52px 36px 48px 46px; gap: 5px; align-items: center; padding: 0 10px; }
 .cols { padding-block: 6px; font-size: 10px; color: var(--fg3); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .cols button { background: none; border: 0; padding: 0; font-size: 10px; color: var(--fg3); text-align: right; }
@@ -610,6 +620,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
                   title="Монети з власним (ідіосинкратичним) рухом — рух, не пояснений ринком альтів"><span class="mk-dot" aria-hidden="true"></span>Movers <span class="mk-st" id="mvCount">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           <div class="mk-pop mv-pop" id="mvPop" role="dialog" aria-label="Монети з власним рухом" hidden></div>
         </div>
+        <div class="mk-wrap nt-wrap">
+          <button class="mk-btn nt-btn" id="ntBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="ntPop" title="Sound and browser notifications"><svg class="nt-bell" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>Sound <span class="mk-st" id="ntCount">off</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <div class="mk-pop nt-pop" id="ntPop" role="dialog" aria-label="Sound and notifications" hidden></div>
+        </div>
       </div>
     </div>
     <div id="fError" class="error" hidden></div>
@@ -650,12 +664,6 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <button class="help" data-help="search" aria-label="Що це?">?</button>
       </div>
       <div class="status"><span style="display:flex;align-items:center;gap:6px"><span class="dot" id="freshDot"></span><span id="freshTxt">—</span></span><span id="countdown">—</span></div>
-      <div class="notify-row" role="group" aria-label="Звук і сповіщення">
-        <button class="notify nb-alert" id="notifyBtn" aria-pressed="false"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span>Alert</span></button>
-        <button class="notify nb-cand" id="notifyCandBtn" aria-pressed="false"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span>Candidate</span></button>
-        <button class="notify nb-wake" id="notifyWakeBtn" aria-pressed="false"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg><span>Volume 5m</span></button>
-        <button class="help" data-help="notify" aria-label="Що це?">?</button>
-      </div>
       <details class="scan" id="scanBox">
         <summary><span class="ico" aria-hidden="true">⌁</span><span>Сканер · <span id="scPreset">—</span></span><button class="help" data-help="scan" aria-label="Що це?">?</button><span class="v" id="scCount">—</span></summary>
         <div class="scb">
@@ -793,7 +801,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
     meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
     secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(),
-    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), seen: new Set(LS.get("pd-seen", [])),
+    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), seen: new Set(LS.get("pd-seen", [])),
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
 
@@ -876,7 +884,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     full: "«Повна інфо» увімкнена — на графіку і в заголовку вікна позиція моделі, угоди, стоп і ціль, «прокидається» (фіолетові свічки), мітки сканера; ліворуч — історія угод і «Модель бачить OI». Вимкнена — лише свічки, OI, обсяг, ймовірність і зони сигналу: вікно відкривається в 2–3 рази швидше. Кнопки ▢ / ▢▢ — одне або два вікна графіка; активне (рамка) отримує тікер зі списку і ↑/↓, Tab — інше вікно; [ — згорнути / розгорнути ліву панель.",
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди. Зелена «b» під свічкою — «залочка» з футпрінту: ціна проколола лоу попередніх 2 год, під лоу пройшло ≥ 30% обсягу бару (стопи, ліквідації, шорти на пробій), але бар закрився вище, обсяг унизу бару, обсяг ≥ 2× норми; лише коли за 6 год був Кандидат або Alert. Стоп — під лоу бару b. На історії (218 монет, місяць) у такому контексті +2R раніше за стоп у 38% проти 29% у входу моделі — це підказка, не сигнал моделі; перевіряй стакан. Помаранчева «p» над свічкою — те саме на хаях: покупців над хаєм поглинули. Наведи на бар — деталі й чим скінчилась мітка (+2R / стоп / 12 год). Мітки з'являються лише з моменту запуску записувача угод.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
-    notify: "Три незалежні перемикачі; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-сигналах. Alert — два високі тони і системне сповіщення браузера. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила: один нижчий тон; раніше на ~15 хв, але хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах; не сигнал на вхід. Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
+    notify: "Кнопка «Sound ▾» біля Movers: чотири незалежні перемикачі; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-подіях. Alert — два високі тони і системне сповіщення браузера. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила: один нижчий тон; раніше на ~15 хв, але хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах; не сигнал на вхід. Woke — перше спрацювання каналу WOKE (тиха монета ожила, секція WOKE UP): два висхідні тони і сповіщення з причиною; не сигнал на вхід. На кнопці — скільки увімкнено (off — жодного). Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
     list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
     period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду). Кнопка «Дати…» — конкретний день, тиждень, місяць чи рік (дні UTC, за моментом входу в угоду).",
@@ -2140,33 +2148,81 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       speechSynthesis.speak(u);
     } catch (e) {}
   };
-  const renderNotify = () => {
-    const set = (id, on, what) => { const b = $(id); b.setAttribute("aria-pressed", String(on)); b.title = `${what}: ${on ? "увімкнено" : "вимкнено"}`; };
-    set("notifyBtn", st.notify, "Звук і сповіщення про новий Alert");
-    set("notifyCandBtn", st.notifyCand, "Про Кандидатів (тихіший звук)");
-    set("notifyWakeBtn", st.notifyWake, "Голосом про «прокидається»: «Volume» і тікер");
+  // WOKE — два висхідні тони (Alert — два високі однакові, Candidate — один низький)
+  const wokeTone = () => {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [[0, 600], [0.16, 900]].forEach(([dt, f]) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = f; o.connect(g); g.connect(audioCtx.destination);
+        const t = audioCtx.currentTime + dt; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+        o.start(t); o.stop(t + 0.15);
+      });
+    } catch (e) {}
   };
+  // «Sound ▾» біля Movers: чотири незалежні перемикачі (localStorage pd-notify / -cand / -wake / -woke)
+  const NT = { open: false };
+  const NT_ROWS = [
+    { key: "notify", ls: "pd-notify", cls: "alert", name: "Alert", desc: "Two high tones + browser notification" },
+    { key: "notifyCand", ls: "pd-notify-cand", cls: "cand", name: "Candidate", desc: "One low tone · 15m model only, check the order book" },
+    { key: "notifyWake", ls: "pd-notify-wake", cls: "wake", name: "Volume 5m", desc: "Voice: “Volume” + ticker · not an entry signal" },
+    { key: "notifyWoke", ls: "pd-notify-woke", cls: "woke", name: "Woke", desc: "Two rising tones · dormant coin came alive (first trigger)" },
+  ];
   const askPermission = async () => {
     if ("Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
   };
-  $("notifyWakeBtn").addEventListener("click", () => {
-    st.notifyWake = !st.notifyWake; LS.set("pd-notify-wake", st.notifyWake); renderNotify();
-    if (st.notifyWake) say("Volume test");      // голос дозволено лише після дії користувача — «розігріваємо» цим кліком
+  const renderNotify = () => {
+    const n = NT_ROWS.filter((r) => st[r.key]).length;
+    $("ntCount").textContent = n ? `${n}/${NT_ROWS.length}` : "off";
+    $("ntBtn").classList.toggle("on", n > 0);
+    $("ntBtn").title = "Sound and browser notifications: " + (n ? NT_ROWS.filter((r) => st[r.key]).map((r) => r.name).join(", ") : "all off");
+    if (!NT.open) return;
+    const p = $("ntPop"); p.replaceChildren();
+    const head = el("div", "mk-head"); head.append(el("b", "", "Sound & notifications"));
+    const hb = el("button", "help", "?"); hb.dataset.help = "notify"; hb.setAttribute("aria-label", "Що це?"); head.appendChild(hb);
+    p.appendChild(head);
+    NT_ROWS.forEach((r) => {
+      const b = el("button", "nt-row " + r.cls); b.setAttribute("aria-pressed", String(!!st[r.key]));
+      const txt = el("span"); txt.append(el("span", "nt-n", r.name), el("span", "nt-d", r.desc));
+      const sw = el("span", "sw"); sw.appendChild(el("i"));
+      b.append(el("span", "nt-k"), txt, sw);
+      b.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        st[r.key] = !st[r.key]; LS.set(r.ls, st[r.key]); renderNotify();
+        if (!st[r.key]) return;
+        // звук дозволено лише після дії користувача — «розігріваємо» цим кліком
+        if (r.key === "notifyWake") { say("Volume test"); return; }
+        ({ notify: beep, notifyCand: chime, notifyWoke: wokeTone })[r.key]();
+        await askPermission();
+      });
+      p.appendChild(b);
+    });
+    p.appendChild(el("div", "mk-note", "Works while the dashboard is open (a background tab too), only for new live events. After a page reload the browser allows sound only after one click on the page."));
+  };
+  const placeNotify = () => {
+    const p = $("ntPop"), r = $("ntBtn").getBoundingClientRect(), w = p.offsetWidth;
+    p.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px"; p.style.top = (r.bottom + 6) + "px";
+  };
+  const toggleNotify = (open) => {
+    NT.open = open; $("ntPop").hidden = !open; $("ntBtn").setAttribute("aria-expanded", String(open));
+    if (open) { renderNotify(); placeNotify(); }
+  };
+  $("ntBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!NT.open) { if (MK.open) toggleMarket(false); if (MV.open) toggleMovers(false); }
+    toggleNotify(!NT.open);
   });
-  $("notifyCandBtn").addEventListener("click", async () => {
-    st.notifyCand = !st.notifyCand; LS.set("pd-notify-cand", st.notifyCand); renderNotify();
-    if (st.notifyCand) { chime(); await askPermission(); }
-  });
-  $("notifyBtn").addEventListener("click", async () => {
-    st.notify = !st.notify; LS.set("pd-notify", st.notify); renderNotify();
-    if (st.notify) { beep(); await askPermission(); }   // звук дозволено лише після дії користувача — «розігріваємо» цим кліком
-  });
+  document.addEventListener("click", (e) => { if (NT.open && !e.target.closest(".nt-wrap") && !e.target.closest("#pop")) toggleNotify(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && NT.open) { toggleNotify(false); $("ntBtn").focus(); } });
+  addEventListener("resize", () => { if (NT.open) placeNotify(); });
   let firstAlertsCheck = true;
   const checkAlerts = () => {
     const alerts = st.list?.alerts || [], cands = st.list?.cands || [];
     const wakes = st.list?.wakes || [];
     const freshW = wakes.filter((w) => !st.seen.has(`w|${w.ticker}|${w.ts}`));
     freshW.forEach((w) => st.seen.add(`w|${w.ticker}|${w.ts}`));
+    const freshK = (st.list?.wokeups || []).filter((w) => !st.seen.has(`k|${w.ticker}|${w.ts}`));
+    freshK.forEach((w) => st.seen.add(`k|${w.ticker}|${w.ts}`));
     const fresh = alerts.filter((a) => !st.seen.has(`${a.ticker}|${a.ts}`));
     const freshC = cands.filter((a) => !st.seen.has(`c|${a.ticker}|${a.ts}`));
     fresh.forEach((a) => st.seen.add(`${a.ticker}|${a.ts}`));
@@ -2175,6 +2231,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // при першому завантаженні старі сигнали не озвучуємо — лише ті, що з'являться, поки сторінка відкрита
     if (firstAlertsCheck) { firstAlertsCheck = false; return; }
     if (st.notifyWake) freshW.slice(0, 3).forEach((w) => say(`Volume ${spell(w.ticker)}`));
+    // WOKE — лише тон і системне сповіщення (тост лишаємо сигналам моделі)
+    if (st.notifyWoke && freshK.length) {
+      wokeTone();
+      if ("Notification" in window && Notification.permission === "granted") {
+        freshK.slice(0, 3).forEach((w) => {
+          try { const n = new Notification(`Pump Detector: WOKE ${w.ticker}`, { body: `Dormant coin came alive · ${w.reason}`, tag: `pd-k-${w.ticker}-${w.ts}` });
+            n.onclick = () => { window.focus(); selectTicker(w.ticker); }; } catch (e) {}
+        });
+      }
+    }
     // три перемикачі незалежні; Кандидат — окремо й тихіше; якщо на тому ж тікері одразу Alert (і Alert увімкнено) — лише Alert
     const alertsOn = st.notify && fresh.length > 0;
     const candOnly = freshC.filter((c) => !(st.notify && fresh.some((a) => a.ticker === c.ticker)));
@@ -2325,7 +2391,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (open) { renderMarketPop(); placeMarket(); }
   };
   addEventListener("resize", () => { if (MK.open) placeMarket(); });
-  $("mkBtn").addEventListener("click", (e) => { e.stopPropagation(); if (!MK.open && MV.open) toggleMovers(false); toggleMarket(!MK.open); });
+  $("mkBtn").addEventListener("click", (e) => { e.stopPropagation(); if (!MK.open && MV.open) toggleMovers(false); if (!MK.open && NT.open) toggleNotify(false); toggleMarket(!MK.open); });
   document.addEventListener("click", (e) => { if (MK.open && !e.target.closest(".mk-wrap:not(.mv-wrap)")) toggleMarket(false); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && MK.open) { toggleMarket(false); $("mkBtn").focus(); } });
   loadMarket(); setInterval(loadMarket, 5 * 60 * 1000);
@@ -2419,7 +2485,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     try { MV.data = await api("/api/movers", { quiet: true }); } catch (e) { MV.data = { error: e.message }; }
     renderMoversBtn(); if (MV.open) { renderMoversPop(); placeMovers(); }
   };
-  $("mvBtn").addEventListener("click", (e) => { e.stopPropagation(); if (!MV.open && MK.open) toggleMarket(false); toggleMovers(!MV.open); });
+  $("mvBtn").addEventListener("click", (e) => { e.stopPropagation(); if (!MV.open && MK.open) toggleMarket(false); if (!MV.open && NT.open) toggleNotify(false); toggleMovers(!MV.open); });
   document.addEventListener("click", (e) => { if (MV.open && !e.target.closest(".mv-wrap")) toggleMovers(false); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && MV.open) { toggleMovers(false); $("mvBtn").focus(); } });
   addEventListener("resize", () => { if (MV.open) placeMovers(); });

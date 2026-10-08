@@ -597,9 +597,9 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   run_cycle — після update_15m; hot_bases + «прокинулись» за 2 год (ковзна оцінка відразу). reports/wake_events.json (7 днів).
   Дашборд: ticker_15m → "wake" (history з 5m бази), свічка й обсяг кольору --wake (#a78bfa) + маркер «×N» під свічкою,
   рядок над графіком; список — фіолетова крапка 30 хв (watch_list_15m → row.wake, wake.last_wake). Голос (власник 03.10):
-  speechSynthesis «Volume S T R K» для нових /api/list → wakes (за 30 хв, у списку). Сповіщення — три НЕЗАЛЕЖНІ кнопки з
-  дзвіночком в один рядок (.notify-row): Alert (pd-notify, червона), Candidate (pd-notify-cand, бурштинова), Volume 5m
-  (pd-notify-wake, фіолетова); кожна вмикається без інших.
+  speechSynthesis «Volume S T R K» для нових /api/list → wakes (за 30 хв, у списку). Сповіщення — З 08.10 ОДНА кнопка «Sound ▾» біля
+  Movers у тулбарі (#ntBtn / #ntPop, NT_ROWS; власник: місце для списку), чотири незалежні перемикачі: Alert (pd-notify),
+  Candidate (pd-notify-cand), Volume 5m (pd-notify-wake, голос), Woke (pd-notify-woke, wokeTone + Notification з /api/list → wokeups).
 - ФОНОВИЙ ПОТІК СКРИНЕРА (2026-10-03, власник: «наступним кроком»): screener.Background (свій конект, черга з ключами
   без дублів) — годинна частина Coinalyze (hourly_coinalyze), історія нових тікерів (coin_history; onboard: find_markets +
   upsert_markets 2 виклики → 15m-дані й оцінка + score_bases_own одразу; _onboarding 3 год), історія тікерів навчання (3 год).

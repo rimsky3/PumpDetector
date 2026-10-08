@@ -219,7 +219,7 @@ Candidate followed within 2 hours in 46% of cases (6% after a random moment), an
 - Dashboard: the candle and its volume bar are drawn violet with "×N" (volume vs norm) under the candle, on any
   chart timeframe (the bar that contains the 5m bar); the info row shows volume, price and OI change; in the ticker
   list a calm coin's dot is violet for 30 minutes after it woke up (hover for the numbers). Optional voice (the "Volume 5m"
-  bell button; Alert, Candidate and Volume 5m are three independent buttons in one row): the browser says "Volume S T R K" (speech synthesis, ticker spelled) for each
+  switch in the **Sound ▾** menu, see below): the browser says "Volume S T R K" (speech synthesis, ticker spelled) for each
   new event while the page is open; like the other sounds it needs one click on the page after a reload.
 - `python wake.py AIN --days 3` lists a coin's events from the database.
 
@@ -419,7 +419,10 @@ approximates a tick profile within a level or two.
 
 Keyboard: **↑/↓** next ticker, **Enter** refresh the ticker, **F** favourite. **Alert notifications**: when a new
 live signal episode starts while the page is open, a sound, a browser notification and an in-page toast
-(opt-in; favourites, sort order and settings are stored in the browser).
+(opt-in; favourites, sort order and settings are stored in the browser). All sounds live in one **Sound ▾** button next to
+Movers in the top bar (since 2026-10-08; the three buttons in the right panel were removed to give the list more room): four
+independent switches — Alert (two high tones + browser notification), Candidate (one low tone), Volume 5m (voice) and Woke
+(the first WOKE trigger: two rising tones + a notification with the reason). The button shows how many are on ("2/4", "off").
 
 | Status | Rule |
 |---|---|
