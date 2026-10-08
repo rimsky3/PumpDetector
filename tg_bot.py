@@ -165,6 +165,14 @@ class Bot:
         if lim and lim.get("price"):
             until = ts_of(lim.get("until"))
             lines.append(f"Ліміт {px(lim['price'])} (−0.5 ATR{f', до {until:%H:%M} UTC' if until else ''})")
+        # Drivers (drivers.py): що дало P на цьому барі; ⚠ — сигнал без обсягу
+        dr = d.get("drivers")
+        if dr and dr.get("for"):
+            lines += [f"⚠ <b>{html.escape(w['text'])}</b>" for w in dr.get("warnings", [])]
+            lines.append("<b>Drivers:</b> " + " · ".join(f"{html.escape(i['label'])} {html.escape(i['text'])}" for i in dr["for"][:3]))
+            if dr.get("against"):
+                lines.append("<i>against: " + " · ".join(f"{html.escape(i['label'])} {html.escape(i['text'])}"
+                                                         for i in dr["against"][:1]) + "</i>")
         return "\n".join(lines), d
 
     def notify_once(self, first: bool):

@@ -109,6 +109,16 @@ idiosyncratic return over 1, 4 and 24 hours, the residual z-score, and Amihud il
 norm → `reports/movers.json`. The dashboard shows it as the **Movers ▾** table (sortable, horizon switch, IN LIST /
 add to watchlist). It describes the market, it is not a model signal.
 
+## Drivers card (since 2026-10-08)
+
+Under the probability card the dashboard shows **DRIVERS** for the last scored 15m bar (`drivers.py`): a stacked bar of
+group shares (open interest, volume, price, own move, funding, long / short, other, and everything pulling down as
+"Against"), then "Pushing up" — the four features that raised P most, with their current value and a bar for the
+strength of the contribution — and "Pulling down" — the two that lowered it. Hovering a row explains the feature in
+Ukrainian. `⚠ No volume behind this signal` appears when P is above the threshold while the volume group pulls it down
+(a signal driven by positioning or correlation rather than a volume spike, e.g. CHIP 06.10 08:45). The owner chose this
+layout (variant A with the warning from C) on the mockup https://claude.ai/artifact/Rf29hSf9fmsTynMqcT3yMj.
+
 ## ALT-EW index for the 15m model (since 2026-10-08)
 
 The 15m model sees the coin's move relative to the altcoin market (`beta`, `idio_*`, `illiq_x`, `park_*`; see

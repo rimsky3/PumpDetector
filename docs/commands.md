@@ -407,6 +407,20 @@ The screener's market thread runs it every hour after `market.update` (which now
 `reports/market_qvol.pkl`). Dashboard: the **Movers N ▾** button (`/api/movers`); N = coins with |z| ≥ 2.5. Owner's
 guide to every column: `notes/movers.md`.
 
+### `drivers.py` — why the model gave this probability
+
+| Usage | Meaning |
+|---|---|
+| `python drivers.py NMR` | contributions of every feature to the 15m model's P on the last scored bar: top features pushing P up and pulling it down (value now and share of all pushes), per-group shares, and the one-line Telegram text |
+| `python drivers.py NMR --ts "2026-10-07 11:00"` | the same for a given 15m bar (open time, UTC) |
+
+LightGBM decomposes each prediction exactly (TreeSHAP, `booster.predict(..., pred_contrib=True)`): log-odds = base value +
+sum of contributions. The share of a contribution in the sum of all |contributions| is shown instead of a probability
+delta, because near P ≈ 1 removing one feature hardly moves P. Features are built as the screener builds them
+(`features.build_15m`, 16 days of history and the ALT-EW index), so P matches the stored score of the same model version.
+A warning `No volume behind this signal` is added when P is above the threshold and the Volume group pulls P down or adds
+nothing. The dashboard (`/api/ticker` → `drivers`) and the Telegram bot use the same function.
+
 ### `monitor.py` — live health of the 15m model
 
 | Usage | Meaning |

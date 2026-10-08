@@ -69,6 +69,20 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .tile .k { font-size: 10px; color: var(--fg3); } .tile .v { font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -.2px; }
 .tile .s { font-size: 10px; color: var(--fg2); margin-top: 1px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .small { font-size: 11px; color: var(--fg3); }
+/* Drivers (drivers.py): внески ознак у P останнього бару */
+.drv-stack { display: flex; height: 10px; border-radius: 3px; overflow: hidden; gap: 2px; }
+.drv-stack i { display: block; height: 10px; }
+.drv-lg { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--fg2); }
+.drv-lg s { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; text-decoration: none; }
+.drv-sub { font-size: 10px; letter-spacing: .08em; color: var(--fg3); }
+.drv-rows { display: flex; flex-direction: column; gap: 7px; }
+.drv-row { display: grid; grid-template-columns: minmax(0, 1fr) auto 64px; gap: 8px; align-items: center; font-size: 12px; cursor: default; }
+.drv-row > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drv-row .v { color: var(--fg2); font-variant-numeric: tabular-nums; }
+.drv-track { height: 6px; background: var(--line); border-radius: 3px; }
+.drv-track i { display: block; height: 6px; border-radius: 3px; }
+.drv-warn { display: flex; gap: 8px; align-items: center; font-size: 12px; line-height: 1.4; background: var(--cand-bg); color: var(--amber); border-radius: 6px; padding: 8px 10px; }
+.drv-warn svg { flex-shrink: 0; }
 .foot { margin-top: auto; padding: 10px 12px; border-radius: 8px; background: var(--card); font-size: 11px; color: var(--fg2); line-height: 1.5; }
 .pill { font-size: 11px; padding: 2px 8px; border-radius: 20px; white-space: nowrap; }
 .pill.alert { background: var(--alert-bg); color: var(--warm); } .pill.candidate { background: var(--cand-bg); color: var(--amber); }
@@ -431,6 +445,15 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="small" id="probCtx" hidden></div>
         <div class="small" id="probRoll" hidden></div>
         <div class="small" id="probVer">—</div>
+      </div>
+      <div class="card" id="drvCard" hidden>
+        <div class="t"><span style="letter-spacing:.08em;font-weight:600">DRIVERS <button class="help" data-help="drivers" aria-label="Що це?">?</button></span><span class="small" id="drvBar"></span></div>
+        <div id="drvWarn"></div>
+        <div style="display:flex;flex-direction:column;gap:4px"><div class="drv-stack" id="drvStack"></div><div class="drv-lg" id="drvLg"></div></div>
+        <div class="drv-sub">PUSHING UP</div>
+        <div class="drv-rows" id="drvFor"></div>
+        <div class="drv-sub" id="drvAgainstT">PULLING DOWN</div>
+        <div class="drv-rows" id="drvAgainst"></div>
       </div>
       <div class="card" id="retrainNote" hidden style="border-color:var(--cand-bg)">
         <div class="t"><span class="amber">Модель перенавчено</span><button class="help" id="retrainX" aria-label="Закрити" style="border:0">×</button></div>
@@ -817,6 +840,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     history: "Як модель торгувала б цей тікер на всьому відрізку, де вона його оцінювала (разом з історією при додаванні в список): закриті угоди за тими самими правилами, що й «Позиція моделі». Одна монета за тиждень — це 1–3 угоди: контекст, а не доказ. Якщо тікер у навчанні, модель бачила ці імпульси, і цифри завищені.",
     scan: "Сканер ринку кожні 15 хв проглядає всі USDT-перпи Binance і сам додає в список ті, що «прокидаються»: ліквідна монета (середній денний оборот за 30 днів, а не за поточну добу: на тихому старті руху добовий оборот ще малий) і обсяг у кілька разів вищий за норму, або OI і ціна ростуть разом. Такий тікер позначено «АВТО»; він тримається в списку заданий час після останнього спрацювання (або поки модель дає сигнал). Сповіщення — лише на Alert моделі, не на вхід у список.",
     model: "Режим = модель + правила угод. Сигнали (Alert, Кандидат) однакові для всіх режимів «15m + 1h»: режим змінює лише, які сигнали беруться і як: вхід по ринку чи лімітом −0.5 ATR, фільтр стакану OB ≥ 1, вхід на Alert чи на Кандидаті. Вихід спільний (½ на +3 ATR, далі беззбиток). Той самий вибір — у «Прогнозі» (позиція, мітки угод), «Журналі» (статистика) і «Бектесті». Список — strategies.json: новий експеримент = новий рядок. Годинні моделі — лише для порівняння.",
+    drivers: "Drivers — чому модель дала саме таку P на цьому барі. LightGBM розкладає кожен прогноз точно на внески ознак (SHAP): смуга зверху — частка кожної групи в усіх поштовхах (OI, обсяг, ціна, власний рух…), «Pushing up» — ознаки, що підняли P, «Pulling down» — що опустили; довжина смужки — сила внеску, поруч — значення ознаки зараз. Наведи на рядок — що означає ознака. ⚠ «No volume behind this signal» — P вище порогу, а обсяг тягне вниз або нічого не дає: це не той сплеск з обсягом, на який ти зазвичай входиш (CHIP 06.10). Рахується для останнього оціненого 15m-бару, на тих самих ознаках, що й скринер.",
     prob: "Для «15m + 1h»: P — оцінка 15-хвилинної моделі, що зараз триває імпульс. Вище порогу — «Кандидат» (рано, частіше хибно: перевір стакан). Якщо ще й годинна модель ≥ ¾ свого порогу (рядок «1h» нижче) — «Alert». Число поруч зі статусом — скільки часу поспіль тримається рівень.",
     metrics: "Ключові ознаки, на які дивиться модель: зміна open interest за 4 год (у USD, як бачить модель, без стрибків від лістингів), обсяг відносно звичайного за 7 днів (у σ), частка акаунтів у лонг.",
     position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert (по ринку; плитка «Ліміт» — підказка входу на відкаті −0.5 ATR, у журналі є рядок «лімітом» для порівняння); половина позиції закривається на цілі +3 ATR, після цього стоп на решту переноситься в беззбиток («Б/з» на графіку); решта виходить, коли Alert згас 4 бари поспіль (1 год), або по стопу — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених імпульсах). Результат угоди — усієї позиції. Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
@@ -967,6 +991,46 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("countdown").textContent = st.meta ? `скан через ${Math.floor(left / 60)}:${pad(Math.floor(left % 60))}` : "—";
   };
 
+  // ---------- Drivers: внески ознак у P (drivers.py) ----------
+  const DRV_COL = { "Open interest": "--oi", "Volume": "--link", "Price": "--pop", "Own move": "--wake", "Funding": "--accent", "Long / short": "--warm" };
+  const WARN_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l9 16H3z"></path><path d="M12 10v4"></path><path d="M12 17v.5"></path></svg>';
+  const renderDrivers = (dr) => {
+    const card = $("drvCard"); card.hidden = !dr; if (!dr) return;
+    $("drvBar").textContent = dr.ts ? `бар ${fmtTs(dr.ts).slice(-5)} UTC` : "";
+    const w = $("drvWarn"); w.replaceChildren();
+    (dr.warnings || []).forEach((x) => { const b = el("div", "drv-warn"); b.innerHTML = WARN_SVG; b.append(x.text); w.appendChild(b); });
+    // смуга груп: кожна з кольором (дрібні < 4% — в Other), усе від'ємне — «Against»
+    const segs = [], other = { name: "Other", share: 0, col: cssVar("--muted") }; let against = 0;
+    dr.groups.forEach((g) => {
+      if (g.share <= 0) { against -= g.share; return; }
+      const v = DRV_COL[g.group];
+      if (v && g.share >= 0.04) segs.push({ name: g.group, share: g.share, col: cssVar(v) }); else other.share += g.share;
+    });
+    if (other.share > 0.005) segs.push(other);
+    if (against > 0.005) segs.push({ name: "Against", share: against, col: cssVar("--amber") });
+    const st_ = $("drvStack"), lg = $("drvLg"); st_.replaceChildren(); lg.replaceChildren();
+    segs.forEach((g) => {
+      const i = el("i"); i.style.width = `${g.share * 100}%`; i.style.background = g.col; i.title = `${g.name} ${Math.round(g.share * 100)}%`; st_.appendChild(i);
+      const sp = el("span"), s = el("s"); s.style.background = g.col; sp.append(s, `${g.name} ${Math.round(g.share * 100)}%`); lg.appendChild(sp);
+    });
+    // рядки: довжина — сила внеску відносно найсильнішого показаного
+    const all = [...dr.for, ...dr.against], mx = Math.max(1e-9, ...all.map((x) => Math.abs(x.share)));
+    const rows = (list, box, col) => {
+      box.replaceChildren();
+      list.forEach((x) => {
+        const r = el("div", "drv-row");
+        r.title = `${x.label} — ${x.desc || x.feature}\nзараз ${x.text} · група ${x.group} · ${Math.round(Math.abs(x.share) * 100)}% усіх поштовхів`;
+        const tr = el("div", "drv-track"), bar = el("i"); bar.style.width = `${Math.max(4, Math.abs(x.share) / mx * 100)}%`; bar.style.background = cssVar(col);
+        tr.appendChild(bar);
+        r.append(el("span", "", x.label), el("span", "v", x.text), tr);
+        box.appendChild(r);
+      });
+    };
+    rows(dr.for, $("drvFor"), "--ok");
+    rows(dr.against, $("drvAgainst"), "--amber");
+    $("drvAgainstT").hidden = !dr.against.length;
+  };
+
   // ---------- Прогноз: ліва панель ----------
   const renderLeft = () => {
     const d = st.data; if (!d) return;
@@ -991,6 +1055,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       rEl.replaceChildren("Ковзна 5-хв: ", el("b", rc, `${fmtP(rl.p15)} · ${STATUS[rl.tier] || rl.tier}`),
         ` (вікно до ${fmtTs(rl.close).slice(-5)} UTC, новіша за бар)`);
     }
+    renderDrivers(is15() ? d.drivers : null);
     // годинний контекст: скільки годинній моделі бракує до підтвердження Alert
     const cx = d.ctx, ctxEl = $("probCtx");
     ctxEl.hidden = !cx;

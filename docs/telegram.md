@@ -9,7 +9,7 @@ dashboard's numbers. The screener and the dashboard are unchanged.
 
 | Type | Default | Message |
 |---|---|---|
-| 🔴 Alert | on | ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, the 15m bar |
+| 🔴 Alert | on | ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, **Drivers** (top 3 features behind P, the strongest one against it, and `⚠ No volume behind this signal` when volume pulls P down), the 15m bar |
 | 🟠 Candidate | off | the same without a position: the stop "if entering now" (price − k·ATR) |
 | 🟣 Volume 5m | on | volume × weekly norm, 15-minute price change, hourly OI change |
 | 🟢 b / p | on | footprint pattern (`footprint.py`, docs/trades.md): **b** — a stop-run below the 2-hour low that was bought back, with the pierced low, the share of the bar's volume below it and its delta, volume × norm, the model context (Alert / Candidate within 6 h) and the stop under the bar's low; **p** — the same at the highs (a warning for longs) |

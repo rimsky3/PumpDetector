@@ -40,6 +40,7 @@ def last_atr(h: pd.DataFrame) -> float | None:
     return float(a.iloc[-1]) if len(a) else None
 from screener import (FETCH_DAYS, INTRADAY_DAYS, SIGNALS_STAMP, STATUS_FILE, WATCHLIST_FILE, last_closed_15m, load_model_15m,
                       load_models, next_hourly, next_run, score_15m, score_bases, score_bases_own, update_15m)
+import drivers as DRV
 import fetch_exchange
 import footprint
 import market
@@ -511,6 +512,14 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
                              market.both(orderbook.allow_fn(book_rows) if strat.get("ob") else None,
                                          market.strategy_allow(conn, strat)), p_marks)
     last = t.iloc[-1] if len(t) else None
+    # Drivers: внески ознак у P останнього оціненого бару (drivers.py; ознаки — як у скринері, бар кешується)
+    drv = None
+    if last is not None:
+        try:
+            drv = DRV.for_bar(conn, m15, base, t.index.max())
+        except Exception as e:
+            print(f"! drivers {base}: {type(e).__name__}: {e}")
+            conn.rollback()
     streak = 0
     if last is not None:
         for x in reversed(t["tier"].tolist()):
@@ -551,7 +560,7 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
             "oi_chg_4h": math.expm1(cur["oi_chg_4h"]) if cur is not None else None,
             "volume_z_7d": cur["volume_z_7d"] if cur is not None else None,
         },
-        "position": pos, "ob_marks": ob_marks, "limit": lim, "rolling": rolling,
+        "position": pos, "ob_marks": ob_marks, "limit": lim, "rolling": rolling, "drivers": drv,
         # Кандидат / Alert, що були ЛИШЕ на ковзних вікнах 5-хв циклу (з них приходили сповіщення): на графіку — бліда зона і
         # кружечок «5m» на панелі P, щоб сигнал не зникав, коли звичайний 15m-бар оцінено нижче порогу (VIRTUAL 04.10 16:55)
         "rolling_sig": [{"ts": r.ts, "close": r.ts + pd.Timedelta(minutes=15), "p15": r.p15, "tier": r.tier}
