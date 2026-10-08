@@ -1562,11 +1562,19 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         mvEl.className = "tk-mover" + (mv.z < 0 ? " neg" : "");
         mvEl.title = moverTitle(mv);
       }
-      // Drivers: дві найбільші групи, що штовхають P вгору (drivers.py) — лише коли є Candidate / Alert
+      // Drivers: дві найбільші групи, що штовхають P вгору (drivers.py) — лише коли є Candidate / Alert і НЕМАЄ чипа MOVER
+      // (власник: два чипи переносили заголовок на другий рядок); при MOVER групи Drivers — у його підказці, ⚠ — у тексті
       const dr = is15() && (stt === "alert" || stt === "candidate") ? d.drivers : null;
       const why = q(".tk-why"), top = dr ? dr.groups.filter((g) => g.share > 0).slice(0, 2) : [];
-      why.hidden = !top.length; why.replaceChildren();
-      if (top.length) {
+      if (mv && top.length) {
+        const warn = (dr.warnings || []).length > 0;
+        if (warn) mvEl.textContent = "⚠ " + mvEl.textContent;
+        mvEl.title += "\n\n" + (dr.warnings || []).map((w) => `⚠ ${w.text}\n`).join("")
+          + "DRIVERS: " + top.map((g) => `${g.group} ${Math.round(g.share * 100)}%`).join(" · ")
+          + "\nPushing up: " + dr.for.slice(0, 4).map((x) => `${x.label} ${x.text}`).join(" · ");
+      }
+      why.hidden = !top.length || !!mv; why.replaceChildren();
+      if (top.length && !mv) {
         const warn = (dr.warnings || []).length > 0;
         why.className = "tk-why" + (warn ? " warn" : "");
         if (warn) { const w = el("span", "w"); w.innerHTML = WARN_SVG; why.appendChild(w); }

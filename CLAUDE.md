@@ -259,7 +259,7 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   ймовірністю (смуга груп, Pushing up 4 / Pulling down 2, title-підказки, «?» drivers); tg_bot.levels — ⚠ + «Drivers:» топ-3
   + «against» 1. CLI python drivers.py TK [--ts]. ЧИП DRIVERS (08.10, власник: JCT поза Movers — оборот 1.6 млн < 5 млн,
   а «Own move» 25%): у заголовку вікна дві найбільші групи (dr.groups share > 0, DRV_COL / DRV_SHORT), ⚠ при warnings, title — топ-4;
-  лише Candidate / Alert, для будь-якої монети. Огляд статті (Amirzadeh et al., DBN для напрямку крипти): 70% — погляд
+  лише Candidate / Alert і лише БЕЗ чипа MOVER (власник: два чипи — заголовок у два рядки); при MOVER — групи в його title, ⚠ у тексті. Огляд статті (Amirzadeh et al., DBN для напрямку крипти): 70% — погляд
   уперед (High/Low того дня) і вибір набору на тесті; стейблкоїн 57% — ознака проблеми; для нас лише ідея прозорості.
 - УПЕРЕДЖЕННЯ ВИЖИВАННЯ (2026-10-08): long_binance.py --universe monthly — монети станом на кожен місяць (S3-лістинг архіву
   Binance з делістованими, оборот 30 дн до місяця 5 млн – 1 млрд $; кеш data/long_bin/_universe.json; делістовані — рядки markets

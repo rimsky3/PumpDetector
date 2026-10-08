@@ -128,8 +128,9 @@ layout (variant A with the warning from C) on the mockup https://claude.ai/artif
 
 **DRIVERS chip** (since 2026-10-08): in the chart window header, next to status and P, the two groups with the largest
 positive share of the drivers — e.g. `DRIVERS · OI 29% · Own move 25%`, coloured like the card's bar, ⚠ in front when the
-signal has no volume behind it; hover for the top four groups and features. Shown only on Candidate / Alert, for any coin —
-including small ones outside the Movers universe (avg turnover < 5 M$), where it is the only hint that a move is the coin's own.
+signal has no volume behind it; hover for the top four groups and features. Shown only on Candidate / Alert and only when there is no MOVER chip (two chips wrapped the header to a second line);
+with a MOVER chip the two groups go into its tooltip and the ⚠ in front of its text. So in practice it covers small coins
+outside the Movers universe (avg turnover < 5 M$), where it is the only hint that a move is the coin's own.
 
 ## ALT-EW index for the 15m model (since 2026-10-08)
 
