@@ -160,6 +160,7 @@ with labels contributes only the hours inside its labeled intervals (column `rev
 | `--candidate` | off | save to `models/candidate/` instead of `models/`; the labeling tool compares it with the live model and **Прийняти** promotes it (the live one goes to `models/backup_<time>/`) |
 | `--fresh-hours N` | 48 | unlabeled hours from the last N hours are left out of training; `0` uses everything |
 | `--with-liq` | off | include the liquidation features (`liq_*`) as before 2026-10-07; by default the models train without them (`features.MODEL_FEATURES`, `MODEL_FEATURES_15M`; see `experiments/no_liq.py`) |
+| `--no-move` | off | train the 15m model without the own-move features (`beta`, `idio_*`, `illiq_x`, `park_*`… — as before 2026-10-08); by default they are in (`features.MOVE_FEATURES`, needs the `alt_index` table) |
 
 **Why `--fresh-hours`.** Tickers in `tickers.txt` are treated as fully labeled, so an unlabeled hour counts as
 "no pump". Fresh hours nobody has reviewed yet — possibly a pump in progress — would teach the model to un-see
@@ -405,6 +406,18 @@ updates it in its own thread at HH:01; the dashboard reads it at `/api/market`; 
 The screener's market thread runs it every hour after `market.update` (which now also caches hourly quote volume in
 `reports/market_qvol.pkl`). Dashboard: the **Movers N ▾** button (`/api/movers`); N = coins with |z| ≥ 2.5. Owner's
 guide to every column: `notes/movers.md`.
+
+### `alt_index.py` — ALT-EW index for the own-move features
+
+| Usage | Meaning |
+|---|---|
+| `python alt_index.py` | bring the `alt_index` table up to the last closed 5m bar: equal-weighted mean 5m log return of the same ~250 alts as `market.py`. Empty table — history from 2026-06-01 out of the data.binance.vision archive (monthly / daily 5m klines, not cached on disk; ~6 min); a gap longer than ~3.5 days — full days from the archive, the rest from REST |
+| `python alt_index.py --from 2026-05-01` | rebuild the history from that date to yesterday (overwrites those bars) |
+| `python alt_index.py --show` | print the coverage only |
+
+The screener (`--loop`) updates it in its own thread 8 s after every 5m bar closes; before scoring a 15m bar (or a rolling
+one) it checks the bar is there (`alt_index.ensure`, REST tail only). A 15m model trained with the own-move features
+needs this table — on a new machine or server run `python alt_index.py` once before `train.py` / the screener.
 
 ### `orderbook.py`
 

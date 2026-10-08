@@ -69,6 +69,12 @@ INTERVAL_15M = "15min"
 INTRADAY_EXCHANGES = ("Binance", "Bybit")
 SHORT_FEATURES = ["ret_bar", "ret_2bar", "oi_chg_bar", "oi_chg_2bar", "oi_accel_1h", "ret_accel_1h",
                   "vol_burst", "buy_ratio_bar", "range_bar", "liq_long_1h_oi", "liq_short_1h_oi"]
+# Власний рух монети відносно ринку альтів (experiments/idio_features.py: 6 міс., чесний список монет — PF 0.89 → 0.93,
+# кращий у 5 з 6 місяців; пояснення кожної — notes/movers.md). Ринок — ALT-EW 5m-індекс з таблиці alt_index (alt_index.py).
+IDIO_FEATURES = ["beta", "r2", "idio_1h", "idio_4h", "idio_24h", "idio_z_4h"]      # бета / R² до ринку, рух понад ринок
+AMIHUD_FEATURES = ["illiq_x"]                                                       # Amihud ILLIQ до свого звичайного
+VOLX_FEATURES = ["park_24h", "gk_24h", "park_x", "ret_4h_vol", "ret_24h_vol"]       # волатильність з high/low і рух у ній
+MOVE_FEATURES = IDIO_FEATURES + AMIHUD_FEATURES + VOLX_FEATURES
 FEATURES_15M = FEATURES + SHORT_FEATURES
 # Ознаки ліквідацій рахуються й лежать у таблиці features, але в моделі з 2026-10-07 не йдуть (train.py --with-liq — повернути):
 # experiments/no_liq.py — на розмітці імпульсів без них не гірше (бектест PF 0.89 проти 0.83), а 15m-оцінка не чекає
@@ -76,6 +82,8 @@ FEATURES_15M = FEATURES + SHORT_FEATURES
 LIQ_FEATURES = [f for f in FEATURES_15M if f.startswith("liq_")]
 MODEL_FEATURES = [f for f in FEATURES if f not in LIQ_FEATURES]
 MODEL_FEATURES_15M = [f for f in FEATURES_15M if f not in LIQ_FEATURES]
+# Робоча 15m-модель з 2026-10-08 — MODEL_FEATURES_15M + MOVE_FEATURES (train.py; --no-move — без них). FEATURES_15M і
+# MODEL_FEATURES_15M лишились базовими наборами: на них стоять експерименти до 10-08 (build_from_raw з short_features).
 
 
 # ---------------------------------------------------------------- завантаження
@@ -206,7 +214,7 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h", light: b
     h = pd.DataFrame(index=grid)
     h.index.name = "ts"
     h["price"] = px["c"].ffill(limit=2)          # поодинокі пропуски заповнюємо попереднім значенням
-    h["open"] = px["o"]                           # для свічок у дашборді; в ознаках не використовується
+    h["open"] = px["o"]                           # свічки в дашборді; волатильність Гарман–Класа (gk_24h)
     h["high"] = px["h"]
     h["low"] = px["l"]
     h["volume"] = wide(ohlcv, "v_usd").sum(axis=1, min_count=1)
@@ -349,10 +357,80 @@ def short_features(h: pd.DataFrame, b: int) -> pd.DataFrame:
     return f.replace([np.inf, -np.inf], np.nan)
 
 
+def load_alt_index(conn, since=None) -> pd.Series:
+    """ALT-EW: середня log-доходність альтів на кожному 5m-барі (таблиця alt_index, індекс — відкриття бару) на повній
+    5-хв сітці (пропуски — NaN). Таблиці немає / порожня — порожній ряд: ознаки власного руху будуть NaN."""
+    try:
+        rows = conn.execute("SELECT ts, ret FROM alt_index WHERE ts >= %s ORDER BY ts",
+                            (since if since is not None else datetime(1970, 1, 1, tzinfo=timezone.utc),)).fetchall()
+    except Exception:
+        conn.rollback()
+        rows = []
+    if not rows:
+        return pd.Series(dtype=float)
+    s = pd.Series([r[1] for r in rows], index=pd.to_datetime([r[0] for r in rows], utc=True), dtype=float)
+    return s.reindex(pd.date_range(s.index[0], s.index[-1], freq="5min"))
+
+
+def alt_index_bars(idx5: pd.Series, opens: pd.DatetimeIndex, bar: pd.Timedelta) -> pd.Series:
+    """Доходність індексу за бари довжини bar з відкриттями opens (будь-який зсув, кратний 5 хв: звичайні 15m-бари,
+    ковзні :05 / :10, години) = сума 5m-доходностей усередині бару; бар з пропуском — NaN."""
+    if idx5.empty:
+        return pd.Series(np.nan, index=opens)
+    k = int(bar / pd.Timedelta(minutes=5))
+    s = idx5.rolling(k, min_periods=k).sum()
+    s.index = s.index - (bar - pd.Timedelta(minutes=5))    # сума закінчується на останньому 5m-барі → відкриття бару
+    return s.reindex(opens)
+
+
+def move_features(h: pd.DataFrame, ix: pd.Series, b: int) -> pd.DataFrame:
+    """Ознаки власного руху (MOVE_FEATURES) — код experiments/idio_features.py, вікна в барах через b (барів на годину).
+    ix — доходність індексу за ті самі бари (alt_index_bars). Без погляду вперед: усі вікна закінчуються на барі, бета —
+    ще й за добу до нього (сплеск не «вчить» бету сам себе). Відмінність від експерименту: illiq_x нормується на медіану
+    7 днів, а не 30 — як інші «звичайні рівні» (BASE_WINDOW), і скринеру вистачає 15 днів історії на останній бар."""
+    B, f = 24 * b, pd.DataFrame(index=h.index)
+    W = 7 * B
+    lr = np.log(h["price"].where(h["price"] > 0)).diff()
+    ok = lr.notna() & ix.notna()
+    ry, rx = lr.where(ok), ix.where(ok)
+    mean = lambda s: s.rolling(W, min_periods=W // 2).mean()      # noqa: E731
+    cov = (mean(ry * rx) - mean(ry) * mean(rx)).shift(B)
+    vx = (mean(rx * rx) - mean(rx) ** 2).shift(B)
+    vy = (mean(ry * ry) - mean(ry) ** 2).shift(B)
+    beta = cov / vx.where(vx > 0)
+    f["beta"] = beta
+    f["r2"] = (cov ** 2 / (vx * vy)).where((vx > 0) & (vy > 0))
+    resid = (vy - beta ** 2 * vx).clip(lower=1e-12)                # дисперсія залишку за бар
+    for k, name in ((b, "idio_1h"), (4 * b, "idio_4h"), (B, "idio_24h")):
+        f[name] = lr.rolling(k).sum() - beta * ix.rolling(k).sum()
+    f["idio_z_4h"] = f["idio_4h"] / np.sqrt(resid * 4 * b)
+    il = lr.abs() / h["volume"].where(h["volume"] > 0)            # Amihud: рух ціни на долар обороту
+    roll = il.rolling(B, min_periods=int(0.75 * B)).mean()
+    norm = roll.shift(B).rolling(W, min_periods=3 * B).median()
+    f["illiq_x"] = np.log(roll / norm.where(norm > 0))
+    hl = np.log(h["high"] / h["low"]) ** 2
+    co = np.log(h["price"] / h["open"]) ** 2
+    park = np.sqrt((hl / (4 * np.log(2))).rolling(B, min_periods=int(0.75 * B)).mean())
+    gk = np.sqrt((0.5 * hl - (2 * np.log(2) - 1) * co).rolling(B, min_periods=int(0.75 * B)).mean().clip(lower=0))
+    f["park_24h"], f["gk_24h"] = park, gk
+    f["park_x"] = park / park.shift(B).rolling(W, min_periods=3 * B).median()
+    f["ret_4h_vol"] = lr.rolling(4 * b).sum() / (park * np.sqrt(4 * b))
+    f["ret_24h_vol"] = lr.rolling(B).sum() / (park * np.sqrt(B))
+    return f.replace([np.inf, -np.inf], np.nan)
+
+
+def intraday_extra(idx5: pd.Series):
+    """extra для build_from_raw на 15m: короткі ознаки бару + власний рух відносно індексу idx5 (load_alt_index)."""
+    def extra(h: pd.DataFrame, b: int) -> pd.DataFrame:
+        return short_features(h, b).join(move_features(h, alt_index_bars(idx5, h.index, BAR_1H / b), b))
+    return extra
+
+
 def build_15m(conn, bases: list[str], pumps: pd.DataFrame | None = None, since=None) -> pd.DataFrame:
-    """Ознаки 15m-моделі з бази (interval '15min': біржі напряму + ліквідації Coinalyze з покриттям).
-    since — з якого моменту брати сирі ряди (для скринера: ~10 днів вистачає на тижневі вікна)."""
-    return build_from_raw(load_raw(conn, bases, INTERVAL_15M, since), pumps, bars_per_hour=4, extra=short_features)
+    """Ознаки 15m-моделі з бази (interval '15min': біржі напряму + ліквідації Coinalyze з покриттям) + індекс альтів.
+    since — з якого моменту брати сирі ряди (для скринера: ~15 днів вистачає на тижневі вікна)."""
+    return build_from_raw(load_raw(conn, bases, INTERVAL_15M, since), pumps, bars_per_hour=4,
+                          extra=intraday_extra(load_alt_index(conn, since)))
 
 
 def hourly_from_intraday(raw: dict[str, pd.DataFrame], offset_min: int = 0) -> dict[str, pd.DataFrame]:

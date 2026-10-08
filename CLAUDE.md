@@ -203,6 +203,28 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   дозаповнено OI Binance: навчальні з 07-25, монети бектесту 08-25…09-05 (серпень навчання раніше мав OI / L/S лише Bybit).
   experiments/binance_only.py: лише Binance ≈ обидві (LTO 81 / 82, бектест PF 0.89–0.90 проти 0.92; ≥ 20 млн 1.03–1.09 проти
   1.13) → жива модель на двох біржах; довгі бектести для досліджень — на Binance-архіві (порівняння варіантів чесне).
+- НОВІ ОЗНАКИ «ВЛАСНИЙ РУХ» (2026-10-08, experiments/idio_features.py, reports/idio_features.md): на чесному списку 6 міс.
+  base PF 0.89 → +усе (idio + ami + vol) 0.93, кращий у 5 з 6 місяців, угод −18%; idio_24h — №2 ознака (17.8%), ret_24h
+  випала з топ-10. Amihud окремо — шум.
+  ВПРОВАДЖЕНО В КОНВЕЄР (2026-10-08): alt_index.py — ALT-EW на 5m (таблиця alt_index, ті самі ~250 альтів, що market.universe;
+  історія з архіву 5m з 2026-06-01, cache=False; хвіст і ДІРКИ за ~3.5 дні — REST, first_missing; screener — потік
+  alt_index.watcher через 8 с після кожного 5m-бару + alt_index.ensure перед score_15m / ковзною оцінкою, лише хвіст).
+  features: MOVE_FEATURES (IDIO / AMIHUD / VOLX), load_alt_index, alt_index_bars (будь-яка сітка: 15m, ковзні :05/:10, 1h),
+  move_features (код експерименту; illiq_x — медіана 7 днів, не 30: тест all7 = all, PF 0.94 обидва), intraday_extra →
+  build_15m і ковзна оцінка (since 10 днів). FEATURES_15M / MODEL_FEATURES_15M НЕ змінено (на них експерименти);
+  train.py: feats15 = MODEL_FEATURES_15M + MOVE_FEATURES (--no-move — без), settings move_features / move_coverage,
+  FEATURE_GROUPS «Власний рух», «Ліквідність (Amihud)»; load_model приймає обидва набори. Перевірено: робочий код = експеримент
+  (крім вікна illiq), 15m-індекс з 5m ≈ експериментальний (ρ 0.989), ковзні бари зсуву 0 = звичайні (ρ 1.0).
+  На сервері: перший запуск watcher сам тягне історію (~6 хв) або python alt_index.py. Вивід train.py у файл на Windows —
+  PYTHONIOENCODING=utf-8 (cp1251 падає на «≥»).
+  КАНДИДАТ 08.10 (models/candidate/, 41 ознака, 21 тікер / 100 імпульсів, поріг 0.817, k 2.05): LTO Alert 81/100 · фс 15/22 · 6.5
+  (робоча 80 · 13 · 7.3), «Власний рух» 17% gain. Бектест 30 дн, k 2.13 обом: ≥ 20 млн PF 1.10 → 1.28 (без топ-3 1.02 → 1.16, обидві
+  половини), Alert/день 35.6 → 26.8; 5–20 млн 0.76 → 0.68. ЧЕКАЄ «Прийняти» власника. Деплой: коміт → deploy.sh (код) → на сервері
+  exec screener python alt_index.py (історія ~6 хв) → deploy.sh --models --restart.
+- УПЕРЕДЖЕННЯ ВИЖИВАННЯ (2026-10-08): long_binance.py --universe monthly — монети станом на кожен місяць (S3-лістинг архіву
+  Binance з делістованими, оборот 30 дн до місяця 5 млн – 1 млрд $; кеш data/long_bin/_universe.json; делістовані — рядки markets
+  вручну, ensure_markets; funding делістованих — порожньо). Чесно: PF 0.89 (≥ 20 млн 0.86) проти 0.96 на «сьогоднішньому»
+  списку → ТОЧКА ВІДЛІКУ для ознак = 0.89; reports/long_binance_universe.md.
 - 6 МІС. НА АРХІВІ BINANCE (2026-10-07, experiments/long_binance.py, reports/long_binance.md): 199 монет поза навчанням,
   квіт–вер, лише Binance — base PF 0.96 (≥ 20 млн 1.00), зі стаканом 0.97 (різниця по місяцях у 3-му знаку) → стакан НЕ
   додаємо. Це ТОЧКА ВІДЛІКУ для нових ознак (кращий у більшості місяців); кеш ознак data/long_bin/<монета>.pkl (f15 + книга,

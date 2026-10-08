@@ -67,6 +67,31 @@ are accumulated. The raw OI sum is kept for reference but not used for change fe
 Missing values are left as `NaN` (for example, volume ratio before 8 days of history, or buy ratio
 when volume is zero). Tree models handle them natively; linear models need imputation at training time.
 
+## 15m model: own-move features (since 2026-10-08)
+
+The 15m model adds 12 features that measure the coin's move **relative to the altcoin market** (`features.MOVE_FEATURES`,
+`move_features()`; detailed explanations in Ukrainian — `notes/movers.md`). The market is **ALT-EW**: the equal-weighted
+mean 5-minute log return of ~250 liquid Binance altcoins (average daily turnover $5M – $1B, no BTC / ETH / stablecoins),
+table `alt_index`, built by `alt_index.py` (history from the data.binance.vision archive, live tail from REST every 5 minutes).
+The index is stored at 5 minutes so that any bar grid can be rebuilt from it — regular 15m bars, the screener's rolling
+15m bars shifted by :05 / :10, or hours (`alt_index_bars`: sum of the 5m returns inside the bar).
+
+| Group | Feature | Definition |
+|---|---|---|
+| Own move | `beta`, `r2` | OLS beta and R² of the coin's 15m log returns on the index over 7 days, window ending one day before the bar |
+| | `idio_1h`, `idio_4h`, `idio_24h` | return − β × index return over 1 / 4 / 24 h: the part of the move that is not the market |
+| | `idio_z_4h` | `idio_4h` in standard deviations of the regression residual (σ × √bars) |
+| Amihud | `illiq_x` | log of (mean \|r\| / dollar volume over 24 h) ÷ its median over the previous 7 days: thin vs normal book |
+| Volatility | `park_24h`, `gk_24h` | Parkinson / Garman–Klass volatility per bar over 24 h (uses high / low / open) |
+| | `park_x` | `park_24h` ÷ its median over the previous 7 days |
+| | `ret_4h_vol`, `ret_24h_vol` | return over 4 / 24 h ÷ (Parkinson volatility × √bars): the move in units of the coin's own noise |
+
+No look-ahead: every window ends at the bar; beta is also lagged one day so a spike does not teach the beta about itself.
+`experiments/idio_features.py` (6 months, survivorship-free monthly coin lists, 405 coins): profit factor 0.89 → 0.93,
+better than the baseline in 5 of 6 months. The production version differs in one window: `illiq_x` is normalised on the
+7-day median instead of 30 days, so the screener needs only ~15 days of history for the latest bar.
+Bars before the index starts get `NaN` in these features. `train.py --no-move` trains the 15m model without them.
+
 ## Output table
 
 `features` is fully derived from the raw tables and `pumps`, so it is created by `features.py` rather than

@@ -300,6 +300,22 @@ out-of-fold signals), ≈ 2.5 ATR(15m). The old start-based value is kept in the
 Typical trade profile: many small losses, few large wins (median trade still slightly negative, trades inside
 labeled pumps +12–16% on average).
 
+## Own-move features (2026-10-08)
+
+Hypothesis: the model mostly learned "the price has already gone up" (`ret_24h` dominated the gain). A coin that rises
+*with* the altcoin market is a different situation from one that rises on its own. Twelve features measure the move
+relative to the equal-weighted altcoin index (beta, R², idiosyncratic return over 1 / 4 / 24 h and its z-score, Amihud
+illiquidity vs normal, Parkinson / Garman–Klass volatility and the move in units of it; see [features.md](features.md)).
+
+- **6-month test on survivorship-free coin lists** (`experiments/idio_features.py`, 404–405 coins listed as of each month,
+  Binance archive): profit factor of Alert trades 0.89–0.90 → 0.93–0.94, better than the baseline in 5 of 6 months, also
+  without the top 3 trades. Normalising Amihud on 7 instead of 30 days changes nothing (0.94 both), so production uses 7.
+- **Candidate model** (21 tickers / 100 impulses, 41 features): leave-ticker-out Alert 81/100 caught, 15/22 false starts,
+  6.5 false alarms per 30 days (live model: 80/100, 13/22, 7.3). Own-move group = 17% of gain.
+- **30-day backtest on coins outside training** (same stop): turnover ≥ $20M — PF 1.10 → 1.28 (without top 3: 1.02 → 1.16,
+  better in both halves of the month, a quarter fewer Alerts); $5–20M — 0.76 → 0.68. Turnover bands are noisy (the 6-month
+  test showed the opposite band pattern); the overall improvement is the stable part.
+
 ## Next steps
 
 - More labeled tickers, which is the main lever.

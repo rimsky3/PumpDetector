@@ -201,3 +201,11 @@ CREATE TABLE IF NOT EXISTS market_breadth (
     btc_ret_24h DOUBLE PRECISION, btc_vs_ma7d DOUBLE PRECISION, btc_dd_7d DOUBLE PRECISION, btc_vol_x DOUBLE PRECISION,
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- ALT-EW: середня 5m log-доходність ~250 ліквідних альтів Binance (alt_index.py; ознаки власного руху 15m-моделі)
+CREATE TABLE IF NOT EXISTS alt_index (
+    ts TIMESTAMPTZ PRIMARY KEY,          -- відкриття 5m-бару; значення відоме на його закритті (ts + 5 хв)
+    ret DOUBLE PRECISION NOT NULL,       -- середня log-доходність альтів за бар
+    n INT NOT NULL,                      -- скільки монет на барі (менше 50 — бар не пишеться)
+    updated_at TIMESTAMPTZ DEFAULT now()
+);

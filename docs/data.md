@@ -41,6 +41,8 @@ exchanges, for example `v * close` for base-denominated markets.
   collection updates rows instead of duplicating them.
 - `markets` is the reference table; every raw row references `markets.symbol`.
 - Labels live in `pumps` (see [labeling.md](labeling.md)).
+- `alt_index` (since 2026-10-08) — the ALT-EW 5m index (equal-weighted mean log return of ~250 liquid Binance alts),
+  built by `alt_index.py` from the data.binance.vision archive and REST; input of the 15m model's own-move features.
 
 ## History depth
 

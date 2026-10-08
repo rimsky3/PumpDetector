@@ -42,7 +42,7 @@ from sklearn.metrics import average_precision_score, f1_score, precision_recall_
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
-from features import FEATURES, FEATURES_15M, INTERVAL_15M, MODEL_FEATURES, MODEL_FEATURES_15M, build_15m, in_pump, load_pumps, load_raw, query_df
+from features import (FEATURES, FEATURES_15M, INTERVAL_15M, MODEL_FEATURES, MODEL_FEATURES_15M, MOVE_FEATURES, build_15m, in_pump, load_pumps, load_raw, query_df)
 from risk import EXIT_BARS_15M, entry_stop, stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
@@ -235,8 +235,9 @@ def feature_importance(X: pd.DataFrame, y: pd.Series, models: list[str]) -> pd.D
 
 # Схожі ознаки (oi_chg_24h і oi_z_24h — обидві «OI за добу вище норми») ділять gain між собою і від навчання до навчання
 # «перескакують» одна на одну; сума групи стабільніша. Порядок важить: oi_minus_ret_24h — група OI.
-FEATURE_GROUPS = [("OI", ("oi_",)), ("Ціна", ("ret_",)), ("Обсяг", ("volume_", "vol_burst")),
-                  ("Волатильність", ("volatility_", "range_")), ("Купівлі / продажі", ("buy_ratio_",)),
+FEATURE_GROUPS = [("Власний рух", ("beta", "r2", "idio_")), ("Ліквідність (Amihud)", ("illiq_",)),
+                  ("OI", ("oi_",)), ("Ціна", ("ret_",)), ("Обсяг", ("volume_", "vol_burst")),
+                  ("Волатильність", ("volatility_", "range_", "park_", "gk_")), ("Купівлі / продажі", ("buy_ratio_",)),
                   ("Funding", ("funding",)), ("Ліквідації", ("liq_",)), ("Long / Short", ("ls_",))]
 
 
@@ -295,6 +296,8 @@ def main() -> None:
     parser.add_argument("--no-15m", action="store_true", help="не навчати 15m-модель (лише годинні)")
     parser.add_argument("--with-liq", action="store_true",
                         help="ознаки ліквідацій у моделях (до 2026-10-07; без них не гірше — experiments/no_liq.py)")
+    parser.add_argument("--no-move", action="store_true",
+                        help="15m-модель без ознак власного руху (beta / idio / illiq / park…; як до 2026-10-08)")
     parser.add_argument("--candidate", action="store_true",
                         help=f"зберегти моделі як кандидата в {CANDIDATE_DIR} (у роботу — після порівняння і «Прийняти» в label.py)")
     args = parser.parse_args()
@@ -464,9 +467,14 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
     if cutoff is not None:
         d = d[(d["ts"] <= cutoff) | d["pattern_type"].notna()]
     d = d.reset_index(drop=True)
-    feats15 = FEATURES_15M if args.with_liq else MODEL_FEATURES_15M
+    feats15 = (FEATURES_15M if args.with_liq else MODEL_FEATURES_15M) + ([] if args.no_move else MOVE_FEATURES)
     X, y, groups = d[feats15], d["label"].astype(int), d["base_asset"]
     print(f"  {len(d)} барів 15m, {groups.nunique()} тікерів")
+    move_cov = float(d["idio_4h"].notna().mean()) if not args.no_move else None
+    if move_cov is not None:
+        print(f"  ознаки власного руху є в {move_cov:.0%} барів (решта — до початку індексу альтів, NaN)")
+        if move_cov < 0.8:
+            print("  ! мало індексу альтів — python alt_index.py (історія з архіву)")
     res = leave_ticker_out("lightgbm", X, y, groups)
     s15 = (res["score"] / res["threshold"]).to_numpy()
     rows = {"15m candidate": {**hour_metrics(y, res, True), **event_metrics(d, s15 >= 1, pumps, BAR_15M)}}
@@ -497,7 +505,9 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
     print(summary.to_string())
     report = ["", "## 15m model and signal tiers", "",
               f"LightGBM on {len(d)} 15-minute bars ({len(feats15)} features: the hourly set with the same wall-clock "
-              "windows plus short bar features), leave-ticker-out with nested threshold. *Candidate* = 15m model alone; "
+              "windows plus short bar features"
+              + ("" if args.no_move else f" and own-move features vs the ALT-EW index — present on {move_cov:.0%} of bars")
+              + "), leave-ticker-out with nested threshold. *Candidate* = 15m model alone; "
               f"*alert* = 15m signal confirmed by the hourly LightGBM at ≥ {CONFIRM_SHARE:g} of its threshold "
               "(score of the last closed hour). Event delays are in hours from the labeled start; "
               f"stop multiplier on 15m bars: k = {risk15.get('k') or float('nan'):.2f} ATR.", "",
@@ -516,7 +526,8 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
             "risk": risk15, "exit_bars": EXIT_BARS_15M,
             "confirm": {"model": "lightgbm", "share": CONFIRM_SHARE},
             "settings": {"fresh_hours": args.fresh_hours, "bars": int(len(d)), "tickers": int(groups.nunique()),
-                         "n_features": len(feats15), "liquidations": bool(args.with_liq), "from_1h_start": True, "dropped_before_1h": dropped},
+                         "n_features": len(feats15), "liquidations": bool(args.with_liq), "from_1h_start": True, "dropped_before_1h": dropped,
+                         "move_features": not args.no_move, "move_coverage": move_cov},
         }
         bundle["labels_fp"] = labels_fp or {}
         report += ["", "### 15m LightGBM gain by feature group", "", group_table(gain_shares(bundle))]
@@ -530,8 +541,9 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
 def load_model(name: str) -> dict:
     """Збережена модель з метаданими: model, features, threshold, trained_at, validation."""
     bundle = joblib.load(model_path(name))
-    expected = (FEATURES_15M, MODEL_FEATURES_15M) if bundle.get("tf") == "15m" else (FEATURES, MODEL_FEATURES)
-    if bundle["features"] not in expected:            # з ліквідаціями (до 2026-10-07) або без
+    expected = ([b + m for b in (FEATURES_15M, MODEL_FEATURES_15M) for m in ([], MOVE_FEATURES)] if bundle.get("tf") == "15m"
+                else (FEATURES, MODEL_FEATURES))
+    if bundle["features"] not in expected:            # з ліквідаціями (до 2026-10-07) або без; з власним рухом (з 10-08) або без
         raise ValueError(f"{name}: модель навчена на іншому наборі ознак — перезапусти python train.py")
     return bundle
 

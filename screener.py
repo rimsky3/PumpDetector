@@ -31,13 +31,14 @@ import queue
 import threading
 from dotenv import load_dotenv
 
+import alt_index
 import fetch_exchange
 import footprint
 import orderbook
 import wake
 import scanner
-from features import (INTRADAY_EXCHANGES, build, build_15m, build_from_raw, build_hourly_own, load_raw, oi_seen_share,
-                      roll_intraday, short_features)
+from features import (INTRADAY_EXCHANGES, MOVE_FEATURES, build, build_15m, build_from_raw, build_hourly_own, intraday_extra,
+                      load_alt_index, load_raw, oi_seen_share, roll_intraday)
 from fetch import Coinalyze, collect, collect_liquidations, find_markets, read_tickers_file, upsert_markets
 from tiers import ROLL_MODEL
 from train import M15_NAME, PROBA_MODELS, load_model, model_path
@@ -55,6 +56,7 @@ HOT_SHARE = 0.8                 # «гарячий»: 15m-оцінка ≥ 0.8 �
 LIQ5_DAYS = 10                  # 5m-ліквідації гарячим — завжди 10 днів: виклик Coinalyze той самий (за символом),
                                 # а дірки в історії (тікер був «холодним») інакше стали б «нулем ліквідацій» в ознаках
 BAR_15M = pd.Timedelta(minutes=15)
+BAR_5M = pd.Timedelta(minutes=5)
 BACKFILL_15M = 7 * 24 * 4       # скільки 15m-барів історії оцінювати, якщо їх ще немає в signals
 INTRADAY_DAYS = 10              # новому тікеру — 10 днів 15m-історії (тижневі вікна ознак + запас)
 INTRADAY_TAIL_DAYS = 0.25       # мінімальний хвіст — 6 годин (upsert, дублікатів немає)
@@ -155,6 +157,8 @@ def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print, liq:
 def score_15m(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, pd.Timestamp]:
     """15m-ознаки → ймовірність 15m-моделі → signals. Спільне для скринера і кнопки «Прогнозувати»."""
     last = last_closed_15m()
+    if uses_move(m15):                     # індекс альтів за останній 5m-бар цього 15m-бару (потік alt_index зазвичай уже встиг)
+        alt_index.ensure(conn, last + 2 * BAR_5M)
     # тижневі вікна ознак «з'їдають» 7 днів історії: щоб оцінити BACKFILL_15M барів, беремо їх + 8 днів
     df = build_15m(conn, bases, None, since=last - BACKFILL_15M * BAR_15M - pd.Timedelta(days=8))
     if df.empty:
@@ -163,6 +167,11 @@ def score_15m(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, pd.Times
     scored = score(df, [m15])
     save_signals(conn, scored, last)
     return scored, last
+
+
+def uses_move(m15: dict | None) -> bool:
+    """Модель з ознаками власного руху (з 2026-10-08) — потрібен свіжий індекс альтів (alt_index.py)."""
+    return any(f in MOVE_FEATURES for f in (m15 or {}).get("features", []))
 
 
 def hot_bases(conn, bases: list[str], hours: int = 2) -> list[str]:
@@ -184,7 +193,8 @@ def score_15m_rolling(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, 
     off = open_.minute % 15
     if off == 0 or not bases:              # вирівняний бар рахує звичайний 15m-цикл
         return pd.DataFrame(), None
-    raw5 = load_raw(conn, bases, "5min", since=open_ - pd.Timedelta(days=8))     # + тижневі вікна ознак
+    since = open_ - pd.Timedelta(days=10)          # + тижневі вікна ознак (бета й Amihud — тиждень, що закінчився добу тому)
+    raw5 = load_raw(conn, bases, "5min", since=since)
     # лише тікери, де КОЖЕН ринок уже має останній 5m-бар і свічки, і OI (OI біржі віддають після закриття бару):
     # неповний бар = «обвал OI» або половина обсягу → хибно низька чи висока P
     last5, recent = open_ + 2 * pd.Timedelta(minutes=5), open_ - pd.Timedelta(hours=1)
@@ -196,7 +206,9 @@ def score_15m_rolling(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, 
     if not ok:
         return pd.DataFrame(), open_
     raw5 = {k: (v[v["base_asset"].isin(ok)] if "base_asset" in v else v) for k, v in raw5.items()}
-    f = build_from_raw(roll_intraday(raw5, "15min", off, 3), bars_per_hour=4, extra=short_features)
+    if uses_move(m15):
+        alt_index.ensure(conn, open_ + 2 * BAR_5M)
+    f = build_from_raw(roll_intraday(raw5, "15min", off, 3), bars_per_hour=4, extra=intraday_extra(load_alt_index(conn, since)))
     f = f[f["ts"] == open_] if len(f) else f
     if len(f):                             # без тижневих ознак (мало 5m-історії) — не оцінюємо: P була б ≈ 0
         f = f.dropna(subset=["oi_z_7d", "volume_z_7d", "oi_chg_24h"])
@@ -738,6 +750,8 @@ def main() -> None:
         # стан ринку альтів (кнопка «Market» у дашборді, режим журналу «ринок не гарячий») — свій потік, щогодини о HH:01
         import market
         market.watcher(db_url)
+        # індекс альтів (ознаки власного руху 15m-моделі) — свій потік, через 8 с після закриття кожного 5m-бару
+        alt_index.watcher(db_url)
     while True:
         hour = pd.Timestamp(datetime.now(timezone.utc)).floor("h")
         hourly = hour != last_hour          # перший цикл нової години (або перший запуск) — ще й годинний

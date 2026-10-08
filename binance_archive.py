@@ -34,9 +34,10 @@ KLINE_COLS = ["open_time", "open", "high", "low", "close", "volume", "close_time
               "taker_buy_volume", "taker_buy_quote_volume", "ignore"]
 
 
-def _csv(kind: str, symbol: str, day: str, tf: str | None = None, monthly: bool = False) -> pd.DataFrame:
+def _csv(kind: str, symbol: str, day: str, tf: str | None = None, monthly: bool = False, cache: bool = True) -> pd.DataFrame:
     """Денний (або місячний: day = YYYY-MM, monthly=True — лише свічки) файл архіву; кеш на диску; немає файлу — порожній
-    кадр, не кешується (архів за день з'являється наступного дня, за місяць — на початку наступного)."""
+    кадр, не кешується (архів за день з'являється наступного дня, за місяць — на початку наступного).
+    cache=False — не писати на диск (alt_index.py: 5m-свічки сотень монет потрібні один раз, лише закриття)."""
     sub = f"klines/{symbol}/{tf}/{symbol}-{tf}-{day}" if kind == "klines" else f"metrics/{symbol}/{symbol}-metrics-{day}"
     path = os.path.join(CACHE, ("monthly/" if monthly else "") + sub + ".parquet")
     if os.path.exists(path):
@@ -63,6 +64,8 @@ def _csv(kind: str, symbol: str, day: str, tf: str | None = None, monthly: bool 
         df = pd.read_csv(io.StringIO(raw), header=0 if has_header else None, names=None if has_header else KLINE_COLS)
     else:
         df = pd.read_csv(io.StringIO(raw))
+    if not cache:
+        return df
     os.makedirs(os.path.dirname(path), exist_ok=True)
     df.to_parquet(path + ".tmp")          # атомарно: обрив посеред запису не лишає битого файлу
     os.replace(path + ".tmp", path)
@@ -107,7 +110,10 @@ def download(symbol: str, start: str, end: str, tf: str = "15m") -> dict[str, pd
         oi = ls = pd.DataFrame({"ts": pd.to_datetime([], utc=True), "value": []})
     s_ms = int(pd.Timestamp(start, tz="UTC").timestamp() * 1000)
     e_ms = int((pd.Timestamp(end, tz="UTC") + pd.Timedelta(days=1)).timestamp() * 1000)
-    funding = binance_funding(symbol, s_ms - 3 * 86_400_000, e_ms)
+    try:
+        funding = binance_funding(symbol, s_ms - 3 * 86_400_000, e_ms)
+    except Exception:                   # делістований символ — API funding його вже не знає; ознаки funding будуть NaN
+        funding = pd.DataFrame({"ts": pd.to_datetime([], utc=True), "value": []})
     return {"klines": k, "oi": oi.drop_duplicates("ts").sort_values("ts"), "ls": ls.drop_duplicates("ts").sort_values("ts"),
             "funding": funding}
 

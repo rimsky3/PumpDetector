@@ -109,6 +109,15 @@ idiosyncratic return over 1, 4 and 24 hours, the residual z-score, and Amihud il
 norm → `reports/movers.json`. The dashboard shows it as the **Movers ▾** table (sortable, horizon switch, IN LIST /
 add to watchlist). It describes the market, it is not a model signal.
 
+## ALT-EW index for the 15m model (since 2026-10-08)
+
+The 15m model sees the coin's move relative to the altcoin market (`beta`, `idio_*`, `illiq_x`, `park_*`; see
+[features.md](features.md)). Its input is `alt_index` — the equal-weighted 5m return of the same ~250 alts as above.
+`alt_index.watcher` updates it in its own thread 8 seconds after every 5m bar closes (~250 one-candle REST requests,
+weight 1 each, ~13 s), well before the cycles at :02 / :07 / …; `score_15m` and the rolling scorer call
+`alt_index.ensure` for the bar they score, so a late thread only delays, never zeroes, the features. The rolling scorer
+loads 10 days of 5m data (beta and Amihud use a week that ended a day earlier).
+
 ## Liquidations after scoring (since 2026-10-07)
 
 Models trained without liquidation features (the default from 2026-10-07) do not need them to score: the cycle takes
