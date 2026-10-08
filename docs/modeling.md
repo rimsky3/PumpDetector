@@ -316,6 +316,21 @@ illiquidity vs normal, Parkinson / Garman–Klass volatility and the move in uni
   better in both halves of the month, a quarter fewer Alerts); $5–20M — 0.76 → 0.68. Turnover bands are noisy (the 6-month
   test showed the opposite band pattern); the overall improvement is the stable part.
 
+## Monitoring the live model (2026-10-08)
+
+A backtest answers "would it have made money"; monitoring answers "is it still the model we validated". `monitor.py`
+checks three things on the bars the live model scored outside its training data:
+
+- **Signal frequency** per day — a jump or collapse without a market reason points at data problems.
+- **Calibration** — bars grouped by `P / threshold`, with what the price did over the next 4 hours (max rise and drawdown
+  in ATR, return after 1 and 4 h). If the probability means something, the move after higher-scored bars is larger.
+  First check (model of 10-05, 62 list tickers, 1–6 Oct): max rise grows from 1.69 ATR (score < 0.5) to 2.15 ATR
+  (score ≥ 1.1), but so does the drawdown (−1.49 → −1.80 ATR) and the median 4-hour return stays ≈ 0 — the score finds
+  volatility more than direction, the same picture as the backtest.
+- **Feature drift** — population stability index (PSI) of each feature, list tickers vs the training sample. First check:
+  `beta` and `r2` shifted strongly (median R² 0.16 → 0.26, beta 0.87 → 1.03): the watchlist coins move more with the
+  market than the small coins the model learned from (and early October was a broad alt rally).
+
 ## Next steps
 
 - More labeled tickers, which is the main lever.

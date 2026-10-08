@@ -407,6 +407,19 @@ The screener's market thread runs it every hour after `market.update` (which now
 `reports/market_qvol.pkl`). Dashboard: the **Movers N ▾** button (`/api/movers`); N = coins with |z| ≥ 2.5. Owner's
 guide to every column: `notes/movers.md`.
 
+### `monitor.py` — live health of the 15m model
+
+| Usage | Meaning |
+|---|---|
+| `python monitor.py [--days 7]` | report on the current 15m model version, out-of-training bars of the last N days → `reports/monitor.md` + `reports/monitor.json`: (1) signal frequency per day (tickers scored, Candidate / Alert bars, tickers with an Alert); (2) calibration — bars grouped by `s15 = P / threshold` with what the price did next: median return after 1 / 4 h, max rise / drawdown over 4 h in ATR15 (MFE / MAE), share of bars followed by a ≥ 2 ATR rise, share inside labeled impulses; (3) feature drift — PSI of every model feature, list tickers vs the training sample, with medians train → now |
+| `python monitor.py --add-ref` | write the training feature distribution (`feature_ref`: deciles, NaN share, median) into the live 15m model; models trained after 2026-10-08 get it from `train.py` automatically |
+
+PSI < 0.1 — stable, 0.1–0.25 — noticeable shift, > 0.25 — strong shift (the model sees values it rarely saw in training).
+The watchlist is not a random sample (the scanner adds coins that are waking up), so some shift in volume / volatility is
+expected from selection alone. Hourly confirmation for the Alert tier uses the latest hourly score of each hour across
+model versions. Run it on the server, where the live scores are:
+`docker compose -f docker-compose.server.yml exec -T screener python -u monitor.py`.
+
 ### `alt_index.py` — ALT-EW index for the own-move features
 
 | Usage | Meaning |

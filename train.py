@@ -43,6 +43,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from features import (FEATURES, FEATURES_15M, INTERVAL_15M, MODEL_FEATURES, MODEL_FEATURES_15M, MOVE_FEATURES, build_15m, in_pump, load_pumps, load_raw, query_df)
+from monitor import feature_reference
 from risk import EXIT_BARS_15M, entry_stop, stop_multiplier
 
 REPORT_FILE = os.path.join("reports", "train_report.md")
@@ -530,6 +531,7 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
                          "move_features": not args.no_move, "move_coverage": move_cov},
         }
         bundle["labels_fp"] = labels_fp or {}
+        bundle["feature_ref"] = feature_reference(X)   # навчальний розподіл ознак — monitor.py рахує дрейф наживо (PSI)
         report += ["", "### 15m LightGBM gain by feature group", "", group_table(gain_shares(bundle))]
         os.makedirs(out_dir, exist_ok=True)
         joblib.dump(bundle, model_path(M15_NAME, out_dir))
