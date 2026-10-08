@@ -98,9 +98,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 /* центр: графік */
 .head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
 .head .l { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.tk-name { font-size: 20px; font-weight: 600; } .tk-price { font-size: 18px; font-weight: 500; }
+.tk-name { font-size: 20px; font-weight: 600; }
 /* ширина заголовка не залежить від цифр ціни й мітки live — інакше панель інструментів перескакує між рядками */
-.tk-price, #tkChg { font-variant-numeric: tabular-nums; } .tk-price { min-width: 8ch; } #tkChg { min-width: 6.5ch; }
+#tkChg { font-variant-numeric: tabular-nums; min-width: 6.5ch; }
 .live-dot.off { visibility: hidden; }
 .badge { font-size: 10px; padding: 2px 7px; border-radius: 4px; border: 1px solid var(--line2); color: var(--fg2); }
 .head .r { display: flex; gap: 8px; align-items: center; }
@@ -189,7 +189,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .pnhead { display: flex; align-items: baseline; justify-content: flex-start; gap: 6px 12px; flex-wrap: wrap; }
 .pnhead > * { flex: none; }
 .pnhead .tk-chg { font-variant-numeric: tabular-nums; min-width: 6.5ch; }
-.panes.two .tk-name { font-size: 17px; } .panes.two .tk-price { font-size: 15px; min-width: 0; } .panes.two .tk-tf { display: none; }
+.panes.two .tk-name { font-size: 17px; } .panes.two .tk-tf { display: none; }
 .pnhead .tk-p { font-weight: 600; font-size: 13px; }
 .pnhead .tk-pos { font-size: 11px; padding: 2px 8px; border-radius: 20px; background: var(--ok-bg); color: var(--ok); }
 .pnhead .tk-pos.neg { background: var(--alert-bg); color: var(--hot-soft); }
@@ -603,7 +603,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     <section class="pane" aria-label="Вікно графіка">
       <div class="pnhead">
         <span class="tk-name">—</span><span class="small tk-tf"></span>
-        <span class="tk-price">—</span><span class="tk-chg">—</span>
+        <span class="tk-chg">—</span>
         <span class="live-dot off" title="Жива свічка з бірж">live</span>
         <span class="pill none tk-status">—</span><span class="tk-p"></span>
         <span class="tk-pos" hidden></span><span class="small tk-stop" hidden></span>
@@ -1442,7 +1442,6 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
             S.oi.update({ time: bar.time, open: bar.oiO * k, high: bar.oiH * k, low: bar.oiL * k, close: coins * k });
           }
         }
-        q(".tk-price").textContent = fmtPx(bar.c);
       };
       const schedule = () => { if (!pending) { pending = true; setTimeout(draw, 250); } };
       const onKline = (src, startMs, o, h, l, c, quote) => {
@@ -1504,7 +1503,6 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       q(".tk-name").textContent = P.data ? P.data.ticker : (P.ticker || "—");
       root.classList.toggle("active", st.panes > 1 && isActive());
       const d = P.data; if (!d) { q(".tk-mover").hidden = true; return; }
-      q(".tk-price").textContent = fmtPx(d.price);
       const ch = q(".tk-chg"); ch.textContent = fmtPct(d.chg_24h); ch.className = "tk-chg " + pctCls(d.chg_24h);
       q(".tk-ins").hidden = !d.in_sample;
       q(".tk-tf").textContent = `USDT Perp · ${d.tf || "1h"}` + (d.native_tf ? ` · модель ${d.native_tf}` : "");
