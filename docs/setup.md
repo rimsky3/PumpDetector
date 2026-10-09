@@ -69,7 +69,7 @@ Full reference with every option: [commands.md](commands.md).
 | Command | What it does |
 |---|---|
 | `python fetch.py` | Collects 60 days of hourly data for **every** ticker in `tickers.txt` |
-| `python fetch.py --new` | Collects only tickers from `tickers.txt` that are not in the database yet |
+| `python fetch.py --new` | Collects only tickers from `tickers.txt` that are not in the database yet or lack the full hourly history |
 | `python fetch.py AKE QNT` | Collects only the given tickers |
 | `python fetch.py --days 30` | Changes the history depth |
 | `python label.py` | Opens the labeling tool at http://127.0.0.1:8765 |

@@ -274,7 +274,7 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=60,
                         help="скільки днів історії тягнути (1h зберігається ~60-80 днів)")
     parser.add_argument("--new", action="store_true",
-                        help="лише тікери, яких ще немає в базі (таблиця markets)")
+                        help="лише тікери, яких ще немає в базі (markets) або з годинною історією, коротшою за --days")
     args = parser.parse_args()
 
     load_dotenv()
@@ -287,14 +287,24 @@ def main() -> None:
     if not bases:
         sys.exit(f"Немає тікерів: передай їх аргументами або додай у {TICKERS_FILE}")
     if args.new:
+        # «новий» = немає в markets АБО годинна історія коротша за --days (з запасом 3 дні). Раніше лише перше:
+        # монета зі списку скринера (10 днів годинних) після «У навчання» лишалась без 60 днів історії — ORCA / API3
+        # (08.10) мали 1h лише з 26.09, і 14 розмічених імпульсів пішли в навчання без даних. Монета, молодша за
+        # --days, перекачується при кожному запуску — це кілька десятків викликів, рідко.
+        cut = datetime.now(timezone.utc) - timedelta(days=args.days - 3)
         with psycopg.connect(db_url) as conn:
-            known = {r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM markets")}
-        skipped = [b for b in bases if b in known]
-        bases = [b for b in bases if b not in known]
+            first = dict(conn.execute("""SELECT m.base_asset, min(o.ts) FROM markets m JOIN ohlcv o ON o.symbol = m.symbol
+                                         AND o.interval = '1hour' GROUP BY m.base_asset""").fetchall())
+        skipped = [b for b in bases if b in first and first[b] <= cut]
+        short = [b for b in bases if b in first and first[b] > cut]
+        bases = [b for b in bases if b not in skipped]
         if skipped:
-            print(f"Вже в базі, пропускаю: {', '.join(skipped)}")
+            print(f"Повна історія вже є, пропускаю: {', '.join(skipped)}")
+        if short:
+            print(f"Годинна історія коротша за {args.days} дн., докачую: "
+                  + ", ".join(f"{b} (з {first[b]:%Y-%m-%d})" for b in short))
         if not bases:
-            sys.exit("Нових тікерів немає — нічого збирати.")
+            sys.exit("Нових тікерів і тікерів без повної історії немає — нічого збирати.")
     with psycopg.connect(db_url) as conn:
         if not collect(Coinalyze(api_key), conn, bases, args.days):
             sys.exit("Жодного ринку не знайдено — нічого збирати.")

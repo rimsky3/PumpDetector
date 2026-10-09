@@ -21,3 +21,5 @@ ZRO    # переглянуто повністю в label.py
 JTO    # переглянуто повністю в label.py
 MAGIC    # переглянуто повністю в label.py
 VELVET    # переглянуто повністю в label.py
+ORCA    # переглянуто повністю в label.py
+RLC    # переглянуто повністю в label.py

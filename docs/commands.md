@@ -99,7 +99,7 @@ Address to listen on (default `127.0.0.1`). In the server container it is `0.0.0
 |---|---|---|
 | `tickers …` | all of `tickers.txt` | base assets to collect, e.g. `AKE QNT` |
 | `--days N` | 60 | days of hourly history to request |
-| `--new` | off | only tickers from `tickers.txt` that are not in the database yet (fast) |
+| `--new` | off | only tickers from `tickers.txt` that are not in the database yet, or whose hourly history is shorter than `--days` (minus 3 days) — e.g. a watchlist coin (10 days of hourly data) just moved to training; a coin younger than `--days` is re-fetched on every run |
 
 Re-running is safe: rows are upserted. The API limit counts symbols, not days, so `--days` does not make a run
 cheaper; `--new` does.
