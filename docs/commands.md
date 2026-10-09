@@ -716,3 +716,28 @@ Scanner channel "woke up": coins whose 30-day average turnover is below $20M but
 python experiments/wake_channel.py          # whole market, last ~30 days
 python experiments/wake_channel.py --owner  # + does the rule fire before the owner's trades on quiet coins (OI from the Binance archive)
 ```
+
+### experiments/trade_patterns.py
+
+What separates the model's winning trades from losing ones: features at entry (exchange trade count vs norm, NATR and NATR vs
+its 7-day norm, range, returns, distance from the 24h high, taker-buy share, turnover, hour, a loss on the same coin in the
+previous 6 h) for the trades of `reports/long_binance_trades.csv` (6 months, Binance archive, honest universe), computed from
+the monthly 15m klines cache. Quintile PF in April–June and July–September separately → `reports/trade_patterns.md`,
+per-trade features → `reports/trade_patterns.csv`.
+
+```
+python experiments/trade_patterns.py
+```
+
+### experiments/liq_map.py
+
+Estimated liquidation map (like Coinglass / Hyblock heatmaps) from the Binance archive at 5 minutes: OI growth split into new
+longs / shorts by the bar's taker-buy share, leverage 10 / 25 / 50× in equal parts, a level burns when price reaches it, the
+map shrinks with falling OI and decays with a 3-day half-life. At the entry of each trade in `reports/trade_patterns.csv`:
+short fuel 0–3% / 3–8% above price, long fuel below, their ratio, breakout of the 24h / 7-day high. Quintile PF in two halves
+→ `reports/liq_map.md`, per-trade features → `reports/liq_map.csv`.
+
+```
+python experiments/liq_map.py [--workers 6]
+```
+
