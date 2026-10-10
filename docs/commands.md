@@ -741,3 +741,164 @@ short fuel 0–3% / 3–8% above price, long fuel below, their ratio, breakout o
 python experiments/liq_map.py [--workers 6]
 ```
 
+### experiments/position_sizing.py
+
+Position sizing after R. Vince: optimal f (the risk unit is the worst trade of the set, HPR = 1 + f·r/|r_min|), a Monte Carlo
+of drawdowns, final equity and losing streaks for f*, ½ f*, ¼ f* and fixed 1 / 2 / 5%, and the runs test (Z), lag-1
+autocorrelation and P(loss | previous loss). Sets: the owner's Binance positions (all and "system" ones), the model's 6-month
+archive trades (all and ≥ 20 M$) and the latest 30-day backtest → `reports/position_sizing.md`.
+
+```
+python experiments/position_sizing.py [--sims 10000]
+```
+
+### experiments/market_filter.py
+
+When the model should not trade at all: at each entry of `reports/long_binance_trades.csv`, from the past only — the
+model's equity curve (win share of the last 20 closed trades, PF and mean result of trades closed in 24 h), signal crowding
+(distinct coins entered in the last 1 / 4 h) and market breadth (share of archive coins above their price 24 h / 7 days ago).
+Quintile PF in two halves, plus "pause" rules with drawdown and the longest losing streak → `reports/market_filter.md`,
+per-trade features → `reports/market_filter.csv`.
+
+```
+python experiments/market_filter.py
+```
+
+### experiments/range_breakout.py
+
+"Real impulses come out of long ranges": range width over 48 / 96 h ending 4 h before entry (absolute and vs the coin's
+30-day norm), Kaufman efficiency (sideways), volume quietness, flat OI, breakout above the range high. On the model's trades
+of `reports/long_binance_trades.csv` (quintile PF in two halves) and on the owner's labeled impulse starts vs failed impulses
+→ `reports/range_breakout.md`. `--events`: without the model, every first hourly close above the 96 h high on all archive
+coins — what follows in 24 h (MFE, MAE, price) for tight-range breakouts vs the rest → `reports/range_breakout_events.md`.
+
+```
+python experiments/range_breakout.py [--workers 6]
+python experiments/range_breakout.py --events
+```
+
+### experiments/range_features.py, experiments/vp_features.py
+
+Range features (width over 96 h ending 4 h before the bar, vs the coin's 30-day norm, Kaufman efficiency, OI change over
+48 h, distance of price above the range high) and volume-profile features (7-day profile from 15m candles: volume above the
+price, thin zone ahead, position in the value area, distance from and 24 h shift of the POC; 30-day volume above) added to
+the 15m model. Variants are trained the same way as `experiments/idio_features.py`; checked by leave-ticker-out on the labels
+(caught impulses, failed impulses, false alarms) and a 6-month backtest on the honest universe →
+`reports/range_features.md`, `reports/vp_features.md`.
+
+```
+python experiments/range_features.py
+python experiments/vp_features.py
+```
+
+### experiments/dyn_poc.py
+
+"Dynamic POC" on short windows on top of the range features: a rolling 24 h profile (distance from its POC, POC shift over
+1 h / 4 h) and a profile since the start of the UTC day as in ATAS Dynamic Levels (distance, 4 h shift). Same checks as
+`experiments/range_features.py` → `reports/dyn_poc.md`.
+
+```
+python experiments/dyn_poc.py
+```
+
+### experiments/bb_features.py, experiments/ensemble.py
+
+`bb_features.py` — Bollinger Bands (20, 2σ) on top of the range features: %B and middle-line slope on closed 4h / daily
+candles, the 15m "band walk", 1h band width vs its 30-day median → `reports/bb_features.md`. `ensemble.py` — ensembles of the
+15m model on the range feature set: LightGBM, the mean of 5 LightGBM seeds, logistic regression, their blend, and "logistic
+regression above its threshold and LightGBM ≥ 0.5 / 0.75 of its threshold" (an early model with a soft confirmation); the
+leave-ticker-out table adds the share of the move already done at the first signal → `reports/ensemble.md`.
+
+```
+python experiments/bb_features.py
+python experiments/ensemble.py
+```
+
+### experiments/range_v2.py
+
+Range "as the owner sees it": the corridor of hourly closes (max / min, no wicks) counts as a range if its width is at most
+1.5 × the coin's median daily range (≥ 4 %); for each hour the longest such corridor of 12 h … 21 days, and for a bar the
+longest one among the last 24 h. Features: duration, width (absolute and vs the daily range), breakout in range widths, hours
+since price left the corridor. Variants: range v1, v2 instead of v1, both → `reports/range_v2.md`.
+
+```
+python experiments/range_v2.py
+```
+
+### experiments/tree_ridge.py, experiments/linear_tree.py, experiments/hard_negatives.py
+
+`tree_ridge.py` — LightGBM leaves → L2 logistic regression ("leaf ridge") and LightGBM linear trees vs the plain model.
+`linear_tree.py` — linear trees on the working features, threshold by F1 and threshold giving as many signal bars as LightGBM.
+`hard_negatives.py` — fewer false alarms: F0.5 threshold, softer class weights (√ of the ratio), and ordinary coins as
+negatives (half A of the backtest cache, April–June); the backtest uses only half B and July–September (unseen coins and
+months) → `reports/tree_ridge.md`, `reports/linear_tree.md`, `reports/hard_negatives.md`.
+
+```
+python experiments/tree_ridge.py
+python experiments/linear_tree.py
+python experiments/hard_negatives.py
+```
+
+
+### experiments/early_target.py, experiments/early_target_check.py, experiments/signal_ranking.py
+
+`early_target.py` — a 15m model trained on the impulse START (positives = first 30 / 60 min, or 30 min before to 30 min after
+the start; the rest of the impulse is left out of training) vs the working target "impulse in progress". Leave-ticker-out at
+an equal false-alarm rate, plus a 6-month backtest: entry by either model (`or_*`), or entry only by the start model with the
+position held while either model signals (`split_*`). `early_target_check.py` — robustness of `split_start30`: neighbouring
+thresholds, other seeds, coin / period halves, and whether the entry is actually earlier than the working Alert.
+`signal_ranking.py` — entry attributes (P, idiosyncratic move, beta, R², open positions) by quintile, and a limit of 3 / 5
+concurrent positions with different priorities among same-bar signals → `reports/early_target.md`,
+`reports/early_target_check.md`, `reports/signal_ranking.md`.
+
+```
+python experiments/early_target.py
+python experiments/early_target_check.py
+python experiments/signal_ranking.py
+```
+
+### experiments/flow_memory.py
+
+"Permanent" vs "transitory" taker-buy flow (share of buys regressed on preceding returns with a rolling 7-day OLS; the
+residual is the permanent part) and the coin's pump memory (number of +10% / +20% daily moves in the last 30 days, the largest
+daily move, days since the last +20%). Leave-ticker-out and the 6-month backtest for base / flow / mem / both →
+`reports/flow_memory.md`.
+
+```
+python experiments/flow_memory.py
+```
+
+### experiments/auto_label.py, experiments/label_noise.py, experiments/auto_train.py
+
+Automatic labelling in hindsight. `auto_label.py --stage stats` compares the owner's impulses and failed impulses (start-bar
+state, hindsight move to the end of the labelling rule); `--stage match` runs a causal start trigger (1 h: price ≥ a·ATR,
+OI ≥ +b, volume ≥ c × median) over the owner's tickers, classifies each event in hindsight (impulse: move ≥ 8 ATR and
+≥ 1.5 h; grey zone excluded) and compares with the manual labels (found, boundary errors, extra events, bar precision /
+recall). `label_noise.py` drops unlabeled large auto-impulses of reviewed tickers from training. `auto_train.py` trains on
+auto-labels of half of the archive coins and tests on the owner's labels and a backtest on the other half
+(`--train-until DATE` — time split: auto-labels only before DATE, backtest from that month). `auto_robust.py` swaps the
+halves (A→B and B→A), seeds and ±5% thresholds under the time split. `auto_walkforward.py` trains on auto-labels of ALL
+archive coins with a monthly walk-forward (test month m, training up to m − 3 days) and checks a criterion fixed before the
+run → `reports/auto_label_stats.md`, `reports/auto_label_match.md`, `reports/label_noise.md`, `reports/auto_train.md`,
+`reports/auto_robust.md`, `reports/auto_walkforward.md`.
+
+```
+python experiments/auto_label.py --stage stats
+python experiments/auto_label.py --stage match
+python experiments/label_noise.py
+python experiments/auto_train.py [--train-until 2026-07-01]
+python experiments/auto_robust.py
+python experiments/auto_walkforward.py
+```
+
+### experiments/potential_target.py
+
+Target "there is still room from here": a bar inside an owner's impulse is positive only if price reaches +3 / +5 ATR(15m)
+before the backtest stop within 12 h; late impulse bars become 0 (pot3, pot5) or are dropped (pot3_x). Leave-ticker-out
+with matched false alarms, then the 6-month backtest with `split_X` (enter on X, hold on base or X) and `only_X` schemes,
+split_start30 as reference, criterion fixed before the run → `reports/potential_target.md`,
+`reports/potential_target_trades.csv`.
+
+```
+python experiments/potential_target.py
+```
