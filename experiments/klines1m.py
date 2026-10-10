@@ -28,6 +28,7 @@ import requests
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIR = os.path.join(ROOT, "data", "klines1m")
 URL = "https://data.binance.vision/data/futures/um/monthly/klines/{s}/1m/{s}-1m-{m}.zip"
+URL_DAY = "https://data.binance.vision/data/futures/um/daily/klines/{s}/1m/{s}-1m-{m}.zip"      # поточний місяць — лише денні файли
 MONTHS = ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"]
 COLS = ["open_time", "o", "h", "l", "c", "vol", "close_time", "v", "n", "bvol", "bv", "ignore"]
 
@@ -46,10 +47,14 @@ def path(base: str) -> str:
     return os.path.join(DIR, f"{base}.parquet")
 
 
-def _month(base: str, month: str) -> pd.DataFrame | None:
+def daily_path(base: str) -> str:
+    return os.path.join(DIR, "daily", f"{base}.parquet")
+
+
+def _month(base: str, month: str, url: str = URL) -> pd.DataFrame | None:
     s = quote(f"{base}USDT")
     try:
-        r = requests.get(URL.format(s=s, m=month), timeout=60)
+        r = requests.get(url.format(s=s, m=month), timeout=60)
     except requests.RequestException:
         return None
     if r.status_code != 200:
@@ -82,11 +87,33 @@ def fetch(base: str, months: list[str]) -> str:
     return f"{base}: +{new} міс."
 
 
+def fetch_days(base: str, days: list[str]) -> str:
+    """Денні файли (YYYY-MM-DD) незавершеного місяця → data/klines1m/daily/<монета>.parquet (місячний кеш не чіпаємо)."""
+    os.makedirs(os.path.dirname(daily_path(base)), exist_ok=True)
+    have = pd.read_parquet(daily_path(base)) if os.path.exists(daily_path(base)) else pd.DataFrame()
+    got = set(have.index.strftime("%Y-%m-%d").unique()) if len(have) else set()
+    parts = [have] if len(have) else []
+    new = 0
+    for d in days:
+        if d in got:
+            continue
+        df = _month(base, d, URL_DAY)
+        if df is not None and len(df):
+            parts.append(df)
+            new += 1
+    if new:
+        out = pd.concat(parts).sort_index()
+        out[~out.index.duplicated(keep="last")].to_parquet(daily_path(base))
+    return f"{base}: +{new} дн."
+
+
 def load(base: str, start=None, end=None) -> pd.DataFrame:
-    """1m-свічки з кешу (порожньо, якщо монети немає)."""
-    if not os.path.exists(path(base)):
+    """1m-свічки з кешу: місячні + денні файли (порожньо, якщо монети немає)."""
+    parts = [pd.read_parquet(p) for p in (path(base), daily_path(base)) if os.path.exists(p)]
+    if not parts:
         return pd.DataFrame()
-    df = pd.read_parquet(path(base))
+    df = pd.concat(parts).sort_index() if len(parts) > 1 else parts[0]
+    df = df[~df.index.duplicated(keep="last")]
     if start is not None:
         df = df[df.index >= pd.Timestamp(start, tz="UTC") if not isinstance(start, pd.Timestamp) else df.index >= start]
     if end is not None:
@@ -113,9 +140,19 @@ def main() -> None:
     ap.add_argument("bases", nargs="*", help="монети (за замовчуванням — універсум довгого бектесту + навчальні + розмічені)")
     ap.add_argument("--months", nargs="+", default=MONTHS, help="місяці YYYY-MM (за замовчуванням квітень–вересень 2026)")
     ap.add_argument("--workers", type=int, default=8, help="паралельних завантажень")
+    ap.add_argument("--days", nargs=2, metavar=("FROM", "TO"),
+                    help="денні файли з FROM по TO (YYYY-MM-DD, включно) замість місячних — для поточного місяця")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
     bases = [b.upper() for b in args.bases] or default_bases()
+    if args.days:
+        days = [d.strftime("%Y-%m-%d") for d in pd.date_range(args.days[0], args.days[1])]
+        print(f"{len(bases)} монет × {len(days)} дн. → {os.path.join(DIR, 'daily')}")
+        with ThreadPoolExecutor(args.workers) as ex:
+            for i, msg in enumerate(ex.map(lambda b: fetch_days(b, days), bases), 1):
+                if i % 20 == 0 or i == len(bases):
+                    print(f"  {i}/{len(bases)}  {msg}", flush=True)
+        return
     print(f"{len(bases)} монет × {len(args.months)} міс. → {DIR}")
     with ThreadPoolExecutor(args.workers) as ex:
         for i, msg in enumerate(ex.map(lambda b: fetch(b, args.months), bases), 1):

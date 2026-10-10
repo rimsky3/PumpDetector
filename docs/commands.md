@@ -902,3 +902,78 @@ split_start30 as reference, criterion fixed before the run → `reports/potentia
 ```
 python experiments/potential_target.py
 ```
+
+### experiments/event_model.py
+
+Event logic: the model answers only at a spike (auto-label trigger T1: 1 h price ≥ 2 ATR, OI ≥ +2%, volume ≥ 2× the
+7-day median), on the first 4 bars of each spike episode, and is trained only on those rows of the owner's labels
+(`ev_in` — spike inside an impulse; `ev_start` — within ±1 h of the start, later spikes dropped). Compared with the
+current Alert and with entering on every trigger without a model (`trig`), with and without the hourly confirmation (`_c`)
+→ `reports/event_model.md`, `reports/event_model_trades.csv`.
+
+```
+python experiments/event_model.py
+```
+
+### experiments/short_exhaustion.py
+
+Short after exhaustion, rules only (no new model) on the working model's Alerts over the 6-month Binance archive: short
+against an Alert on a coin already +20% in 24 h (A), after the long model exits a ≥ 8 ATR move (B), when the close gives
+back ⅓ of the move (C), or when OI drops 10% from its peak (D); random-short and "+20% without Alert" controls. Stop above
+the peak (≤ 2.5 ATR), half off at −3 ATR then breakeven, 12 h time exit; fees and funding; squeeze and gap shares, worst
+trades, criterion fixed before the run → `reports/short_exhaustion.md`, `reports/short_exhaustion_trades.csv`.
+
+```
+python experiments/short_exhaustion.py
+```
+
+### experiments/quarter_hour.py
+
+"Quarter-hour open" features from 1m candles (taker-buy share in the first minute of each 15m bar and derivatives, after
+Kim & Hansen, "The Quarter-Hour Effect") added to the working 15m feature set; a second seed of the base model measures
+run-to-run noise. Needs the 1m cache: `experiments/klines1m.py` (monthly archive files; `--days FROM TO` adds daily files of
+the unfinished month into `data/klines1m/daily/`) → `reports/quarter_hour.md`, `reports/quarter_hour_trades.csv`.
+
+```
+python experiments/klines1m.py                                  # all default coins, April–September
+python experiments/klines1m.py SOON ZEC --days 2026-10-01 2026-10-09
+python experiments/quarter_hour.py
+```
+
+### experiments/age_threshold.py
+
+Entry threshold as a function of the "age" of the spike (bars since the first auto-label trigger T1 of the current episode):
+entries only in the first 2 / 4 hours (`fresh2`, `fresh4`), a lower threshold in the first hour (`early`), or a threshold
+rising with age (`ramp`). One model, only the entry rule changes; accuracy and speed criteria fixed before the run →
+`reports/age_threshold.md`, `reports/age_threshold_trades.csv`.
+
+```
+python experiments/age_threshold.py
+```
+
+### experiments/fe_relative.py
+
+New feature groups on top of the working 15m features: OI and volume relative to the market (cross-sectional mean / rank
+over all archive coins), top traders vs all accounts (unused columns of the Binance metrics archive), the perp premium
+index (`premiumIndexKlines` 15m from data.binance.vision), and OI change per unit of turnover. Each group alone and all
+together, a second seed as the noise gauge; cache in `data/fe_rel/` → `reports/fe_relative.md`,
+`reports/fe_relative_trades.csv`.
+
+```
+python experiments/fe_relative.py
+```
+
+### experiments/label_teacher.py, experiments/teacher_walkforward.py
+
+Learned labeller with hindsight ("teacher"). `label_teacher.py` builds the auto-label trigger events on the owner's tickers,
+describes each move in hindsight (size, duration, OI during and after, volume, smoothness, pullbacks, before / after
+context, idiosyncratic share), trains LightGBM on "overlaps an owner impulse / not" and checks it leave-ticker-out against
+the rule-based auto-labels (found impulses vs extra ones) → `reports/label_teacher.md`, `reports/label_teacher_events.csv`,
+`reports/label_teacher_review.csv` (disputed events for the owner). `teacher_walkforward.py` lets the teacher label all
+archive coins (impulse / grey zone / not, thresholds from its leave-ticker-out curve) and trains the causal 15m model on
+those labels with the monthly walk-forward of `auto_walkforward.py` → `reports/teacher_walkforward.md`.
+
+```
+python experiments/label_teacher.py
+python experiments/teacher_walkforward.py
+```

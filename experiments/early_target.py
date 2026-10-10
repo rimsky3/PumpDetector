@@ -168,7 +168,7 @@ def load_data():
     parts, px = [], {}
     for b, g in d.groupby("base_asset"):
         a = aggregate(raw, b, "15min")
-        px[b] = a[["price", "high", "low"]]
+        px[b] = a[["price", "high", "low", "volume", "oi_coin_log_idx"]]
         parts.append(I.new_features(a, idx).reindex(g["ts"]).set_axis(g.index))
     d = d.join(pd.concat(parts)).sort_values(["base_asset", "ts"]).reset_index(drop=True)
     return d, pumps, px, idx, uni
