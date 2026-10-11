@@ -305,9 +305,9 @@ class Bot:
     # ---------- команди і кнопки ----------
     def settings_markup(self) -> list:
         s = self.st.d["settings"]
-        row = [{"text": ("✅ " if s.get(k, DEFAULTS[k]) else "⬜ ") + TITLES[k], "callback_data": f"set:{k}"}
-               for k in ("alert", "realert", "cand", "wake", "fp", "woke")]
-        return [row[:2], row[2:4], row[4:], [{"text": "🔕 Заглушені", "callback_data": "muted"}]]
+        # кнопки — з DEFAULTS (усі типи сповіщень, по 2 в ряд): новий тип з'являється тут сам (12.10: Late не мав кнопки)
+        row = [{"text": ("✅ " if s.get(k, DEFAULTS[k]) else "⬜ ") + TITLES[k], "callback_data": f"set:{k}"} for k in DEFAULTS]
+        return [row[i:i + 2] for i in range(0, len(row), 2)] + [[{"text": "🔕 Заглушені", "callback_data": "muted"}]]
 
     def results_markup(self) -> list:
         return [[{"text": "Сьогодні", "callback_data": "res:today"}, {"text": "Вчора", "callback_data": "res:yday"},
