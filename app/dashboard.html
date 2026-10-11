@@ -1620,7 +1620,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const full = st.full;
       // той самий тікер і ТФ уже на графіку (напр. зміна адреси після вибору тікера в ІНШОМУ вікні перезапускає всі вікна):
       // свіжіше за хвилину — нічого не робимо; інакше — тихе оновлення без легкого кроку, щоб мітки не зникали
-      const key = `${tk}|${P.tf || ""}|${full ? 1 : 0}`, same = P.data && P.loadedKey === key;
+      // режим і модель — теж у ключі (12.10, власник: перемикання «ринок» ↔ основний не міняло мітки угод протягом хвилини)
+      const key = `${tk}|${P.tf || ""}|${full ? 1 : 0}|${st.model}|${st.modes.forecast}`, same = P.data && P.loadedKey === key;
       if (same && !opts.quiet && !opts.force && Date.now() - (P.loadedAt || 0) < 60000) { done(); renderHead(); return; }
       if (same) { opts = { ...opts, quiet: true }; }
       const stamp = () => { P.loadedKey = key; P.loadedAt = Date.now(); };
