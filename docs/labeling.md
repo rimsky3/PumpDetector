@@ -52,6 +52,13 @@ false starts can be analysed separately.
 
 `pumps.csv` is the single source of truth for labels. The `pumps` table in the database is rebuilt from it.
 
+Safeguards (since 2026-10-11, after a labeling session overwrote the file with only the newly added rows): the file is
+always resolved next to `load_pumps.py` (not the current working directory); every write first saves a copy to
+`data/backups/pumps-<UTC time>.csv` (the last 50 are kept); and a write that would shrink the labels by more than one row
+— against the current file, or against the latest backup if the file is missing — is refused with an error (a single
+delete in `label.py` removes exactly one row). To restore, copy the right backup over `pumps.csv` and run
+`python load_pumps.py`.
+
 ```csv
 base_asset,start_ts,end_ts,pattern_type,notes
 AKE,2026-09-18 13:05,2026-09-20 10:00,pump,

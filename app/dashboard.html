@@ -1597,15 +1597,29 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (!P.ticker) return;
       const tk = P.ticker;
       const done = opts.quiet ? () => {} : busy(q(".chart-card"), null);
+      // два кроки (2026-10-11, власник: «графік перемикається ~5 с»): спершу легка відповідь (свічки, OI, обсяг, P, зони — ~0.7 с)
+      // і графік одразу; повна (позиція, DRIVERS, «прокидається», мітки b / p, картки) — тихо у фоні й дорисовується поверх
+      const url = (light) => `/api/ticker?symbol=${encodeURIComponent(tk)}&model=${st.model}&strategy=${st.modes.forecast}&days=30` +
+        `${P.tf ? "&tf=" + P.tf : ""}${light ? "&light=1" : ""}`;
+      const full = st.full;
       try {
-        const d = await api(`/api/ticker?symbol=${encodeURIComponent(tk)}&model=${st.model}&strategy=${st.modes.forecast}&days=30` +
-          `${P.tf ? "&tf=" + P.tf : ""}${st.full ? "" : "&light=1"}`, { quiet: !!opts.quiet });
+        const d = await api(url(true), { quiet: !!opts.quiet });
         if (P.ticker !== tk) return;               // поки вантажилось, вікну дали інший тікер
-        P.data = d; show($("fError"), "");
+        if (!(full && opts.quiet && P.data && P.data.ticker === tk && !P.data.light)) P.data = d;   // тихе оновлення не «гасить» повну інфо
+        show($("fError"), "");
       } catch (e) { if (P.ticker === tk) { P.data = null; show($("fError"), `${tk}: ${e.message}`); } return; }
       finally { done(); }
       renderHead(); renderChart();
       if (isActive()) { renderToolbar(); renderLeft(); }
+      if (full) {
+        try {
+          const d2 = await api(url(false), { quiet: true });
+          if (P.ticker !== tk || st.full !== full) return;
+          P.data = d2;
+          renderHead(); renderChart();
+          if (isActive()) { renderToolbar(); renderLeft(); }
+        } catch (e) { /* повна інфо не прийшла — лишається легкий графік; наступне оновлення спробує знову */ }
+      }
       if (st.focus && st.focus.ticker === P.ticker && chart && isActive()) {      // клік по угоді в журналі
         const f = st.focus; st.focus = null;
         requestAnimationFrame(() => { try { chart.timeScale().setVisibleRange({ from: f.from, to: f.to }); } catch (e) {} });

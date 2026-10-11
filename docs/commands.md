@@ -977,3 +977,37 @@ those labels with the monthly walk-forward of `auto_walkforward.py` → `reports
 python experiments/label_teacher.py
 python experiments/teacher_walkforward.py
 ```
+
+### experiments/sample_weights.py
+
+Ablation on the owner's labels over three random seeds: per-impulse sample weights (every impulse gets the same total
+weight, López de Prado's uniqueness idea), LightGBM regularization (`min_child_samples` 100, `extra_trees`, `path_smooth`),
+`scale_pos_weight` 8 instead of balanced class weights, and the combination; leave-ticker-out, 6-month backtest, PF by
+entry-score quintile → `reports/sample_weights.md`, `reports/sample_weights_trades.csv`.
+
+```
+python experiments/sample_weights.py
+```
+
+### experiments/teacher_combo.py
+
+Teacher–student with soft labels: the teacher's probability is calibrated (isotonic regression on its out-of-fold
+predictions) and used as a soft target (row duplication with weights p / 1 − p); variants with and without the top-trader
+features; negatives far from any event are downsampled with compensating weights; monthly walk-forward on three seeds.
+`--event-weights` also gives every teacher event the same total weight → `reports/teacher_combo[_ew].md`.
+
+```
+python experiments/teacher_combo.py [--event-weights]
+```
+
+### experiments/rush_orders.py
+
+Minute-level start detector from the trade stream: `--stage data` downloads the Binance `aggTrades` archive for the days
+around the owner's events and compresses each day to 5-second sums of taker orders by size (cache `data/rush/`);
+`--stage test` runs the rule "large market buys ≥ K × their 24 h mean, buys ≥ 60%, price +1% in 5 min" and compares with
+the owner's starts and the 15m model's first Candidate → `reports/rush_orders.md`, `reports/rush_orders_events.csv`.
+
+```
+python experiments/rush_orders.py --stage data [--workers 4]
+python experiments/rush_orders.py --stage test
+```

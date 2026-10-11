@@ -666,13 +666,27 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
 _oi_share_cache: dict = {}
 
 
+_wake_cache: dict = {}                     # (тікер, день початку вікна) → (5-хв відрізок, мітки)
+
+
 def wake_marks(conn, base: str, since: pd.Timestamp) -> list[dict]:
+    """Мітки «прокидається» за видимий період. wake.history перечитує 5m-дані за ~38 днів (ZEC — до 2 с на перемикання,
+    заміри 2026-10-11), тож результат кешується до наступного 5-хв бару: повторні відкриття тікера — миттєві."""
+    since = pd.Timestamp(since)
+    key, slot = (base, since.floor("1D")), pd.Timestamp.now(tz="UTC").floor("5min")
+    hit = _wake_cache.get(key)
+    if hit and hit[0] == slot:
+        return [w for w in hit[1] if w["ts"] >= since]
     try:
-        return wake.history(conn, base, pd.Timestamp(since))
+        res = wake.history(conn, base, since.floor("1D"))
     except Exception as e:                     # 5m-даних може не бути — графік без міток, а не помилка
         print(f"! прокидається {base}: {e}")
         conn.rollback()
         return []
+    if len(_wake_cache) > 500:
+        _wake_cache.clear()
+    _wake_cache[key] = (slot, res)
+    return [w for w in res if w["ts"] >= since]
 
 
 def oi_share(conn, base: str) -> list[dict] | None:

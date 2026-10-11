@@ -27,7 +27,14 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 from dotenv import load_dotenv
 
-PUMPS_FILE = "pumps.csv"
+# Абсолютний шлях (2026-10-11): 11.10 о 02:59 під час розмітки CHIP у label.py pumps.csv перезаписався лише 6 новими рядками
+# (153 інших зникли; відновлено з git 319ef94). Ймовірна причина — відносний шлях: якщо файл «не знайшовся», read_pumps
+# повертав [], і label.py записував розмітку заново з одного рядка. Тепер файл шукається поруч зі скриптом, а write_pumps
+# робить резервну копію і відмовляється зменшувати розмітку більш ніж на 1 рядок за раз.
+ROOT = os.path.dirname(os.path.abspath(__file__))
+PUMPS_FILE = os.path.join(ROOT, "pumps.csv")
+BACKUP_DIR = os.path.join(ROOT, "data", "backups")
+BACKUP_KEEP = 50
 PATTERN_TYPES = {"pump", "false_start", "other"}
 SETUPS = {"breakout", "pullback", "other"}
 COLUMNS = ["base_asset", "start_ts", "end_ts", "pattern_type", "notes", "entry_ts", "entry_price", "stop_price", "setup"]
@@ -105,7 +112,45 @@ def read_pumps(path: str = PUMPS_FILE) -> list[tuple]:
     return rows
 
 
-def write_pumps(rows: list[tuple], path: str = PUMPS_FILE) -> None:
+def _count_rows(path: str) -> int:
+    with open(path, encoding="utf-8", newline="") as f:
+        return sum(1 for _ in csv.DictReader(f))
+
+
+def _latest_backup() -> str | None:
+    if not os.path.isdir(BACKUP_DIR):
+        return None
+    files = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith("pumps-") and f.endswith(".csv"))
+    return os.path.join(BACKUP_DIR, files[-1]) if files else None
+
+
+def backup_pumps(path: str = PUMPS_FILE) -> str | None:
+    """Копія поточного pumps.csv у data/backups/pumps-<час UTC>.csv; лишаються останні BACKUP_KEEP."""
+    if not os.path.exists(path):
+        return None
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    dst = os.path.join(BACKUP_DIR, f"pumps-{datetime.now(timezone.utc):%Y%m%d-%H%M%S-%f}.csv")
+    with open(path, "rb") as src, open(dst, "wb") as out:
+        out.write(src.read())
+    old = sorted(f for f in os.listdir(BACKUP_DIR) if f.startswith("pumps-") and f.endswith(".csv"))
+    for f in old[:-BACKUP_KEEP]:
+        os.remove(os.path.join(BACKUP_DIR, f))
+    return dst
+
+
+def write_pumps(rows: list[tuple], path: str = PUMPS_FILE, allow_shrink: bool = False) -> None:
+    """Записати розмітку. Запобіжник: розмітка не може зменшитись більш ніж на 1 рядок за один запис (одне видалення
+    в label.py — рівно мінус один) — ні проти поточного файлу, ні (якщо файлу немає) проти останньої резервної копії.
+    allow_shrink=True — свідоме масове видалення."""
+    if not allow_shrink:
+        ref = path if os.path.exists(path) else _latest_backup()
+        if ref is not None:
+            before = _count_rows(ref)
+            if len(rows) < before - 1:
+                raise ValueError(f"запис скасовано: розмітка зменшилась би з {before} до {len(rows)} рядків "
+                                 f"({'поточний файл' if ref == path else 'остання резервна копія ' + os.path.basename(ref)}). "
+                                 "Перевір pumps.csv; резервні копії — data/backups/.")
+    backup_pumps(path)
     rows = sorted(rows, key=lambda r: (r[0], r[1]))
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8", newline="") as f:
