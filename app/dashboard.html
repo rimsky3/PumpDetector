@@ -345,6 +345,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .chip.alert { background: var(--alert-bg); color: var(--hot-soft); }
 .chip.cand { background: var(--cand-bg); color: var(--amber); }
 .chip.past { opacity: .6; }
+.chip.entry { background: var(--hot); color: var(--bg); }
+.chip.intrade { background: var(--alert-bg); color: var(--hot-soft); box-shadow: inset 0 0 0 1px var(--hot); }
+.chip.late { background: transparent; color: var(--fg3); box-shadow: inset 0 0 0 1px var(--line2); }
 .chip.woke { border: 1px solid var(--mover); color: var(--mover); line-height: 14px; }
 .chip.vol { background: #221d33; color: var(--wake); }
 .chip.b { background: var(--ok-bg); color: var(--ok); }
@@ -1813,7 +1816,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     dot.style.background = r.status !== "calm" ? colors[r.status] : r.wake ? cssVar("--wake") : r.channel === "woke" ? cssVar("--mover") : cssVar("--line2");
     name.append(dot, r.ticker);
     const chip = (cls, text, title) => { const c = el("span", "chip " + cls, text); if (title) c.title = title; name.appendChild(c); };
-    if (ev.sig) chip((ev.sig.tier === "alert" ? "alert" : "cand") + (ev.sig.live ? "" : " past"),
+    // стан угоди основного режиму (власник 12.10, варіант A): Entry / In trade / Alert · late замість голого «Alert»
+    const tr = r.trade;
+    if (tr && tr.state === "entry") chip("entry", `Entry · ${agoShort(msSince(tr.entry_at))}`,
+      `Model entry (main mode) at ${tr.entry != null ? fmtNum(tr.entry) : "—"}${tr.result_pct != null ? ` · now ${fmtPct(tr.result_pct)}` : ""}`);
+    else if (tr && tr.state === "open") chip("intrade", `In trade ${tr.result_pct != null ? fmtPct(tr.result_pct) : ""}`.trim(),
+      `Model position open since ${agoShort(msSince(tr.entry_at))} ago (main mode)`);
+    else if (tr && tr.state === "late") chip("late", "Alert · late",
+      "Alert is on, but the model did not enter: not a fresh start (split mode), a re-entry after a stop, or the mode's filter."
+      + (tr.last_exit ? ` Last trade closed ${agoShort(msSince(tr.last_exit))} ago (${tr.last_reason || "—"}).` : ""));
+    else if (ev.sig) chip((ev.sig.tier === "alert" ? "alert" : "cand") + (ev.sig.live ? "" : " past"),
       (ev.sig.tier === "alert" ? "Alert" : "Candidate") + (ev.sig.live ? "" : ` · ${agoShort(ev.sig.ago)}`),
       ev.sig.live ? "" : "Signal faded; the row stays in NOW for 1 hour after the last signal bar");
     if (ev.fp) chip(ev.fp.kind, ev.fp.kind === "b" ? `b · Reclaim · ${agoShort(ev.fp.ago)}` : `p · ${agoShort(ev.fp.ago)}`,

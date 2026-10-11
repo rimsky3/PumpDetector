@@ -42,7 +42,7 @@ import market
 import orderbook
 import strategies
 from risk import PARTIAL_EXIT, position_state, trade_stats
-from tiers import tier_frame
+from tiers import split_scores, tier_frame
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT_DIR = os.path.join(ROOT, "reports", "backtests")
@@ -92,12 +92,23 @@ def exclusions(conn) -> set[str]:
     return trained | labeled | excluded_tickers(ROOT)
 
 
-def ensure_data(conn, client: Coinalyze, bases: list[str], days: int, log=print) -> list[str]:
-    """Контракти (один запит Coinalyze), 15m з Binance і Bybit і 15m-ліквідації за days + прогрів. Повертає монети з даними."""
+def ensure_data(conn, client: Coinalyze | None, bases: list[str], days: int, log=print, liq: bool = True) -> list[str]:
+    """Контракти (один запит Coinalyze), 15m з Binance і Bybit і 15m-ліквідації за days + прогрів. Повертає монети з даними.
+    client=None (--no-coinalyze) — без Coinalyze: монетам без рядка markets — лише контракт Binance, ліквідацій немає.
+    liq=False — без 15m-ліквідацій (моделі без ознак ліквідацій, з 2026-10-07)."""
     have = {r[0] for r in conn.execute("SELECT DISTINCT base_asset FROM markets WHERE base_asset = ANY(%s)", (bases,))}
     new = [b for b in bases if b not in have]
-    if new:
+    if new and client is not None:
         upsert_markets(conn, find_markets(client, new))
+    elif new:
+        # універсум — USDT-перпи Binance, тож контракт Binance відомий; Bybit для них не додаємо (дані лише Binance)
+        conn.cursor().executemany("""INSERT INTO markets (symbol, exchange_code, exchange_name, base_asset, quote_asset,
+                                     symbol_on_exchange, volume_denominated, has_ohlcv, has_buy_sell, has_long_short)
+                                     VALUES (%s, 'A', 'Binance', %s, 'USDT', %s, 'BASE_ASSET', true, true, true)
+                                     ON CONFLICT (symbol) DO NOTHING""",
+                                  [(f"{b}USDT_PERP.A", b, f"{b}USDT") for b in new])
+        conn.commit()
+        log(f"  без Coinalyze: {len(new)} монет без опису ринку — додано лише контракт Binance")
     span = days + WARMUP_DAYS
     # дотягуємо лише бракуюче: монети, де 15m уже є з потрібної дати й до останньої години, пропускаємо
     since = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=span)
@@ -110,7 +121,8 @@ def ensure_data(conn, client: Coinalyze, bases: list[str], days: int, log=print)
     for i in range(0, len(todo), 10):
         part = todo[i:i + 10]
         fetch_exchange.collect(conn, part, ["15m"], span, log=lambda m: None, exchanges=list(INTRADAY_EXCHANGES))
-        collect_liquidations(client, conn, part, ["15m"], span, log=lambda m: None)
+        if client is not None and liq:
+            collect_liquidations(client, conn, part, ["15m"], span, log=lambda m: None)
         log(f"  дані: {min(i + 10, len(todo))}/{len(todo)}")
     got = {r[0] for r in conn.execute("""SELECT DISTINCT m.base_asset FROM ohlcv o JOIN markets m USING (symbol)
                                          WHERE o.interval = '15min' AND m.base_asset = ANY(%s)""", (bases,))}
@@ -129,6 +141,10 @@ def tiers_and_bars(conn, base: str, m15: dict, m1: dict, days: int) -> tuple[pd.
     s1 = d1[["base_asset", "ts"]].assign(probability=m1["model"].predict_proba(d1[m1["features"]])[:, 1], threshold=m1["threshold"]) \
         if not d1.empty else pd.DataFrame(columns=["base_asset", "ts", "probability", "threshold"])
     t = tier_frame(s15, s1, m15.get("confirm", {}).get("share", 0.75)).set_index("ts").sort_index()
+    if m15.get("start"):                        # модель «старт» (режим split): її alert_score — колонка start_score
+        ms = m15["start"]
+        ss = d15[["base_asset", "ts"]].assign(probability=ms["model"].predict_proba(d15[ms["features"]])[:, 1], threshold=ms["threshold"])
+        t["start_score"] = tier_frame(ss, s1, m15.get("confirm", {}).get("share", 0.75)).set_index("ts").sort_index()["alert_score"]
     start = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=days)
     t = t[t.index >= start]
     if t.empty:
@@ -147,6 +163,11 @@ def run_ticker(conn, base: str, m15: dict, m1: dict, days: int, entry: str, stra
     if strat is not None:
         entry = "candidate" if strat.get("signal") == "candidate" else "alert"
     score = t["alert_score"] if entry == "alert" else t["s15"]
+    entry_p = None
+    if strategies.is_split(strat):              # режим split: вхід — модель «старт», утримання — основна або «старт»
+        if "start_score" not in t:
+            raise ValueError("режим split: немає моделі «старт» (train.START_NAME) поруч з 15m-моделлю")
+        entry_p, score = split_scores(score, t["start_score"])
     allow = None
     if strat is not None and strat.get("ob"):
         row = conn.execute("""SELECT symbol_on_exchange FROM markets WHERE base_asset = %s AND exchange_name = 'Binance'
@@ -157,7 +178,7 @@ def run_ticker(conn, base: str, m15: dict, m1: dict, days: int, entry: str, stra
     # режим «б/з на p»: мітки з fp_marks (є лише там, де писався футпрінт; для історичної перевірки — experiments/p_exit.py)
     p_marks = footprint.p_times(conn, [base], h.index.min()).get(base, set()) if strat is not None and strat.get("p_be") else None
     pos = position_state(h, score, 1.0, m15.get("risk", {}).get("k"), m15.get("exit_bars", 4), PARTIAL_EXIT,
-                         strategies.entry_rule(strat) if strat is not None else None, allow, p_marks)
+                         strategies.entry_rule(strat) if strat is not None else None, allow, p_marks, entry_prob=entry_p)
     trades = []
     for tr in list(pos.get("trades", [])) + ([pos] if pos.get("open") else []):
         trades.append({"ticker": base, "entry_ts": int(pd.Timestamp(tr["entry_ts"]).timestamp()),
@@ -217,6 +238,9 @@ def main() -> None:
     p.add_argument("--no-fetch", action="store_true", help="не завантажувати дані, лише те, що вже є в базі")
     p.add_argument("--k", type=float, default=None, help="стоп у ATR замість збереженого в моделі (порівняти моделі з однаковим стопом)")
     p.add_argument("--limit", type=int, default=0, help="лише перші N монет (перевірка)")
+    p.add_argument("--no-coinalyze", action="store_true",
+                   help="не звертатися до Coinalyze (спільний ліміт ключа зі скринером на сервері): дані — лише Binance / Bybit, "
+                        "монетам без опису ринку в базі — лише контракт Binance; 15m-ліквідації не потрібні моделям без них")
     args = p.parse_args()
     strat = strategies.get(args.strategy) if args.strategy else None
     if strat is not None and not strategies.is15(strat):
@@ -225,6 +249,8 @@ def main() -> None:
     t0 = time.time()
     mdir = train.MODELS_DIR if args.model == "current" else train.CANDIDATE_DIR
     m15 = joblib.load(train.model_path(train.M15_NAME, mdir))
+    if os.path.exists(train.model_path(train.START_NAME, mdir)):      # модель «старт» — для режиму split
+        m15["start"] = joblib.load(train.model_path(train.START_NAME, mdir))
     m1 = joblib.load(train.model_path("lightgbm", mdir))
     if args.k is not None:
         m15 = {**m15, "risk": {**m15.get("risk", {}), "k": args.k}}
@@ -241,7 +267,8 @@ def main() -> None:
         print(f"поза навчанням і виключеними: {len(bases)}")
         status(f"дані: {len(bases)} монет", 2, steps, coins=len(bases))
         if not args.no_fetch:
-            bases = ensure_data(conn, Coinalyze(os.environ["COINALYZE_API_KEY"]), bases, args.days)
+            liq = any(f.startswith("liq_") for f in m15["features"])        # моделі без ліквідацій (з 07.10) — не качати
+            bases = ensure_data(conn, None if args.no_coinalyze else Coinalyze(os.environ["COINALYZE_API_KEY"]), bases, args.days, liq=liq)
         status(f"модель: {len(bases)} монет", 3, steps, coins=len(bases))
         results = []
         for i, b in enumerate(bases, 1):

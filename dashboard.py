@@ -148,6 +148,15 @@ def tier_rows(conn, base: str | None = None, rolling: bool = False) -> pd.DataFr
     return (t, T.tier_frame(sig[sig["model"] == T.ROLL_MODEL], s1h, share())) if rolling else t
 
 
+def start_scores(conn, base: str) -> pd.Series | None:
+    """alert_score моделі «старт» тікера (режим split; індекс — ts) з найсвіжішої версії; None — оцінок ще немає."""
+    sig = latest_signals(conn, base)
+    st = sig[sig["model"] == T.START_MODEL]
+    if st.empty:
+        return None
+    return T.tier_frame(st, sig[sig["model"] == J.CONFIRM_MODEL], share()).set_index("ts").sort_index()["alert_score"]
+
+
 def virtual_models() -> list[dict]:
     """Моделі 15m-контуру для перемикача і журналу: tier15 — «Alert», cand15 — «Кандидат» (лише журнал)."""
     m = State.m15
@@ -273,7 +282,11 @@ def watch_list_15m(conn) -> dict:
     # Сповіщення за угодами моделі (2026-10-08, власник: «заходити з моделлю, а не щоразу, коли P вище порогу»):
     # Alert — лише ВХІД моделі (та сама угода, що мітка «Вхід» на графіку); новий спалах Alert, поки угода відкрита, —
     # Re-alert (окремий перемикач, за замовчуванням вимкнений); Кандидат — лише коли модель без позиції і годину тихо.
-    alerts, realerts, cands = split_by_trades(conn, t15, t, hmap, alerts, cands, recent_cut)
+    active = {r["ticker"] for r in rows if r["status"] != "calm" or (r["last_sig"] and pd.Timestamp(now) - r["last_sig"]["close"] <= pd.Timedelta(hours=1))}
+    trades = {b: model_trades(conn, t15[t15["base_asset"] == b], hmap.get(b)) for b in active}
+    for r in rows:
+        r["trade"] = trade_state(trades.get(r["ticker"], []), r, now) if r["ticker"] in active else None
+    alerts, realerts, cands, lates = split_by_trades(conn, t15, t, hmap, alerts, cands, recent_cut, trades)
     # для сповіщення: OB у момент сигналу і ліміт −0.5 ATR (ковзний бар 5-хв циклу → останній звичайний 15m-бар до нього)
     for e in alerts:
         hb = hmap.get(e["ticker"])
@@ -296,7 +309,7 @@ def watch_list_15m(conn) -> dict:
     for r in rows:
         f = last_fp.get(r["ticker"])
         r["fp"] = {"kind": f["kind"], "at": pd.Timestamp(f["ts"]) + BAR_15M} if f else None
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "realerts": realerts, "cands": cands, "wakes": wakes, "fps": fps}
+    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "realerts": realerts, "cands": cands, "lates": lates, "wakes": wakes, "fps": fps}
 
 
 def model_trades(conn, g: pd.DataFrame, h: pd.DataFrame | None) -> list[dict]:
@@ -305,9 +318,12 @@ def model_trades(conn, g: pd.DataFrame, h: pd.DataFrame | None) -> list[dict]:
     if h is None or h.empty or g.empty:
         return []
     m15, strat = State.m15, strategies.get(None)
-    pos = position_state(h, g.set_index("ts").sort_index()["alert_score"], 1.0, m15.get("risk", {}).get("k"),
+    score, entry_p = g.set_index("ts").sort_index()["alert_score"], None
+    if strategies.is_split(strat):                  # основний режим split: вхід — модель «старт», утримання — обидві
+        entry_p, score = T.split_scores(score, start_scores(conn, g["base_asset"].iloc[0]))
+    pos = position_state(h, score, 1.0, m15.get("risk", {}).get("k"),
                          m15.get("exit_bars", 4), PARTIAL_EXIT, strategies.entry_rule(strat),
-                         market.strategy_allow(conn, strat))
+                         market.strategy_allow(conn, strat), entry_prob=entry_p)
     return list(pos["trades"]) + ([pos] if pos.get("open") else [])
 
 
@@ -318,16 +334,22 @@ def _in_trade(tr: list[dict], ts) -> dict | None:
 
 
 def split_by_trades(conn, t15: pd.DataFrame, t: pd.DataFrame, hmap: dict, alerts: list[dict], cands: list[dict],
-                    recent_cut: pd.Timestamp) -> tuple[list[dict], list[dict], list[dict]]:
-    """Епізоди Alert → (входи моделі, Re-alert); Кандидати — без тих, що всередині угоди або після активності за годину.
-    Вхід, що не почав нового епізоду (повторний вхід після стопу посеред безперервного Alert), додається окремо."""
+                    recent_cut: pd.Timestamp, trades: dict | None = None) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    """Епізоди Alert → (входи моделі, Re-alert, Кандидати, late); Кандидати — без тих, що всередині угоди або після
+    активності за годину. Вхід, що не почав нового епізоду (повторний вхід після стопу посеред безперервного Alert),
+    додається окремо. Режим split (основний): новий епізод Alert — НЕ вхід сам по собі; вхід — лише угода моделі
+    (вхід за моделлю «старт»), а епізод Alert без угоди — у late (без звуку й Telegram; список показує «Alert · late»).
+    trades — {тікер: угоди основного режиму} (model_trades), щоб не рахувати двічі."""
+    split = strategies.is_split(strategies.get(None))
     bases = {e["ticker"] for e in alerts + cands}
-    trades = {b: model_trades(conn, t15[t15["base_asset"] == b], hmap.get(b)) for b in bases}
-    entries, re = [], []
+    trades = dict(trades or {})
+    for b in bases - set(trades):
+        trades[b] = model_trades(conn, t15[t15["base_asset"] == b], hmap.get(b))
+    entries, re, late = [], [], []
     for e in alerts:
         cur = _in_trade(trades.get(e["ticker"], []), e["ts"])
         if cur is None:
-            entries.append(e)
+            (late if split else entries).append(e)
         else:
             re.append({**e, "trade": {"entry_ts": cur["entry_ts"] + BAR_15M, "entry": cur["entry"],
                                       "result_pct": cur.get("result_pct"), "open": bool(cur.get("open"))}})
@@ -340,14 +362,35 @@ def split_by_trades(conn, t15: pd.DataFrame, t: pd.DataFrame, hmap: dict, alerts
             # ковзне вікно (зсув 5–10 хв) могло почати епізод раніше за бар входу — той самий вхід, той самий ключ
             if any(e["ticker"] == b and ets - 2 * BAR_15M <= e["ts"] <= ets for e in entries):
                 continue
-            entries.append({"ticker": b, "ts": ets, "probability": float(g.at[ets, "p15"]), "kind": "live", "reentry": True})
+            entries.append({"ticker": b, "ts": ets, "probability": float(g.at[ets, "p15"]), "kind": "live", "reentry": not split})
+    if split:                                   # епізод, у якому модель таки увійшла (бар входу поруч), — не late
+        late = [e for e in late if not any(x["ticker"] == e["ticker"] and abs(x["ts"] - e["ts"]) <= 2 * BAR_15M for x in entries)]
     act = t[t["tier"] != "calm"]
     def quiet_before(e) -> bool:
         a = act[(act["base_asset"] == e["ticker"]) & (act["ts"] >= e["ts"] - pd.Timedelta(hours=1)) & (act["ts"] < e["ts"] - BAR_15M)]
         return a.empty
     cands = [e for e in cands if _in_trade(trades.get(e["ticker"], []), e["ts"]) is None and quiet_before(e)]
     key = lambda e: e["ts"]                                                       # noqa: E731
-    return sorted(entries, key=key, reverse=True), sorted(re, key=key, reverse=True), cands
+    return sorted(entries, key=key, reverse=True), sorted(re, key=key, reverse=True), cands, sorted(late, key=key, reverse=True)
+
+
+def trade_state(tr: list[dict], row: dict, now: datetime) -> dict | None:
+    """Стан рядка списку за угодами основного режиму (власник 12.10, варіант A): entry — модель увійшла за останню годину і
+    угода відкрита; open — угода відкрита давніше; late — Alert зараз (або згас < 1 год), а угоди немає (режим не увійшов:
+    не свіжий старт — split, після стопу, фільтр режиму). None — нічого з цього (рядок показує звичайний статус)."""
+    op = next((x for x in tr if x.get("open")), None)
+    if op is not None:
+        entered = pd.Timestamp(op["entry_ts"]) + BAR_15M
+        recent = pd.Timestamp(now) - entered <= pd.Timedelta(hours=1)
+        return {"state": "entry" if recent else "open", "entry_at": entered, "entry": op.get("entry"),
+                "result_pct": op.get("result_pct")}
+    sig = row.get("last_sig")
+    alert_now = row.get("status") == "alert" or (sig and sig["tier"] == "alert" and pd.Timestamp(now) - sig["close"] <= pd.Timedelta(hours=1))
+    if alert_now:
+        last = max(tr, key=lambda x: x["entry_ts"]) if tr else None
+        return {"state": "late", "last_exit": last.get("exit_ts") + BAR_15M if last and last.get("exit_ts") is not None else None,
+                "last_reason": last.get("reason") if last else None}
+    return None
 
 
 def fp_rows(conn, bases: list[str] | None = None, since: pd.Timestamp | None = None, outcomes: bool = False) -> list[dict]:
@@ -602,9 +645,12 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
         pos = {"open": False, "trades": []}
     else:
         p_marks = footprint.p_times(conn, [base], h.index.min()).get(base, set()) if strat.get("p_be") else None
+        entry_p = None
+        if strategies.is_split(strat):             # режим split: вхід — модель «старт», утримання — основна або «старт»
+            entry_p, score = T.split_scores(score, start_scores(conn, base))
         pos = position_state(h, score, 1.0, k, exit_bars, PARTIAL_EXIT, strategies.entry_rule(strat),
                              market.both(orderbook.allow_fn(book_rows) if strat.get("ob") else None,
-                                         market.strategy_allow(conn, strat)), p_marks)
+                                         market.strategy_allow(conn, strat)), p_marks, entry_prob=entry_p)
     last = t.iloc[-1] if len(t) else None
     # Drivers: внески ознак у P останнього оціненого бару (drivers.py; ознаки — як у скринері, бар кешується)
     drv = None

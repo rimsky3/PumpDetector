@@ -28,7 +28,7 @@ import orderbook
 import strategies
 from features import aggregate, in_pump, load_pumps, load_raw, query_df
 from risk import EXIT_BARS, LIMIT_ENTRY, PARTIAL_EXIT, position_state
-from tiers import BAR_15M, CAND_MODEL, LIMIT_MODEL, TIER_MODEL, tier_frame
+from tiers import BAR_15M, CAND_MODEL, LIMIT_MODEL, START_MODEL, START_TIER, TIER_MODEL, split_scores, tier_frame
 
 M15 = "lightgbm_15m"          # 15m-модель у таблиці signals
 CONFIRM_MODEL = "lightgbm"    # годинна модель, що підтверджує «Alert»
@@ -38,7 +38,7 @@ DEFAULT_RULE = {"horizon": 24, "price": 0.15, "oi": 0.20}
 
 
 def is_15m(model: str) -> bool:
-    return model in (TIER_MODEL, CAND_MODEL, LIMIT_MODEL, M15)
+    return model in (TIER_MODEL, CAND_MODEL, LIMIT_MODEL, M15, START_TIER, START_MODEL)
 
 
 def first_scores(conn, model: str, share: float = 0.75, cache: dict | None = None) -> pd.DataFrame:
@@ -54,8 +54,10 @@ def first_scores(conn, model: str, share: float = 0.75, cache: dict | None = Non
 
 
 def _first_scores(conn, model: str, share: float, cache: dict | None) -> pd.DataFrame:
-    if model in (TIER_MODEL, CAND_MODEL, LIMIT_MODEL):
-        s15, s1h = first_scores(conn, M15, cache=cache), first_scores(conn, CONFIRM_MODEL, cache=cache)
+    if model in (TIER_MODEL, CAND_MODEL, LIMIT_MODEL, START_TIER):
+        # START_TIER — рівень моделі «старт» (режим split): та сама годинна, свій 15m-поріг
+        s15 = first_scores(conn, START_MODEL if model == START_TIER else M15, cache=cache)
+        s1h = first_scores(conn, CONFIRM_MODEL, cache=cache)
         if s15.empty:
             return s15
         t = tier_frame(s15, s1h, share)
@@ -156,7 +158,14 @@ def build_trades(conn, model: str, bundle: dict | None, rule: dict, cache: dict 
             if "p_marks" not in cache:
                 cache["p_marks"] = footprint.p_times(conn, None, scores["ts"].min() - pd.Timedelta(days=1))
             p_marks = cache["p_marks"].get(base, set())
-        pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None, entry, allow, p_marks)
+        entry_p = None
+        if strat is not None and tf15 and strategies.is_split(strat):      # режим split: вхід — «старт», утримання — обидві
+            if "start_by_base" not in cache:
+                ss = first_scores(conn, START_TIER, (bundle or {}).get("confirm", {}).get("share", 0.75), cache)
+                cache["start_by_base"] = {b: x.set_index("ts")["probability"] for b, x in ss.groupby("base_asset")} if not ss.empty else {}
+            st = cache["start_by_base"].get(base)
+            entry_p, norm = split_scores(norm, st.reindex(h.index) if st is not None else None)
+        pos = position_state(h, norm, 1.0, k, exit_bars, PARTIAL_EXIT if tf15 else None, entry, allow, p_marks, entry_prob=entry_p)
         trades = list(pos.get("trades", [])) + ([pos] if pos.get("open") else [])
         for t in trades:
             start = pd.Timestamp(t["entry_ts"])

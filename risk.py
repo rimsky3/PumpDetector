@@ -134,7 +134,7 @@ LIMIT_ENTRY = {"atr": 0.5, "bars": 4}
 
 def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float | None,
                    exit_bars: int = EXIT_BARS, partial: dict | None = None, entry: dict | None = None,
-                   allow=None, p_marks=None) -> dict:
+                   allow=None, p_marks=None, entry_prob: pd.Series | None = None) -> dict:
     """Стан «угоди» за сигналами моделі на погодинному ряді тікера.
 
     Угода починається з першого бару з ймовірністю ≥ порогу і закінчується,
@@ -148,6 +148,8 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
     p_marks — множина барів (відкриття) з міткою p («залочка» на хаях, footprint.py): у відкритій угоді на такому барі стоп
     переноситься в беззбиток (p_ts — перший такий бар); після виходу з угоди, де була p, новий вхід — лише в наступному
     епізоді сигналу (режим «б/з на p», experiments/p_exit.py). None — без правила.
+    entry_prob — окремий сигнал ВХОДУ (режим split, 2026-10-12: вхід за моделлю «старт», утримання — за prob, де prob —
+    max(основна, «старт»)); угода відкривається лише на барі, де entry_prob ≥ порогу. None — вхід і утримання за prob.
     Стоп у барі перевіряється раніше за ціль (консервативно); на барі входу виходи не перевіряються.
     Повертає поточну угоду (якщо вона відкрита) або останню закриту; у ключі "trades" — усі закриті угоди,
     у ключі "order" — заявка, що ще чекає виконання (лише з entry).
@@ -169,6 +171,7 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
 
     a = atr(h)
     prob = prob.reindex(h.index)
+    ent = entry_prob.reindex(h.index).to_numpy(dtype=float) if entry_prob is not None else None
     trade, last_closed_trade, closed, order = None, None, [], None
     below, prev_sig, wait = 0, False, False       # wait — після виходу з угоди з p: чекаємо кінця епізоду сигналу
     bar = (h.index[1] - h.index[0]) if len(h) > 1 else H
@@ -191,7 +194,8 @@ def position_state(h: pd.DataFrame, prob: pd.Series, threshold: float, k: float 
         if trade is None:
             if wait and not sig:
                 wait = False                      # епізод сигналу скінчився — наступний сигнал уже новий
-            if order is None and sig and not wait and (entry is None or not prev_sig) and (allow is None or allow(ts)):
+            esig = sig if ent is None else (not np.isnan(ent[i]) and ent[i] >= threshold)
+            if order is None and esig and not wait and (entry is None or not prev_sig) and (allow is None or allow(ts)):
                 px, atr0 = h.at[ts, "price"], a.get(ts)
                 if not (pd.isna(px) or pd.isna(atr0)):
                     if entry is None:

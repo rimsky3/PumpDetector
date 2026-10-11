@@ -337,3 +337,23 @@ checks three things on the bars the live model scored outside its training data:
 - Metrics for the early phase of a pump (first N hours) and a model variant without trailing-return features.
 - Per-ticker error review: `python label.py` shows out-of-fold predictions and errors (see [labeling.md](labeling.md#reviewing-model-errors)).
 - Save the chosen model for the screener.
+
+
+## Split mode: entry on a fresh start (2026-10-12)
+
+A second 15m LightGBM, the **start model** (`models/lightgbm_15m_start.joblib`, `train.START_NAME`), is trained on the
+same bars and features with a different target: a bar is positive only if it closes within the first 30 minutes of an
+owner-labeled impulse; the rest of the impulse is left out of training (it is not "normal market"), failed impulses
+and normal bars are 0. Its threshold is set so that its false-alarm rate per 30 days matches the main 15m model's.
+The screener scores it together with the main model (`signals.model = lightgbm_15m_start`).
+
+The `split` mode (`strategies.json`) enters only on the start model's Alert (its 15m score ≥ threshold and the hourly
+model ≥ 0.75 of its threshold) and holds while either the main or the start Alert is on; exits are unchanged
+(half at +3 ATR then breakeven, the rest after 4 bars without either Alert, or the stop). It does not enter earlier
+than the main Alert; it acts as a learned "fresh start" filter: it skips entries in the middle of an extended move and
+re-entries after a stop.
+
+Evidence on coins ≥ $20M turnover (profit factor, Alert entries, partial exit): six-month archive backtest 0.84 → 0.95
+(better in 6 of 6 months, stable across thresholds 0.88–0.92, seeds and coin halves); purged cross-validation by time
+blocks (August, September, 1–10 October, each month cut from training with a 3-day embargo) 0.789 → 0.819, better in
+2 of 3 blocks; the 10-day October holdout alone was worse (0.99 → 0.92, ~75 trades). On coins of $5–20M it is worse.

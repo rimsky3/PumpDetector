@@ -617,6 +617,15 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   бот realert, за замовчуванням вимкнено). episodes(): новий епізод — коли від ПОПЕРЕДНЬОГО СИГНАЛЬНОГО рядка > bar (раніше
   ковзні 5-хв рядки без Alert між звичайними барами рвали епізод — ORCA 4 сповіщення поспіль). Локальна перевірка 05–06.10:
   32 старі сповіщення → 15 входів + 8 Re-alert. На 7 днях сервера (наближено, 4 бари): 48 → 31.
+- РЕЖИМ SPLIT (2026-10-12, власник: «починай»): модель «старт» models/lightgbm_15m_start.joblib (train.START_NAME, ціль — бари перших
+  START_MINUTES 30 хв імпульсу, решта імпульсу поза навчанням; поріг matched_threshold — та сама к-сть хибних, що в основної;
+  bundle main_version — версія основної; train.py --no-start / --start-only). screener: load_model_15m → m['start'], models_15m —
+  оцінює обидві; --backfill-15m DAYS — історія. tiers.split_scores(main, start) → (вхід, утримання = max); risk.position_state(entry_prob=).
+  strategies.json режим split ("split": true) — журнал, ticker_15m, model_trades, backtest.py. Список NOW (власник, варіант A, макет
+  https://claude.ai/artifact/3fpzCJ762cNaoLsks8PD53): dashboard.trade_state → row.trade → чіпи Entry · Xm / In trade +x% / Alert · late —
+  за ОСНОВНИМ режимом (як сповіщення), не за вибраним у «Режим»; split_by_trades → (entries, re, cands, late). Бектест 30 дн (87 монет
+  ≥ 20 млн, 12.09–11.10): split PF 1.50 / market 1.34 (без топ-3 1.27 / 1.20, угод 383 / 775). backtest.py --no-coinalyze — дані лише бірж.
+  Основним — після деплою і --backfill-15m на сервері; відкат — "main": true знову в market.
 - ІСТОРІЯ ТІКЕРІВ НАВЧАННЯ (2026-10-09): 15m-навчання бере тікер лише з першої години 1h Coinalyze (from_1h_start) — монета
   зі списку скринера (10 днів 1h) після «У навчання» мала 1h лише з ~26.09, і 14 розмічених імпульсів (ORCA ×6, API3, JTO…) пішли
   в навчання без даних. fetch.py --new тепер = немає в markets АБО min(1h ts) новіше за now − (days − 3); deploy.sh --labels

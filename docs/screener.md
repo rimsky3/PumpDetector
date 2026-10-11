@@ -13,9 +13,11 @@ and Journal, built from the "Pump Detector App" design mockup.
 ```
 train.py ──saves──▶ models/logreg.joblib, models/lightgbm.joblib        hourly models
                     models/lightgbm_15m.joblib                          15m model + confirm rule + 15m stop
+                    models/lightgbm_15m_start.joblib                    start model (first 30 min of an impulse): entry of the split mode
 
 screener.py, every 15 minutes (HH:02/17/32/47 UTC):
-    15m bars from Binance/Bybit + 15m liquidations from Coinalyze → features.build_15m() → 15m model → signals
+    15m bars from Binance/Bybit + 15m liquidations from Coinalyze → features.build_15m() → 15m model (+ start model,
+    if present: signals.model = lightgbm_15m_start; history for a new one — screener.py --backfill-15m DAYS) → signals
     once an hour, also: hourly model from our own 15m data (seconds) → signals; Coinalyze 1h for the coins that need it
       → hourly models → signals — in a BACKGROUND thread (see below)
     in between, every 5 minutes (:07, :12, :22, …): 5m tail for the whole list → "waking up" (wake.py) →

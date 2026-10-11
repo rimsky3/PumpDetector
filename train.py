@@ -54,6 +54,10 @@ CANDIDATE_DIR = os.path.join("models", "candidate")   # --candidate: нова м
 
 
 M15_NAME = "lightgbm_15m"
+# модель «старт» (режим split, 2026-10-12): ціль — перші START_MINUTES імпульсу; вхід за нею, утримання — за основною
+# (experiments/early_target.py, early_target_check.py, purged_split.py; notes/experiments.md)
+START_NAME = "lightgbm_15m_start"
+START_MINUTES = 30
 BAR_15M = pd.Timedelta(minutes=15)
 CONFIRM_SHARE = 0.75      # «Alert»: годинна оцінка ≥ 0.75 × її порогу (experiments/two_tier.py)
 
@@ -301,6 +305,11 @@ def main() -> None:
                         help="15m-модель без ознак власного руху (beta / idio / illiq / park…; як до 2026-10-08)")
     parser.add_argument("--candidate", action="store_true",
                         help=f"зберегти моделі як кандидата в {CANDIDATE_DIR} (у роботу — після порівняння і «Прийняти» в label.py)")
+    parser.add_argument("--no-start", action="store_true",
+                        help=f"не навчати модель «старт» ({START_NAME}: ціль — перші {START_MINUTES} хв імпульсу; вхід режиму split)")
+    parser.add_argument("--start-only", action="store_true",
+                        help="навчити ЛИШЕ модель «старт» на поточній розмітці (основна 15m і годинні моделі, звіт — без змін); "
+                             "поріг — та сама кількість хибних, що в 15m-моделі з тими самими налаштуваннями")
     args = parser.parse_args()
 
     load_dotenv()
@@ -410,6 +419,9 @@ def main() -> None:
                         oof.get("lightgbm"), preds, now, args,
                         CANDIDATE_DIR if args.candidate else MODELS_DIR, label_fingerprint(pumps))
         parts += m15["report"]
+    if args.start_only:
+        print("\n--start-only: годинні моделі, 15m-модель і звіт не змінено")
+        return
     with open(REPORT_FILE, "w", encoding="utf-8") as f:
         f.write("\n".join(parts) + "\n")
     # out-of-fold передбачення: для аналізу помилок (кожен рядок передбачила модель, що не бачила тікер)
@@ -513,6 +525,15 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
               "(score of the last closed hour). Event delays are in hours from the labeled start; "
               f"stop multiplier on 15m bars: k = {risk15.get('k') or float('nan'):.2f} ATR.", "",
               md_table(summary)]
+    if getattr(args, "start_only", False):
+        ref = {"trained_at": now, "tickers": sorted(reviewed & set(bases)),
+               "data_end": min(d["ts"].max(), cutoff) if cutoff is not None else d["ts"].max(), "in_sample_extra": extra,
+               "pump_intervals": int((pumps["pattern_type"] == "pump").sum()), "confirm": {"model": "lightgbm", "share": CONFIRM_SHARE},
+               "labels_fp": labels_fp or {}}
+        if os.path.exists(model_path(M15_NAME, out_dir)):
+            ref["main_version"] = joblib.load(model_path(M15_NAME, out_dir))["trained_at"]
+        report += train_start(d, X, groups, pumps, s15, feats15, None if args.no_save else ref, out_dir, args)
+        return {"report": report, "summary": summary}
     if not args.no_save:
         bundle = {
             "name": M15_NAME, "tf": "15m", "bar_minutes": 15,
@@ -537,7 +558,71 @@ def train_15m(db_url: str, df1h: pd.DataFrame, pumps: pd.DataFrame, cutoff, revi
         joblib.dump(bundle, model_path(M15_NAME, out_dir))
         oof15.to_parquet(os.path.join(out_dir, "oof_15m.parquet"), index=False)
         print(f"Збережено {model_path(M15_NAME, out_dir)}: поріг {bundle['threshold']:.3f}, стоп {risk15.get('k')} ATR (15m)")
+    if not getattr(args, "no_start", False):
+        report += train_start(d, X, groups, pumps, s15, feats15, bundle if not args.no_save else None, out_dir, args)
     return {"report": report, "summary": summary}
+
+
+def start_target(d: pd.DataFrame, pumps: pd.DataFrame, minutes: int = START_MINUTES) -> tuple[np.ndarray, np.ndarray]:
+    """Ціль моделі «старт»: 1 — бар, що закривається в перші minutes хвилин імпульсу; решта барів імпульсу — поза навчанням
+    (не «0»: це не звичайний ринок); фальстарти й звичайний ринок — 0. Повертає (ціль, маска «в навчанні»)."""
+    close = d["ts"] + BAR_15M
+    pos = np.zeros(len(d), dtype=bool)
+    for r in pumps[pumps["pattern_type"] == "pump"].itertuples():
+        m = (d["base_asset"] == r.base_asset) & (close > r.start_ts) & (close <= min(r.start_ts + pd.Timedelta(minutes=minutes), r.end_ts))
+        pos |= m.to_numpy()
+    keep = pos | (d["label"].to_numpy() == 0)
+    return pos.astype(int), keep
+
+
+def matched_threshold(d: pd.DataFrame, p: np.ndarray, pumps: pd.DataFrame, target_fa: float) -> float:
+    """Поріг, за якого хибних епізодів на 30 днів найближче до target_fa (сітка квантилів 0.90…0.999)."""
+    best, gap = None, np.inf
+    for q in np.linspace(0.90, 0.999, 45):
+        thr = float(np.quantile(p, q))
+        fa = event_metrics(d, p >= thr, pumps, BAR_15M)["false_alarms_per_30d"]
+        if abs(fa - target_fa) < gap:
+            best, gap = thr, abs(fa - target_fa)
+    return best
+
+
+def train_start(d, X, groups, pumps, s15, feats15, main_bundle: dict | None, out_dir: str, args) -> list[str]:
+    """Модель «старт» для режиму split: leave-ticker-out (вчиться лише на рядках у навчанні), поріг — та сама кількість
+    хибних на 30 днів, що в основної 15m-моделі на її порозі (як experiments/early_target.py); бандл поруч з основним."""
+    print(f"\nМодель «старт» (перші {START_MINUTES} хв імпульсу)…")
+    ys, keep = start_target(d, pumps)
+    p = np.zeros(len(d))
+    for g in groups.unique():
+        te = (groups == g).to_numpy()
+        tr = ~te & keep
+        p[te] = make_lightgbm().fit(X[tr], ys[tr]).predict_proba(X[te])[:, 1]
+    fa0 = event_metrics(d, s15 >= 1, pumps, BAR_15M)["false_alarms_per_30d"]
+    thr = matched_threshold(d, p, pumps, fa0)
+    m = event_metrics(d, p >= thr, pumps, BAR_15M)
+    print(f"  позитивів {ys.sum()}, у навчанні {keep.sum()} з {len(d)}; поріг {thr:.3f} (хибних {m['false_alarms_per_30d']:.1f} — як "
+          f"в основної {fa0:.1f}); спіймано {m['pumps_caught']}, фальстартів {m['false_starts_triggered']}")
+    report = ["", "## 15m start model (split mode entry)", "",
+              f"Target: bars closing in the first {START_MINUTES} minutes of an impulse (the rest of the impulse is left out of training). "
+              f"Threshold matched to the main 15m model's false-alarm rate ({fa0:.1f} per 30 days): {thr:.3f}. "
+              f"Leave-ticker-out: caught {m['pumps_caught']}, false starts {m['false_starts_triggered']}, "
+              f"false alarms {m['false_alarms_per_30d']:.1f} per 30 days, median delay {m['median_delay_h']:.2f} h."]
+    if main_bundle is not None:
+        bundle = {
+            "name": START_NAME, "tf": "15m", "bar_minutes": 15, "role": "entry", "target": f"start{START_MINUTES}",
+            "model": make_lightgbm().fit(X[keep], ys[keep]), "features": feats15, "threshold": thr,
+            "trained_at": main_bundle["trained_at"], "tickers": main_bundle["tickers"], "data_end": main_bundle["data_end"],
+            "in_sample_extra": main_bundle["in_sample_extra"], "pump_intervals": main_bundle["pump_intervals"],
+            "validation": {k: (v if isinstance(v, str) else float(v)) for k, v in m.items()},
+            "confirm": main_bundle["confirm"],
+            "settings": {"minutes": START_MINUTES, "positives": int(ys.sum()), "train_rows": int(keep.sum()),
+                         "matched_false_alarms": float(fa0)},
+            "labels_fp": main_bundle.get("labels_fp", {}),
+            # версія основної 15m-моделі, з якою «старт» у парі (поріг підібрано під її рівень хибних)
+            "main_version": main_bundle.get("main_version", main_bundle["trained_at"]),
+        }
+        joblib.dump(bundle, model_path(START_NAME, out_dir))
+        print(f"Збережено {model_path(START_NAME, out_dir)}: поріг {thr:.3f}")
+    return report
 
 
 def load_model(name: str) -> dict:

@@ -10,6 +10,8 @@ strategies.py — режими: модель + правила угод. Один
     market_max  0.6 — сигнал береться лише, коли ≤ 60% альтів дорожчі, ніж тиждень тому (market.py; невідомо — береться)
     p_be     true — мітка p («залочка» на хаях) у відкритому лонгу → стоп у беззбиток; після такої угоди — без повторного
              входу в тому ж епізоді Alert (risk.position_state(p_marks=); experiments/p_exit.py)
+    split    true — вхід лише за Alert моделі «старт» (перші 30 хв імпульсу, train.START_NAME), утримання — поки горить Alert
+             основної або «старту» (tiers.split_scores, risk.position_state(entry_prob=)); 2026-10-12, experiments/purged_split.py
 Вихід для 15m-режимів спільний: risk.PARTIAL_EXIT (½ на +3 ATR, далі беззбиток; решта — 4 бари без сигналу або стоп).
 
 Список — strategies.json (новий експеримент = новий рядок; без файлу — DEFAULT). Результати режимів — notes/experiments.md.
@@ -35,6 +37,8 @@ DEFAULT = [
      "note": "Alert лише коли ≤ 60% альтів у плюсі за 7 дн: 6 міс. PF 1.09 проти 0.78 у гарячому ринку, 6 з 6 місяців"},
     {"id": "p_be", "title": "15m + 1h · б/з на p", "model": "tier15", "signal": "alert", "entry": "market", "ob": False,
      "p_be": True, "note": "p у позиції → стоп у б/з, без повторного входу в епізоді: 40 днів PF 0.94 проти 0.93, великих не ріже — жива перевірка"},
+    {"id": "split", "title": "15m + 1h · вхід на старті", "model": "tier15", "signal": "alert", "entry": "market", "ob": False,
+     "split": True, "note": "вхід лише на свіжому старті (модель «старт»), утримання — основна або «старт»: ≥ 20 млн — 6 міс. 0.84 → 0.95, purged ~70 днів 0.79 → 0.82"},
     {"id": "cand", "title": "15m · вхід на Кандидаті", "model": "tier15", "signal": "candidate", "entry": "market", "ob": False,
      "note": "раніший вхід (без підтвердження 1h), більше фальстартів"},
     {"id": "lightgbm", "title": "LightGBM 1h · порівняння", "model": "lightgbm"},
@@ -74,7 +78,11 @@ def entry_rule(s: dict) -> dict | None:
 
 
 def public(s: dict) -> dict:
-    return {k: s.get(k) for k in ("id", "title", "model", "signal", "entry", "ob", "market_max", "p_be", "main", "note")}
+    return {k: s.get(k) for k in ("id", "title", "model", "signal", "entry", "ob", "market_max", "p_be", "split", "main", "note")}
+
+
+def is_split(s: dict | None) -> bool:
+    return bool(s and is15(s) and s.get("split"))
 
 
 if __name__ == "__main__":

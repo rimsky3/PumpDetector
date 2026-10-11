@@ -161,6 +161,8 @@ with labels contributes only the hours inside its labeled intervals (column `rev
 | `--fresh-hours N` | 48 | unlabeled hours from the last N hours are left out of training; `0` uses everything |
 | `--with-liq` | off | include the liquidation features (`liq_*`) as before 2026-10-07; by default the models train without them (`features.MODEL_FEATURES`, `MODEL_FEATURES_15M`; see `experiments/no_liq.py`) |
 | `--no-move` | off | train the 15m model without the own-move features (`beta`, `idio_*`, `illiq_x`, `park_*`… — as before 2026-10-08); by default they are in (`features.MOVE_FEATURES`, needs the `alt_index` table) |
+| `--no-start` | off | skip the 15m **start model** (`models/lightgbm_15m_start.joblib`: target = the first 30 minutes of an impulse, threshold matched to the main 15m model's false-alarm rate; entry model of the `split` mode) |
+| `--start-only` | off | train **only** the start model on the current labels, paired with the 15m model already in `models/` (or `models/candidate/` with `--candidate`); hourly models, the 15m model and the report stay as they are. `--models lightgbm` makes it faster |
 
 **Why `--fresh-hours`.** Tickers in `tickers.txt` are treated as fully labeled, so an unlabeled hour counts as
 "no pump". Fresh hours nobody has reviewed yet — possibly a pump in progress — would teach the model to un-see
@@ -640,6 +642,7 @@ the move already gone at the signal, and false alarms → `reports/experiment_ti
 | `--loop` | off | run forever: every 15 minutes (HH:02/17/32/47 UTC) the 15m tier, every 5 minutes in between the "hot" coins on rolling 15m bars, once an hour also the hourly models |
 | `--no-fetch` | off | score data already in the database, no API calls (quick check, or re-score after retraining) |
 | `--no-scan` | off | skip the market scan (every 15 minutes); use `watchlist.txt` and the existing auto-list only |
+| `--backfill-15m DAYS` | — | one-off: score the last DAYS days of the list tickers with the 15m models (main + start) from data already in the database, then exit — history for a new model in the journal (e.g. after the start model appears) |
 
 Each cycle scores `watchlist.txt` plus the scanner's live auto-list (`reports/auto_watchlist.json`); both are re-read
 every cycle, so new tickers need no restart. Writes the `signals` table and `reports/screener_status.json` (shown in the dashboard). Loads models at start:
@@ -664,10 +667,11 @@ Thresholds live in `scan_config.json` (edited from the dashboard). See [screener
 | `--days` | 30 | window (Binance keeps open interest history for 30 days) |
 | `--model` | current | `current` or `candidate` (models/candidate/) |
 | `--entry` | alert | `alert` or `candidate` (15m model alone) |
-| `--strategy` | — | a mode from `strategies.json` (`market`, `limit`, `ob`, `ob_limit`, `cand`): signal, entry and order book filter; overrides `--entry` |
+| `--strategy` | — | a mode from `strategies.json` (`market`, `limit`, `ob`, `ob_limit`, `cand`, `split`…): signal, entry and order book filter; overrides `--entry`. `split` needs the start model next to the 15m model |
 | `--k` | — | stop in ATR instead of the one saved with the model (compare models at the same stop) |
 | `--no-fetch` | off | use only data already in the database |
 | `--limit` | 0 | only the first N coins (a quick check) |
+| `--no-coinalyze` | off | do not call Coinalyze (its rate limit is shared with the server's screener): coins without a `markets` row get only their Binance contract, no liquidations. Liquidations are skipped anyway when the model has no `liq_*` features |
 
 The coin list is fixed by rule before the run: Binance USDT perps by turnover and open interest, minus `tickers.txt`,
 labeled coins and `excluded.txt`. Data: 15m from Binance and Bybit plus Coinalyze 15m liquidations (~3 calls per coin;
@@ -998,6 +1002,27 @@ features; negatives far from any event are downsampled with compensating weights
 
 ```
 python experiments/teacher_combo.py [--event-weights]
+```
+
+### experiments/fe_anchor.py, experiments/alert_filters.py, experiments/teacher_6m.py, experiments/oct_holdout.py, experiments/fe_spot.py
+
+`fe_anchor.py` — features anchored to the start of the current move (causal versions of the teacher's hindsight
+descriptors), volatility-normalized changes, OI–price regime and liquidity level, ablation on three seeds.
+`alert_filters.py` — filters applied to existing backtest trades without retraining (own move, hot market, Alert bursts,
+re-entry after a stop). `teacher_6m.py` — the teacher–student model on six months with coin-half cross-fitting.
+`oct_holdout.py` — October 2026 as an untouched holdout (`--stage data` pulls the Binance archive for 01.09–10.10 into the
+local database and builds `data/oct_bin/`; `--stage test` compares student, base and the working model with a criterion
+fixed before the run). `fe_spot.py` — Binance spot candles (`--stage data`: archive → `data/spot15/`, futures listing dates)
+and coin age as features (`--stage test`).
+
+```
+python experiments/fe_anchor.py
+python experiments/alert_filters.py
+python experiments/teacher_6m.py
+python experiments/oct_holdout.py --stage data
+python experiments/oct_holdout.py --stage test
+python experiments/fe_spot.py --stage data
+python experiments/fe_spot.py --stage test
 ```
 
 ### experiments/rush_orders.py

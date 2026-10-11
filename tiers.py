@@ -23,6 +23,10 @@ LIMIT_MODEL = "tier15_lim"    # журнал: ті самі Alert, але вхі
 # журнал, позиції й графік лишаються на звичайних 15m-барах (як у навчанні і бектесті), а список і сповіщення
 # беруть найсвіжішу оцінку — так Alert приходить на ~5 хв раніше (experiments/early_5m.py)
 ROLL_MODEL = "lightgbm_15m_roll"
+# модель «старт» (train.START_NAME): ціль — перші 30 хв імпульсу. Режим split (strategies.json, 2026-10-12): вхід — Alert «старту»
+# (s15 «старту» ≥ 1 і та сама годинна ≥ share), утримання — поки горить Alert основної АБО «старту»
+START_MODEL = "lightgbm_15m_start"
+START_TIER = "start15"     # віртуальна модель журналу: alert_score «старту»
 
 
 def context_hour(ts: pd.Series) -> pd.Series:
@@ -55,3 +59,13 @@ def tier_frame(s15: pd.DataFrame, s1h: pd.DataFrame, share: float) -> pd.DataFra
     out.loc[out["s15"] >= 1, "tier"] = "candidate"
     out.loc[out["alert_score"] >= 1, "tier"] = "alert"
     return out.drop(columns="ctx_ts")
+
+
+def split_scores(main: pd.Series, start: pd.Series | None) -> tuple[pd.Series, pd.Series]:
+    """Режим split: (вхід, утримання) з alert_score основної моделі і «старту» на тих самих барах (індекс — ts).
+    Немає оцінок «старту» — вхід неможливий (NaN), утримання — за основною."""
+    if start is None or start.empty:
+        return pd.Series(float("nan"), index=main.index), main
+    start = start.reindex(main.index.union(start.index))
+    hold = pd.concat([main.reindex(start.index), start], axis=1).max(axis=1, skipna=True)
+    return start, hold

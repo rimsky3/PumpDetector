@@ -41,7 +41,7 @@ from features import (INTRADAY_EXCHANGES, MOVE_FEATURES, build, build_15m, build
                       load_alt_index, load_raw, oi_seen_share, roll_intraday)
 from fetch import Coinalyze, collect, collect_liquidations, find_markets, read_tickers_file, upsert_markets
 from tiers import ROLL_MODEL
-from train import M15_NAME, PROBA_MODELS, load_model, model_path
+from train import M15_NAME, PROBA_MODELS, START_NAME, load_model, model_path
 
 WATCHLIST_FILE = "watchlist.txt"
 STATUS_FILE = os.path.join("reports", "screener_status.json")   # читає дашборд, блок «Стан системи»
@@ -80,8 +80,23 @@ def load_models() -> list[dict]:
 
 
 def load_model_15m() -> dict | None:
-    """15m-модель (None, якщо ще не навчена: тоді працює лише годинний контур)."""
-    return load_model(M15_NAME) if os.path.exists(model_path(M15_NAME)) else None
+    """15m-модель (None, якщо ще не навчена: тоді працює лише годинний контур). Якщо поруч є модель «старт»
+    (train.START_NAME, режим split) — вона в m15["start"] і оцінюється разом з основною (score_15m)."""
+    if not os.path.exists(model_path(M15_NAME)):
+        return None
+    m = load_model(M15_NAME)
+    if os.path.exists(model_path(START_NAME)):
+        m["start"] = load_model(START_NAME)
+        pair = m["start"].get("main_version")
+        if pair is not None and pair != m["trained_at"]:   # напр. відкат з бекапу без файлу «старту» або --no-start
+            print(f"! модель «старт» у парі з 15m-моделлю {pair}, а в роботі {m['trained_at']}: поріг «старту» підбирався "
+                  f"під іншу версію — перенавчи (python train.py --start-only) або прибери {model_path(START_NAME)}")
+    return m
+
+
+def models_15m(m15: dict) -> list[dict]:
+    """Моделі 15m-циклу: основна і (якщо є) «старт»."""
+    return [m15] + ([m15["start"]] if m15.get("start") else [])
 
 
 def last_closed_15m(now: datetime | None = None) -> pd.Timestamp:
@@ -154,17 +169,19 @@ def update_15m(conn, client: Coinalyze | None, bases: list[str], log=print, liq:
             collect_liquidations(client, conn, group, ["15m"], days, log=lambda m: None)
 
 
-def score_15m(conn, bases: list[str], m15: dict) -> tuple[pd.DataFrame, pd.Timestamp]:
-    """15m-ознаки → ймовірність 15m-моделі → signals. Спільне для скринера і кнопки «Прогнозувати»."""
+def score_15m(conn, bases: list[str], m15: dict, backfill: int = None) -> tuple[pd.DataFrame, pd.Timestamp]:
+    """15m-ознаки → ймовірність 15m-моделі (і моделі «старт», якщо є) → signals. Спільне для скринера і кнопки «Прогнозувати».
+    backfill — скільки останніх 15m-барів оцінити (за замовчуванням BACKFILL_15M; --backfill-15m — більше)."""
+    backfill = backfill or BACKFILL_15M
     last = last_closed_15m()
     if uses_move(m15):                     # індекс альтів за останній 5m-бар цього 15m-бару (потік alt_index зазвичай уже встиг)
         alt_index.ensure(conn, last + 2 * BAR_5M)
-    # тижневі вікна ознак «з'їдають» 7 днів історії: щоб оцінити BACKFILL_15M барів, беремо їх + 8 днів
-    df = build_15m(conn, bases, None, since=last - BACKFILL_15M * BAR_15M - pd.Timedelta(days=8))
+    # тижневі вікна ознак «з'їдають» 7 днів історії: щоб оцінити backfill барів, беремо їх + 8 днів
+    df = build_15m(conn, bases, None, since=last - backfill * BAR_15M - pd.Timedelta(days=8))
     if df.empty:
         return pd.DataFrame(), last
-    df = df[(df["ts"] > last - BACKFILL_15M * BAR_15M) & (df["ts"] <= last)]
-    scored = score(df, [m15])
+    df = df[(df["ts"] > last - backfill * BAR_15M) & (df["ts"] <= last)]
+    scored = score(df, models_15m(m15))
     save_signals(conn, scored, last)
     return scored, last
 
@@ -718,6 +735,9 @@ def main() -> None:
                              "лише «гарячі» (ковзні 15m-бари); годинні моделі — раз на годину")
     parser.add_argument("--no-fetch", action="store_true", help="не збирати дані, оцінити наявні")
     parser.add_argument("--no-scan", action="store_true", help="не запускати сканер ринку (лише watchlist.txt і вже наявний авто-список)")
+    parser.add_argument("--backfill-15m", type=int, metavar="DAYS",
+                        help="разово оцінити 15m-моделями (основна + «старт») останні DAYS днів для тікерів списку з наявних у "
+                             "базі даних (без збору) і вийти: історія нової моделі для журналу (напр. після появи моделі «старт»)")
     args = parser.parse_args()
 
     load_dotenv()
@@ -728,11 +748,22 @@ def main() -> None:
         sys.exit(f"Додай тікери в {WATCHLIST_FILE} (один на рядок) або ввімкни сканер ринку")
 
     models, m15 = load_models(), load_model_15m()
-    for m in models + ([m15] if m15 else []):
+    for m in models + (models_15m(m15) if m15 else []):
         print(f"Модель {m['name']}: навчена {m['trained_at']}, поріг {m['threshold']:.3f}, "
               f"{m['pump_intervals']} пампів на {len(m['tickers'])} тікерах")
     if m15 is None:
         print("15m-моделі немає (python train.py) — працює лише годинний контур")
+    if args.backfill_15m:
+        if m15 is None:
+            sys.exit("15m-моделі немає — нічого оцінювати")
+        bases = cycle_bases()
+        with psycopg.connect(db_url) as conn:
+            for i in range(0, len(bases), 10):         # частинами: ознаки за DAYS + 8 днів сотні тікерів не тримаємо в пам'яті разом
+                part = bases[i:i + 10]
+                s, _ = score_15m(conn, part, m15, backfill=args.backfill_15m * 96)
+                print(f"  оцінено {', '.join(part)}: {len(s)} рядків", flush=True)
+        print(f"Готово: {len(bases)} тікерів, {args.backfill_15m} днів, моделі " + ", ".join(m["name"] for m in models_15m(m15)))
+        return
     client = None if args.no_fetch else Coinalyze(api_key)
     global BG
     if args.loop and client is not None:
