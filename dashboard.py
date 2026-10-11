@@ -544,14 +544,32 @@ def limit_hint(h: pd.DataFrame, ts: pd.Timestamp) -> dict | None:
     return {"price": float(h.at[ts, "price"] - LIMIT_ATR * a), "until": pd.Timestamp(ts) + BAR_15M + LIMIT_VALID}
 
 
+_bars_cache: dict = {}                     # (тікер, дні) → (час, raw, h): легкий і повний запити перемикання тікера — одні дані
+BARS_TTL = 20.0
+
+
+def _bars_15m(conn, base: str, days: int, now: datetime):
+    """Сирі 15m-ряди й агрегат тікера; перемикання тікера — два запити (легкий, потім повний), тож другий бере дані першого
+    (до BARS_TTL с), а не перечитує базу й не агрегує заново."""
+    key, t = (base, days), time.monotonic()
+    hit = _bars_cache.get(key)
+    if hit and t - hit[0] < BARS_TTL:
+        return hit[1], hit[2]
+    raw = load_raw(conn, [base], INTERVAL_15M, since=now - timedelta(days=days + INTRADAY_DAYS))
+    h = aggregate(raw, base, "15min")
+    if len(_bars_cache) > 200:
+        _bars_cache.clear()
+    _bars_cache[key] = (t, raw, h)
+    return raw, h
+
+
 def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: bool = False) -> dict:
     """Екран тікера для 15m + 1h: 15m-свічки, P 15m-моделі, годинний контекст, рівні сигналу, позиція.
     light=True («Повна інфо» вимкнена, 2026-10-06): без позиції / угод, стакану, «прокидається» — лише свічки, OI,
     обсяг, P, зони сигналу і картки ймовірності; помітно швидше."""
     m15 = State.m15
     now = datetime.now(timezone.utc)
-    raw = load_raw(conn, [base], INTERVAL_15M, since=now - timedelta(days=days + INTRADAY_DAYS))
-    h = aggregate(raw, base, "15min")
+    raw, h = _bars_15m(conn, base, days, now)
     if h.empty:
         raise ValueError(f"немає 15m-даних для {base}: натисни «Refresh» або дочекайся циклу скринера")
     h = h[h.index <= last_closed_15m()]
@@ -880,6 +898,8 @@ def _ticker(conn, base: str, model: str, days: int, tf: str | None = None, strat
     res = rebar(conn, res, base, tf, days) if tf else res
     res["live"] = live_symbols(conn, base)
     res["tail_refresh"] = refreshing
+    if refreshing:                              # свіжі бари ще дописуються у фоні — наступний запит має перечитати базу
+        _bars_cache.pop((base, days), None)
     res["oi_share"] = None if light else oi_share(conn, base)
     res["scanner_entries"] = [] if light else scanner_entries(conn, base, days)
     return res

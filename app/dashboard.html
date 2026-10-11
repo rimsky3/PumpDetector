@@ -1602,32 +1602,43 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const url = (light) => `/api/ticker?symbol=${encodeURIComponent(tk)}&model=${st.model}&strategy=${st.modes.forecast}&days=30` +
         `${P.tf ? "&tf=" + P.tf : ""}${light ? "&light=1" : ""}`;
       const full = st.full;
+      // той самий тікер і ТФ уже на графіку (напр. зміна адреси після вибору тікера в ІНШОМУ вікні перезапускає всі вікна):
+      // свіжіше за хвилину — нічого не робимо; інакше — тихе оновлення без легкого кроку, щоб мітки не зникали
+      const key = `${tk}|${P.tf || ""}|${full ? 1 : 0}`, same = P.data && P.loadedKey === key;
+      if (same && !opts.quiet && !opts.force && Date.now() - (P.loadedAt || 0) < 60000) { done(); renderHead(); return; }
+      if (same) { opts = { ...opts, quiet: true }; }
+      const stamp = () => { P.loadedKey = key; P.loadedAt = Date.now(); };
       try {
+        if (same && full) throw { skipLight: true };
         const d = await api(url(true), { quiet: !!opts.quiet });
         if (P.ticker !== tk) return;               // поки вантажилось, вікну дали інший тікер
         if (!(full && opts.quiet && P.data && P.data.ticker === tk && !P.data.light)) P.data = d;   // тихе оновлення не «гасить» повну інфо
+        if (!full) stamp();
         show($("fError"), "");
-      } catch (e) { if (P.ticker === tk) { P.data = null; show($("fError"), `${tk}: ${e.message}`); } return; }
-      finally { done(); }
-      renderHead(); renderChart();
-      if (isActive()) { renderToolbar(); renderLeft(); }
-      if (full) {
-        try {
-          const d2 = await api(url(false), { quiet: true });
-          if (P.ticker !== tk || st.full !== full) return;
-          P.data = d2;
-          renderHead(); renderChart();
-          if (isActive()) { renderToolbar(); renderLeft(); }
-        } catch (e) { /* повна інфо не прийшла — лишається легкий графік; наступне оновлення спробує знову */ }
+        renderHead(); renderChart();
+        if (isActive()) { renderToolbar(); renderLeft(); }
+      } catch (e) {
+        if (!e || !e.skipLight) { if (P.ticker === tk) { P.data = null; show($("fError"), `${tk}: ${e.message}`); } done(); return; }
       }
+      finally { done(); }
+      if (P.ticker !== tk) return;
       if (st.focus && st.focus.ticker === P.ticker && chart && isActive()) {      // клік по угоді в журналі
         const f = st.focus; st.focus = null;
         requestAnimationFrame(() => { try { chart.timeScale().setVisibleRange({ from: f.from, to: f.to }); } catch (e) {} });
       }
       live.start();
       live.gapFill();
+      if (full) {
+        try {
+          const d2 = await api(url(false), { quiet: true });
+          if (P.ticker !== tk || st.full !== full) return;
+          P.data = d2; stamp();
+          renderHead(); renderChart();
+          if (isActive()) { renderToolbar(); renderLeft(); }
+        } catch (e) { /* повна інфо не прийшла — лишається легкий графік; наступне оновлення спробує знову */ }
+      }
       // сервер у фоні дозавантажує закриті бари, яких ще немає в базі, — перезапитуємо, щойно вони будуть
-      if (P.data && P.data.tail_refresh) setTimeout(() => { if (P.ticker === tk) load(); }, 15000);
+      if (P.data && P.data.tail_refresh) setTimeout(() => { if (P.ticker === tk) load({ quiet: true, force: true }); }, 15000);
     };
 
     root.addEventListener("pointerdown", () => setActive(n), true);
