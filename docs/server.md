@@ -36,7 +36,7 @@ From the laptop (Git Bash, project folder):
 
 ```bash
 bash tools/deploy.sh                    # code only
-bash tools/deploy.sh --restart          # code + restart screener and dashboard + start new compose services
+bash tools/deploy.sh --restart          # code + restart screener, dashboard and Telegram bot + start new compose services
 bash tools/deploy.sh --models --restart # after accepting a new model
 ```
 
@@ -57,7 +57,7 @@ On the server (`cd ~/pd`, `C="docker compose -f docker-compose.server.yml"`):
 |---|---|
 | status | `$C ps`, `docker stats --no-stream`, `free -m` |
 | screener log | `$C logs -f --tail 100 screener` |
-| restart | `$C restart screener dashboard` |
+| restart | `$C restart screener dashboard tgbot` |
 | rebuild after `requirements.lock.txt` changed | `$C up -d --build` |
 | psql | `$C exec db psql -U postgres -d pump_detector` |
 

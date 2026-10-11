@@ -611,6 +611,14 @@ Entering in parts: a fraction of the position on the Candidate, the rest added o
 and all-in on the Candidate. One stop for the whole position from the first entry, 0.1% fee per part, results in units
 of a full position; split by trades inside labeled impulses and outside them.
 
+### `experiments/split_memory.py`
+
+Split mode with a "memory" of the start (2026-10-12, after CHIP 10-10 where the start model fired one bar before the
+hourly confirmation and faded by the time it came): enter on the main Alert if the start model (without the hourly
+filter) was above its threshold on any of the last N 15m bars (mem2 / mem4 / mem8), against split and market on the
+same 87 coins ≥ $20M as the control backtest (`reports/backtests/20261011_2228_current_split.json`), database only.
+`--days N` (default 30). Writes `reports/split_memory.md`. Needs `backtest.tiers_and_bars` → `start_s15`.
+
 ### `experiments/rolling_confirm.py`
 
 Faster Alert? The hourly confirmation on a rolling hour (updated every 15 minutes from our 15m data) against the closed

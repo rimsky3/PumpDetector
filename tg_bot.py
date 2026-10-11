@@ -5,7 +5,8 @@ tg_bot.py — Telegram-бот Pump Detector (2026-10-06): сповіщення �
 тікера (P, стоп, ціль, ліміт) — з /api/ticker, результати — з /api/journal. Нічого не рахує сам — цифри ті самі, що в
 дашборді. Скринер і дашборд не змінюються.
 
-Що надсилає (вмикається кнопками в /settings): 🔴 Alert, 🟠 Кандидат (за замовчуванням вимкнено), 🟣 «прокидається».
+Що надсилає (вмикається кнопками в /settings): 🔴 Alert (вхід моделі), ⚪ Late (Alert без входу моделі, з 12.10),
+🟠 Кандидат (за замовчуванням вимкнено), 🟣 «прокидається».
 Одне повідомлення на епізод; під ним — 📈 Графік (посилання на дашборд), 🔕 заглушити тікер на 2 год, 📌 у watchlist
 (для авто-тікерів сканера). Кнопки внизу чату: 📋 Статус, 📊 Результати (сьогодні / вчора / тиждень / місяць),
 ⚙️ Налаштування.
@@ -50,8 +51,8 @@ MUTE_HOURS = 2
 POLL_SEC = 5
 # alert — лише ВХІД моделі (угода, як мітка «Вхід» на графіку); realert — новий спалах Alert, поки угода моделі відкрита
 # (до 2026-10-08 такі приходили як звичайний Alert; власник: «заходжу з моделлю», тож за замовчуванням вимкнено)
-DEFAULTS = {"alert": True, "realert": False, "cand": False, "wake": True, "fp": True, "woke": True}
-TITLES = {"alert": "🔴 Alert", "realert": "🔁 Re-alert", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p",
+DEFAULTS = {"alert": True, "realert": False, "late": True, "cand": False, "wake": True, "fp": True, "woke": True}
+TITLES = {"alert": "🔴 Alert", "realert": "🔁 Re-alert", "late": "⚪ Late", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p",
           "woke": "🟪 WOKE"}
 MENU = [["📋 Статус", "📊 Результати", "⚙️ Налаштування"]]
 
@@ -194,7 +195,7 @@ class Bot:
         s = self.st.d
         fresh = []
         for kind, items in (("alert", lst.get("alerts", [])), ("realert", lst.get("realerts", [])),
-                            ("cand", lst.get("cands", [])), ("wake", lst.get("wakes", [])),
+                            ("late", lst.get("lates", [])), ("cand", lst.get("cands", [])), ("wake", lst.get("wakes", [])),
                             ("fp", lst.get("fps", [])), ("woke", lst.get("wokeups", []))):
             for e in items:
                 key = f"{kind}|{e['ticker']}|{e['ts']}" + (f"|{e['kind']}" if kind == "fp" else "")
@@ -241,6 +242,12 @@ class Bot:
             body = (f"обсяг ×{e.get('vol_x', 0):.1f} до тижня · ціна {pct(e.get('ret15'))} за 15 хв · OI {pct(e.get('oi1h'))} за год\n"
                     f"5m-бар до {t:%H:%M} UTC" if t else "")
             text = head + "\n" + body + "\n<i>Не сигнал на вхід — монета ожила, подивись.</i>"
+        elif kind == "late":
+            # Alert без входу основного режиму (split: «старт» і годинна не збіглися на одному барі, як CHIP 10-10;
+            # або повторний сигнал після стопу) — модель не бере, рішення за власником (12.10)
+            lv, _ = self.levels(tk)
+            text = (f"⚪ <b>Late</b> · {lv}\n<i>Alert без входу моделі — вирішуй сам: відкат і стакан.</i>"
+                    + (f"\n15m-бар {t:%H:%M}–{(t + timedelta(minutes=15)):%H:%M} UTC" if t else ""))
         else:
             lv, _ = self.levels(tk)
             head = (("🔴 <b>Alert</b> · вхід моделі" + (" (повторний, після стопу)" if e.get("reentry") else ""))

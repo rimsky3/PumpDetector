@@ -338,7 +338,7 @@ def split_by_trades(conn, t15: pd.DataFrame, t: pd.DataFrame, hmap: dict, alerts
     """Епізоди Alert → (входи моделі, Re-alert, Кандидати, late); Кандидати — без тих, що всередині угоди або після
     активності за годину. Вхід, що не почав нового епізоду (повторний вхід після стопу посеред безперервного Alert),
     додається окремо. Режим split (основний): новий епізод Alert — НЕ вхід сам по собі; вхід — лише угода моделі
-    (вхід за моделлю «старт»), а епізод Alert без угоди — у late (без звуку й Telegram; список показує «Alert · late»).
+    (вхід за моделлю «старт»), а епізод Alert без угоди — у late (без звуку; список — чіп Late, Telegram — ⚪ Late, 12.10).
     trades — {тікер: угоди основного режиму} (model_trades), щоб не рахувати двічі."""
     split = strategies.is_split(strategies.get(None))
     bases = {e["ticker"] for e in alerts + cands}

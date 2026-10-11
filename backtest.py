@@ -144,7 +144,8 @@ def tiers_and_bars(conn, base: str, m15: dict, m1: dict, days: int) -> tuple[pd.
     if m15.get("start"):                        # модель «старт» (режим split): її alert_score — колонка start_score
         ms = m15["start"]
         ss = d15[["base_asset", "ts"]].assign(probability=ms["model"].predict_proba(d15[ms["features"]])[:, 1], threshold=ms["threshold"])
-        t["start_score"] = tier_frame(ss, s1, m15.get("confirm", {}).get("share", 0.75)).set_index("ts").sort_index()["alert_score"]
+        sf = tier_frame(ss, s1, m15.get("confirm", {}).get("share", 0.75)).set_index("ts").sort_index()
+        t["start_score"], t["start_s15"] = sf["alert_score"], sf["s15"]     # start_s15 — без годинного фільтра (split_memory)
     start = pd.Timestamp(datetime.now(timezone.utc)) - pd.Timedelta(days=days)
     t = t[t.index >= start]
     if t.empty:
