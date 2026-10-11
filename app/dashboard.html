@@ -231,7 +231,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .persel { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg2); }
 .persel select { height: 30px; background: var(--card); color: var(--fg); border: 1px solid var(--line2); border-radius: 7px; padding: 0 8px; font: inherit; }
 .trow.other { box-shadow: inset 2px 0 0 var(--line3); }
-.trow .roll { font-size: 10px; margin-left: 6px; font-weight: 400; white-space: nowrap; }
+.trow .roll { font-size: 9.5px; line-height: 1; font-weight: 400; white-space: nowrap; }
 /* ліва панель згортається у смугу (кнопка ‹ або клавіша [) */
 .app { --side-w: 248px; grid-template-columns: var(--side-w) minmax(0, 1fr) 392px; }
 .app.journal { grid-template-columns: var(--side-w) minmax(0, 1fr); }
@@ -366,11 +366,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .dot.warn { background: var(--amber); } .dot.bad { background: var(--hot); }
 /* три перемикачі сповіщень в один рядок; увімкнений — кольором свого сигналу */
-.cols, .trow { display: grid; grid-template-columns: 16px minmax(0, 1fr) 52px 36px 48px 46px; gap: 5px; align-items: center; padding: 0 10px; }
+.cols, .trow { display: grid; grid-template-columns: 12px minmax(0, 1fr) 68px 38px 36px 44px 42px; gap: 4px; align-items: center; padding: 0 10px; }
 .cols { padding-block: 6px; font-size: 10px; color: var(--fg3); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .cols button { background: none; border: 0; padding: 0; font-size: 10px; color: var(--fg3); text-align: right; }
 .cols button[aria-pressed="true"] { color: var(--fg); }
-.tlist { flex: 1; overflow-y: auto; min-height: 0; }
+.tlist { flex: 1; overflow-y: auto; min-height: 0; scrollbar-gutter: stable; }
+/* заголовок резервує той самий жолоб смуги прокрутки, що й список, — колонки State / P / OI стоять точно над значеннями */
+.cols { overflow: hidden; scrollbar-gutter: stable; }
 .trow { height: 36px; border-bottom: 1px solid var(--card); cursor: pointer; }
 .trow:hover { background: #1a1a18; }
 .trow { position: relative; }
@@ -388,10 +390,21 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .trow.other.mover { box-shadow: inset 2px 0 0 var(--line3), inset 0 0 0 1px var(--mover); }
 .trow .star { background: none; border: 0; padding: 0; font-size: 12px; color: var(--line2); }
 .trow .star.on { color: var(--amber); }
-.trow .name { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+.trow .name { font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; }
 .trow .name .dot { flex-shrink: 0; }
 .trow .num { text-align: right; font-size: 12px; }
 .trow .p { font-size: 13px; font-weight: 500; }
+.trow .p:has(.roll) { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; gap: 1px; }
+.trow .name .tk { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+/* колонка State (варіант A, 12.10): один головний чіп; решта — значки .gl після тікера */
+.trow .state { display: flex; min-width: 0; overflow: hidden; }
+.trow .state .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.trow .gl { width: 14px; height: 14px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex: none; cursor: help; }
+.gl.woke { color: var(--mover); box-shadow: inset 0 0 0 1px var(--mover); border-radius: 50%; }
+.gl.vol { background: #221d33; color: var(--wake); }
+.gl.fpb, .chip.fpb { background: var(--ok-bg); color: var(--ok); } .gl.fpp, .chip.fpp { background: var(--cand-bg); color: var(--amber); }  /* не .p: .trow .p — колонка P */
+.gl.alert { background: var(--alert-bg); color: var(--hot-soft); } .gl.cand { background: var(--cand-bg); color: var(--amber); } .gl.past { opacity: .6; }
+.gl.auto { background: var(--live-bg); color: var(--link); }
 .keys { padding: 6px 14px; font-size: 10px; color: var(--fg3); border-top: 1px solid var(--line); display: flex; gap: 12px; }
 .keys b { color: var(--fg2); font-weight: 500; }
 .recent { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
@@ -703,7 +716,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       </details>
     </div>
     <div class="cols" role="row">
-      <span></span><span style="display:flex;align-items:center;gap:6px">Ticker <button class="help" data-help="list" aria-label="Що це?">?</button></span><span>P · 24h</span>
+      <span></span><span style="display:flex;align-items:center;gap:6px">Ticker <button class="help" data-help="list" aria-label="Що це?">?</button></span><span>State</span><span>P · 24h</span>
       <button data-sort="p" aria-pressed="true">P ↓</button><button data-sort="oi">ΔOI 24h</button><button data-sort="chg">24h</button>
     </div>
     <div class="tlist" id="tlist" role="listbox" aria-label="Тікери"></div>
@@ -900,7 +913,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди. Зелена «b» під свічкою — «залочка» з футпрінту: ціна проколола лоу попередніх 2 год, під лоу пройшло ≥ 30% обсягу бару (стопи, ліквідації, шорти на пробій), але бар закрився вище, обсяг унизу бару, обсяг ≥ 2× норми; лише коли за 6 год був Кандидат або Alert. Стоп — під лоу бару b. На історії (218 монет, місяць) у такому контексті +2R раніше за стоп у 38% проти 29% у входу моделі — це підказка, не сигнал моделі; перевіряй стакан. Помаранчева «p» над свічкою — те саме на хаях: покупців над хаєм поглинули. Наведи на бар — деталі й чим скінчилась мітка (+2R / стоп / 12 год). Мітки з'являються лише з моменту запуску записувача угод.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
     notify: "Кнопка «Sound ▾» біля Movers: п'ять незалежних перемикачів; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-подіях. Alert — ВХІД МОДЕЛІ: модель без позиції відкриває угоду (та сама мітка «Вхід» на графіку; повторний вхід після стопу теж), два високі тони і системне сповіщення. Re-alert — Alert спалахнув знову, а угода моделі ще відкрита (до 08.10 це приходило як звичайний Alert): один короткий високий тон; за замовчуванням вимкнено. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила, і модель без позиції (у відкритій угоді й одразу після сигналу за останню годину — тиша): один нижчий тон; хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах. Woke — перше спрацювання каналу WOKE (тиха монета ожила): два висхідні тони і сповіщення з причиною. Volume 5m і Woke — не сигнал на вхід. На кнопці — скільки увімкнено (off — жодного). Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
-    list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
+    list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Колонка State — один головний стан: угода основного режиму (Entry 45m — модель увійшла; In +x% — угода відкрита; Late — Alert без входу), інакше сигнал, b / p, Vol 5m або Woke; решта — значки після тікера (W — Woke, V — Vol 5m, b / p — футпрінт, A — сканер), наведи — повний текст. Під P дрібно «5m 0.87» — ковзна 5-хв оцінка, якщо вона новіша й інша. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
     period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду). Кнопка «Дати…» — конкретний день, тиждень, місяць чи рік (дні UTC, за моментом входу в угоду).",
     kinds: "Live + історія (за замовчуванням) — усі оцінки на барах, яких модель не бачила: так оцінюється сама модель. Історія — бари, оцінені пізніше (скринер не працював, сканер додав тікер пізніше): рішення моделі на тих самих даних те саме, різниця лише в тому, коли сигнал дійшов до тебе. Лише live — що ти реально міг отримати вчасно. In-sample — бари з навчання, лише для порівняння.",
@@ -1790,7 +1803,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   const sparkSvg = (vals, thr, color) => {
     const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 56 20"); svg.setAttribute("width", "52"); svg.setAttribute("height", "20"); svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("viewBox", "0 0 56 20"); svg.setAttribute("width", "38"); svg.setAttribute("preserveAspectRatio", "none"); svg.setAttribute("height", "20"); svg.setAttribute("aria-hidden", "true");
     const ln = document.createElementNS(ns, "line"); const ty = (18 - thr * 16).toFixed(1);
     [["x1", 0], ["x2", 56], ["y1", ty], ["y2", ty], ["stroke", cssVar("--line2")], ["stroke-dasharray", "2 2"]].forEach(([k, v]) => ln.setAttribute(k, v));
     svg.appendChild(ln);
@@ -1814,34 +1827,49 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     star.addEventListener("click", (e) => { e.stopPropagation(); toggleFav(r.ticker); });
     const name = el("span", "name"), dot = el("span", "dot");
     dot.style.background = r.status !== "calm" ? colors[r.status] : r.wake ? cssVar("--wake") : r.channel === "woke" ? cssVar("--mover") : cssVar("--line2");
-    name.append(dot, r.ticker);
-    const chip = (cls, text, title) => { const c = el("span", "chip " + cls, text); if (title) c.title = title; name.appendChild(c); };
-    // стан угоди основного режиму (власник 12.10, варіант A): Entry / In trade / Alert · late замість голого «Alert»
-    const tr = r.trade;
-    if (tr && tr.state === "entry") chip("entry", `Entry · ${agoShort(msSince(tr.entry_at))}`,
-      `Model entry (main mode) at ${tr.entry != null ? fmtNum(tr.entry) : "—"}${tr.result_pct != null ? ` · now ${fmtPct(tr.result_pct)}` : ""}`);
-    else if (tr && tr.state === "open") chip("intrade", `In trade ${tr.result_pct != null ? fmtPct(tr.result_pct) : ""}`.trim(),
-      `Model position open since ${agoShort(msSince(tr.entry_at))} ago (main mode)`);
-    else if (tr && tr.state === "late") chip("late", "Alert · late",
+    name.append(dot, el("span", "tk", r.ticker));
+    // Варіант A (власник 12.10, макет https://claude.ai/artifact/LUeKmKbqVsL6qtTTom5m8j): ОДИН головний чіп — у колонці State
+    // фіксованої ширини (стан угоди › сигнал › b / p › Vol 5m › Woke), решта — значки 14 px після тікера; так роблять
+    // TradingView / Bloomberg: колонки фіксовані, чіпи не виштовхують тікер і не налазять на спарклайн
+    const ago = (t) => { const ms = msSince(t); return ms < 5 * 60e3 ? "now" : agoShort(ms); };
+    const marks = [];                                   // [клас, короткий текст, повний текст, підказка, значок]
+    const tr = r.trade;                                 // стан угоди основного режиму (dashboard.trade_state)
+    if (tr && tr.state === "entry") marks.push(["entry", `Entry ${ago(tr.entry_at)}`, `Entry · ${ago(tr.entry_at)}`,
+      `Model entry (main mode) at ${tr.entry != null ? fmtNum(tr.entry) : "—"}${tr.result_pct != null ? ` · now ${fmtPct(tr.result_pct)}` : ""}`]);
+    else if (tr && tr.state === "open") marks.push(["intrade", `In ${tr.result_pct != null ? fmtPct(tr.result_pct) : ""}`.trim(),
+      `In trade ${tr.result_pct != null ? fmtPct(tr.result_pct) : ""}`.trim(), `Model position open since ${agoShort(msSince(tr.entry_at))} ago (main mode)`]);
+    else if (tr && tr.state === "late") marks.push(["late", "Late", "Alert · late",
       "Alert is on, but the model did not enter: not a fresh start (split mode), a re-entry after a stop, or the mode's filter."
-      + (tr.last_exit ? ` Last trade closed ${agoShort(msSince(tr.last_exit))} ago (${tr.last_reason || "—"}).` : ""));
-    else if (ev.sig) chip((ev.sig.tier === "alert" ? "alert" : "cand") + (ev.sig.live ? "" : " past"),
-      (ev.sig.tier === "alert" ? "Alert" : "Candidate") + (ev.sig.live ? "" : ` · ${agoShort(ev.sig.ago)}`),
-      ev.sig.live ? "" : "Signal faded; the row stays in NOW for 1 hour after the last signal bar");
-    if (ev.fp) chip(ev.fp.kind, ev.fp.kind === "b" ? `b · Reclaim · ${agoShort(ev.fp.ago)}` : `p · ${agoShort(ev.fp.ago)}`,
+      + (tr.last_exit ? ` Last trade closed ${agoShort(msSince(tr.last_exit))} ago (${tr.last_reason || "—"}).` : "")]);
+    else if (ev.sig) {
+      const a = ev.sig.tier === "alert";
+      marks.push([(a ? "alert" : "cand") + (ev.sig.live ? "" : " past"),
+        ev.sig.live ? (a ? "Alert" : "Candidate") : `${a ? "Alert" : "Cand"} ${agoShort(ev.sig.ago)}`,
+        (a ? "Alert" : "Candidate") + (ev.sig.live ? "" : ` · ${agoShort(ev.sig.ago)}`),
+        ev.sig.live ? "" : "Signal faded; the row stays in NOW for 1 hour after the last signal bar", a ? "!" : "c"]);
+    }
+    if (ev.fp) marks.push(["fp" + ev.fp.kind, `${ev.fp.kind} ${agoShort(ev.fp.ago)}`,
+      ev.fp.kind === "b" ? `b · Reclaim · ${agoShort(ev.fp.ago)}` : `p · ${agoShort(ev.fp.ago)}`,
       ev.fp.kind === "b" ? "Footprint b: low swept and reclaimed (Alert / Candidate context). A hint, not a model signal — check the order book."
-        : "Footprint p: buyers absorbed at the highs — careful with entries, consider the exit.");
-    if (ev.vol) chip("vol", `Vol 5m ×${Math.round(ev.vol.vol_x)}`,
-      `Volume 5m ${ev.vol.minutes}m ago: ×${ev.vol.vol_x.toFixed(1)}, price ${fmtPct(ev.vol.ret15)} in 15m, OI ${fmtPct(ev.vol.oi1h)} in 1h`);
-    if (ev.woke) chip("woke", `Woke · ${agoShort(ev.woke.ago)}`, "Dormant coin came alive (WOKE channel). Where to look, not an entry signal.");
-    if (r.source === "auto" && r.channel !== "woke") name.appendChild(el("span", "tag-auto", "A"));
-    // ковзна 5-хв оцінка, новіша за офіційний бар: сірим, кольоровим — якщо вона вже Кандидат / Alert
+        : "Footprint p: buyers absorbed at the highs — careful with entries, consider the exit.", ev.fp.kind]);
+    if (ev.vol) marks.push(["vol", `Vol ×${Math.round(ev.vol.vol_x)}`, `Vol 5m ×${Math.round(ev.vol.vol_x)}`,
+      `Volume 5m ${ev.vol.minutes}m ago: ×${ev.vol.vol_x.toFixed(1)}, price ${fmtPct(ev.vol.ret15)} in 15m, OI ${fmtPct(ev.vol.oi1h)} in 1h`, "V"]);
+    if (ev.woke) marks.push(["woke", `Woke ${agoShort(ev.woke.ago)}`, `Woke · ${agoShort(ev.woke.ago)}`,
+      "Dormant coin came alive (WOKE channel). Where to look, not an entry signal." + (ev.woke.reason ? `\n${ev.woke.reason}` : ""), "W"]);
+    const state = el("span", "state");
+    if (marks.length) {
+      const [c, short, full, tip] = marks[0], ch = el("span", "chip " + c, short);
+      ch.title = full + (tip ? `\n${tip}` : ""); state.appendChild(ch);
+    }
+    marks.slice(1).forEach(([c, , full, tip, g]) => { const x = el("span", "gl " + c, g); x.title = full + (tip ? `\n${tip}` : ""); name.appendChild(x); });
+    if (r.source === "auto" && r.channel !== "woke") { const x = el("span", "gl auto", "A"); x.title = "Added by the market scanner"; name.appendChild(x); }
+    const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
+    // ковзна 5-хв оцінка, новіша за офіційний бар, — дрібно під P: сірим, кольоровим — якщо вона вже Кандидат / Alert
     if (r.roll && Math.abs(r.roll.p15 - (r.probability ?? 0)) >= 0.05) {
       const rr = el("span", "roll " + (r.roll.tier === "alert" ? "hot" : r.roll.tier === "candidate" ? "amber" : "dim"), `5m ${fmtP(r.roll.p15)}`);
-      rr.title = `Rolling 5-min window to ${fmtTs(r.roll.close).slice(-5)} UTC: P ${fmtP(r.roll.p15)}. The P column is the last regular 15m bar, as on the chart.`;
-      name.appendChild(rr);
+      rr.title = `Rolling 5-min window to ${fmtTs(r.roll.close).slice(-5)} UTC: P ${fmtP(r.roll.p15)}. The big number is the last regular 15m bar, as on the chart.`;
+      p.appendChild(rr);
     }
-    const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
     const oi = el("span", "num " + (r.oi_24h >= 0.15 ? "warm" : r.oi_24h < 0 ? "dim" : ""), fmtPct(r.oi_24h));
     const chg = el("span", "num " + pctCls(r.chg_24h), fmtPct(r.chg_24h));
     // × — прибрати зі списку (блок до нового спрацювання сканера); «Undo» — у тості внизу
@@ -1850,7 +1878,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     rm.addEventListener("click", (e) => { e.stopPropagation(); removeTicker(r.ticker); });
     const quiet = r.status === "calm" && r.quiet_h != null && r.quiet_h >= 24;
     if (quiet) row.classList.add("quiet");
-    row.append(star, name, sparkSvg(r.spark, r.threshold, colors[r.status]), p, oi, chg, rm);
+    row.append(star, name, state, sparkSvg(r.spark, r.threshold, colors[r.status]), p, oi, chg, rm);
     // другий рядок на всю ширину — причина WOKE (у WOKE UP і в NOW першу годину)
     if (ev.woke && (r.channel === "woke" || ev.woke.ago < HOUR) && ev.woke.reason) { row.appendChild(el("span", "why", ev.woke.reason)); row.classList.add("two"); }
     row.title = `${{ alert: "Alert", candidate: "Candidate", calm: "Calm" }[r.status] || r.status}${r.in_sample ? " · in-sample" : ""}`

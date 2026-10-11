@@ -9,7 +9,7 @@ dashboard's numbers. The screener and the dashboard are unchanged.
 
 | Type | Default | Message |
 |---|---|---|
-| 🔴 Alert | on | **model entry** only (since 2026-10-08): the model has no open trade and opens one — the same trade as the "Вхід" mark on the chart (`risk.position_state`, main mode), including a re-entry after a stop. Ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, **Drivers** (top 3 features behind P, the strongest one against it, and `⚠ No volume behind this signal` when volume pulls P down), the 15m bar |
+| 🔴 Alert | on | **model entry** only (since 2026-10-08): the model has no open trade and opens one — the same trade as the "Вхід" mark on the chart (`risk.position_state`, the main mode — `"main": true` in `strategies.json`, read on every message, `split` since 2026-10-12), including a re-entry after a stop. Ticker, price, 24 h change, P (15m) and the hourly confirmation, OI change over 4 h, entry, stop (price and %), the half-exit target, the limit hint, **Drivers** (top 3 features behind P, the strongest one against it, and `⚠ No volume behind this signal` when volume pulls P down), the 15m bar |
 | 🔁 Re-alert | off | Alert fired again while the model trade is still open (before 2026-10-08 these came as ordinary Alerts): P, the trade's entry time and price, its current result, the bar |
 | 🟠 Candidate | off | the same as Alert without a position: the stop "if entering now" (price − k·ATR). Only when the model has no open trade and there was no Candidate / Alert in the previous hour |
 | 🟣 Volume 5m | on | volume × weekly norm, 15-minute price change, hourly OI change |

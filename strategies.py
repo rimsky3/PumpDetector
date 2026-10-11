@@ -24,7 +24,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 PATH = os.path.join(ROOT, "strategies.json")
 
 DEFAULT = [
-    {"id": "market", "title": "15m + 1h · ринок", "model": "tier15", "signal": "alert", "entry": "market", "ob": False, "main": True,
+    {"id": "market", "title": "15m + 1h · ринок", "model": "tier15", "signal": "alert", "entry": "market", "ob": False,
      "note": "основний: вхід по ринку на Alert"},
     {"id": "limit", "title": "15m + 1h · ліміт −0.5 ATR", "model": "tier15", "signal": "alert", "entry": "limit", "ob": False,
      "note": "6 міс. бектесту PF 1.02 проти 0.96; журнал 24.09–02.10 гірше за ринок"},
@@ -38,7 +38,7 @@ DEFAULT = [
     {"id": "p_be", "title": "15m + 1h · б/з на p", "model": "tier15", "signal": "alert", "entry": "market", "ob": False,
      "p_be": True, "note": "p у позиції → стоп у б/з, без повторного входу в епізоді: 40 днів PF 0.94 проти 0.93, великих не ріже — жива перевірка"},
     {"id": "split", "title": "15m + 1h · вхід на старті", "model": "tier15", "signal": "alert", "entry": "market", "ob": False,
-     "split": True, "note": "вхід лише на свіжому старті (модель «старт»), утримання — основна або «старт»: ≥ 20 млн — 6 міс. 0.84 → 0.95, purged ~70 днів 0.79 → 0.82"},
+     "split": True, "main": True, "note": "вхід лише на свіжому старті (модель «старт»), утримання — основна або «старт»: ≥ 20 млн — 6 міс. 0.84 → 0.95, purged ~70 днів 0.79 → 0.82"},
     {"id": "cand", "title": "15m · вхід на Кандидаті", "model": "tier15", "signal": "candidate", "entry": "market", "ob": False,
      "note": "раніший вхід (без підтвердження 1h), більше фальстартів"},
     {"id": "lightgbm", "title": "LightGBM 1h · порівняння", "model": "lightgbm"},

@@ -32,9 +32,19 @@ from datetime import datetime, timedelta, timezone
 import requests
 from dotenv import load_dotenv
 
+import strategies
+
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(ROOT, "reports", "tg_state.json")
-MODEL, MODE = "tier15", "market"          # основна модель і режим (як у дашборді за замовчуванням)
+MODEL = "tier15"                         # основна модель; режим — основний зі strategies.json (main_mode)
+
+
+def main_mode() -> str:
+    """Основний режим (\"main\": true у strategies.json) — той самий, за яким дашборд рахує список і сповіщення;
+    читається щоразу, тож перемикання режиму не потребує перезапуску бота (12.10: market → split)."""
+    return strategies.get(None)["id"]
+
+
 SEND_MAX_AGE_MIN = 45                     # старіші епізоди не надсилаємо (після простою — без «зливи» старих сигналів)
 MUTE_HOURS = 2
 POLL_SEC = 5
@@ -146,7 +156,7 @@ class Bot:
 
     def levels(self, tk: str) -> tuple[str, dict]:
         """Рядки про ціну, P, стоп і ціль з даних тікера (ті самі правила, що в дашборді)."""
-        d = self.get(f"/api/ticker?symbol={requests.utils.quote(tk)}&model={MODEL}&strategy={MODE}&days=3", timeout=60)
+        d = self.get(f"/api/ticker?symbol={requests.utils.quote(tk)}&model={MODEL}&strategy={main_mode()}&days=3", timeout=60)
         c, pos, ctx = d.get("cards") or {}, d.get("position") or {}, d.get("ctx") or {}
         price = d.get("price")
         lines = [f"<b>{html.escape(tk)}</b> {px(price)} ({pct(d.get('chg_24h'))} за добу)"]
@@ -302,7 +312,7 @@ class Bot:
             "today": (today, today, "Сьогодні"), "yday": (today - timedelta(days=1), today - timedelta(days=1), "Вчора"),
             "week": (today - timedelta(days=6), today, "Тиждень"), "month": (today - timedelta(days=29), today, "Місяць"),
         }[period]
-        j = self.get(f"/api/journal?model={MODE}&kind=hist&from={a:%Y-%m-%d}&to={b:%Y-%m-%d}", timeout=180)
+        j = self.get(f"/api/journal?model={main_mode()}&kind=hist&from={a:%Y-%m-%d}&to={b:%Y-%m-%d}", timeout=180)
         rows = j.get("rows", [])
         closed = [r for r in rows if not r.get("open") and r.get("result_pct") is not None]
         opened = [r for r in rows if r.get("open")]

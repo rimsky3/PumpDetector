@@ -357,3 +357,8 @@ Evidence on coins ≥ $20M turnover (profit factor, Alert entries, partial exit)
 (better in 6 of 6 months, stable across thresholds 0.88–0.92, seeds and coin halves); purged cross-validation by time
 blocks (August, September, 1–10 October, each month cut from training with a 3-day embargo) 0.789 → 0.819, better in
 2 of 3 blocks; the 10-day October holdout alone was worse (0.99 → 0.92, ~75 trades). On coins of $5–20M it is worse.
+Control backtest of the live code (`backtest.py --strategy split` vs `market`, same data, 87 coins ≥ $20M outside
+training, 12 Sep – 11 Oct): 383 vs 775 trades, profit factor 1.50 vs 1.34, without the top 3 trades 1.27 vs 1.20, coin
+halves 1.54 / 1.44 vs 1.61 / 1.05. **`split` is the main mode since 2026-10-12** (`"main": true` in `strategies.json`):
+the dashboard list (NOW chips Entry / In trade / Alert · late), notifications and the Telegram bot follow it. Rolling
+back is moving `"main": true` back to `market`.

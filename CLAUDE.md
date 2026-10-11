@@ -623,7 +623,11 @@ OI (дельта, швидкість зміни), OHLCV (log-return, volume z-sc
   оцінює обидві; --backfill-15m DAYS — історія. tiers.split_scores(main, start) → (вхід, утримання = max); risk.position_state(entry_prob=).
   strategies.json режим split ("split": true) — журнал, ticker_15m, model_trades, backtest.py. Список NOW (власник, варіант A, макет
   https://claude.ai/artifact/3fpzCJ762cNaoLsks8PD53): dashboard.trade_state → row.trade → чіпи Entry · Xm / In trade +x% / Alert · late —
-  за ОСНОВНИМ режимом (як сповіщення), не за вибраним у «Режим»; split_by_trades → (entries, re, cands, late). Бектест 30 дн (87 монет
+  за ОСНОВНИМ режимом (як сповіщення), не за вибраним у «Режим»; split_by_trades → (entries, re, cands, late).
+  КОЛОНКА STATE (12.10, власник: варіант A, макет https://claude.ai/artifact/LUeKmKbqVsL6qtTTom5m8j): один головний чіп у колонці
+  68 px (угода › сигнал › b / p › Vol 5m › Woke; коротко: Entry 45m / In +x% / Late / Cand 25m), решта — значки .gl 14 px після
+  тікера (W, V, b, p, A; title — повний текст); ковзна 5m-оцінка — дрібно під P; .cols і .tlist — scrollbar-gutter: stable
+  (заголовки точно над колонками). Класи футпрінту — fpb / fpp (не .p: «.trow .p» — колонка P). Бектест 30 дн (87 монет
   ≥ 20 млн, 12.09–11.10): split PF 1.50 / market 1.34 (без топ-3 1.27 / 1.20, угод 383 / 775). backtest.py --no-coinalyze — дані лише бірж.
   Основним — після деплою і --backfill-15m на сервері; відкат — "main": true знову в market.
 - ІСТОРІЯ ТІКЕРІВ НАВЧАННЯ (2026-10-09): 15m-навчання бере тікер лише з першої години 1h Coinalyze (from_1h_start) — монета
