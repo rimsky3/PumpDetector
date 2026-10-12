@@ -12,7 +12,7 @@ experiments/candidate_6m.py — КАНДИДАТ ПРОТИ ПОТОЧНОЇ М�
 ≥ 20 млн: PF кандидата ≥ PF поточної, краще в ≥ 4 з 6 місяців і обидві половини монет не гірші. Режим market — для довідки.
 Застереження: обидва набори навчені на розмітці серпня–жовтня, тобто час навчання перекривається з тестом (монети — ні);
 це однаково для обох, тож порівняння чесне, а абсолютні PF завищені.
-→ reports/candidate_6m.md
+→ reports/candidate_6m.md, reports/candidate_6m_trades.csv
 
     python experiments/candidate_6m.py                                   # models/ проти models/candidate/
     python experiments/candidate_6m.py --sets current=models first=models/candidate_first candidate=models/candidate
@@ -88,10 +88,11 @@ def main() -> None:
                     mth = pd.Timestamp(r["ts"]).strftime("%Y-%m")
                     if mth in uni[c]:
                         rows.append({"set": name, "mode": mode, "ticker": c, "half": AT.half(c), "month": mth, "band": uni[c][mth],
-                                     "ret": r["ret"], "reason": r["reason"]})
+                                     "ret": r["ret"], "reason": r["reason"], "ts": r["ts"]})
         if n % 50 == 0:
             print(f"  {n}/{len(coins)}", flush=True)
     d = pd.DataFrame(rows)
+    d.to_csv(OUT.replace(".md", "_trades.csv"), index=False)          # угоди з часом входу — для розрізів (coin_params.py)
     pf = I.pf
     names = list(sets)
     L = ["# Кандидат проти поточної моделі на 6 місяцях (12.10)", "",

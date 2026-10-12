@@ -611,6 +611,35 @@ Entering in parts: a fraction of the position on the Candidate, the rest added o
 and all-in on the Candidate. One stop for the whole position from the first entry, 0.1% fee per part, results in units
 of a full position; split by trades inside labeled impulses and outside them.
 
+### `experiments/in_play_examples.py`
+
+Exploratory profile of the owner's "in play" examples (MAGIC 2026-10-09, OGN 2026-10-08) hour by hour from the start of
+the move against the typical split-mode entry of the control backtest: usual turnover, 24h and 4h turnover against the
+usual, hot hours, open-interest change and drawdown, price change, pullback depth, OI to turnover. Needs the local
+database and the score cache of `random_entry.py`. `--add "TICKER YYYY-MM-DD HH:MM"` adds more examples. Console only.
+
+### `experiments/in_play_def.py`
+
+The "in play" definition derived from those examples (turnover ≥ 8× usual, OI +45% in 24h, ≥ 8 hot hours, price +15%
+in 24h, and still alive: OI within 10% of its 12h high, pullback ≤ half of the move), tested on the live models'
+six-month trades from `reports/candidate_6m_trades.csv`. Writes `reports/in_play_def.md`. No options.
+
+### `experiments/in_play_6m.py`
+
+Is the model better on coins that are "in play"? Four definitions fixed before the run, all measured at the entry from
+the `data/long_bin` price cache: 24h turnover ≥ 3× the coin's usual (30-day median), both previous full days ≥ 2× usual,
+top 10% of all cached coins by turnover growth right now, top 10% by 3-day price change. In-play trades against the
+rest for the live models' six-month trades (`reports/candidate_6m_trades.csv`), `split` and `market`, coin halves and
+months. Writes `reports/in_play_6m.md`. No options.
+
+### `experiments/coin_params.py`
+
+Coin-level parameters the owner looks at, measured before each entry, against the result of the live models' trades over
+six months (`reports/candidate_6m_trades.csv`, run `candidate_6m.py` first): order-book depth within ±2% in dollars,
+Binance trades over 24 hours (`data/trades15m` cache), open-interest change over 7 days, and the number of days with a
+≥ +15% jump in the previous 30 days. Terciles per parameter in `split` and `market` modes, coin halves and months.
+Writes `reports/coin_params.md`. No options.
+
 ### `experiments/candidate_6m.py`
 
 Ready model sets (no training) on the six-month archive: the 15m main model, the start model and the hourly model from
