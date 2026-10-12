@@ -611,6 +611,36 @@ Entering in parts: a fraction of the position on the Candidate, the rest added o
 and all-in on the Candidate. One stop for the whole position from the first entry, 0.1% fee per part, results in units
 of a full position; split by trades inside labeled impulses and outside them.
 
+### `experiments/time_seeds.py`
+
+Time-of-day features and seed averaging (2026-10-12, ideas from Kaggle solution write-ups): `time` = base features plus
+hour of day, minutes to 00 / 08 / 16 UTC and a weekend flag (at the bar close); `base_ens` / `time_ens` = mean probability
+of five models (seeds 42–46). Leave-ticker-out and the six-month backtest, same engine as `sample_weights.py`.
+Needs the local database with the Binance archive history of the training tickers (after `tools/pull_db.sh` restore it
+with `binance_archive.py … --from 2026-07-25`, otherwise August is missing and the log line "навчання: … барів" drops to
+about half). Writes `reports/time_seeds.md` and `reports/time_seeds_trades.csv`. No options.
+
+### `experiments/late_limit.py`
+
+Split mode plus a limit order on a pullback in the Late state (2026-10-12): on the first bar of a main-model Alert
+episode where split did not enter, place a limit at that bar's close − X·ATR, valid N bars; stop and half-exit target
+from the fill price. Variants lim0 / lim05 / lim1 (N = 8 bars) and lim0_4 / lim05_4 (N = 4) against split and market on
+the same 87 coins; reports the added (limit-filled) trades separately. Uses the score cache of
+`experiments/random_entry.py` (run that first); its simulator is checked against `risk.position_state`.
+Writes `reports/late_limit.md`. No options.
+
+### `experiments/random_entry.py`
+
+Randomization significance test for the entries (2026-10-12, after Chan, *Algorithmic Trading*, ch. 1): the model's
+trades against random entries on the same coins and days with the same number of entries per (coin, day) and the same
+exit rule. Two nulls for each mode (`split`, `market`): N1 — a random bar among that day's Alert bars of the coin;
+N2 — a random bar among all scored bars of that day. Reports the null's profit-factor percentiles and the p-value.
+Trades come from a fast simulator that is checked against `risk.position_state` on every coin (must report 0
+mismatches). Same 87 coins as the control backtest; database only; scores are cached in `data/random_entry/tiers.pkl`
+(delete it to recompute). `--worlds N` (default 10000), `--seed N`, `--days N`. Writes `reports/random_entry.md`.
+Caveat found on the first run: N2 conditions on days when the model fired, so it looks ahead — read it as "the value
+is in picking the coin and the day", not as a tradable benchmark.
+
 ### `experiments/split_memory.py`
 
 Split mode with a "memory" of the start (2026-10-12, after CHIP 10-10 where the start model fired one bar before the

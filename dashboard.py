@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 
 from features import INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, compute_features, load_raw, query_df, split_raw
 from fetch import Coinalyze, collect, read_tickers_file
-from risk import EXIT_BARS, PARTIAL_EXIT, atr, position_state, trade_stats
+from risk import EXIT_BARS, PARTIAL_EXIT, atr, intrabar_stop, position_state, trade_stats
 
 
 def last_atr(h: pd.DataFrame) -> float | None:
@@ -285,7 +285,8 @@ def watch_list_15m(conn) -> dict:
     active = {r["ticker"] for r in rows if r["status"] != "calm" or (r["last_sig"] and pd.Timestamp(now) - r["last_sig"]["close"] <= pd.Timedelta(hours=1))}
     trades = {b: model_trades(conn, t15[t15["base_asset"] == b], hmap.get(b)) for b in active}
     for r in rows:
-        r["trade"] = trade_state(trades.get(r["ticker"], []), r, now) if r["ticker"] in active else None
+        r["trade"] = (trade_state(trades.get(r["ticker"], []), r, now, alert_since(t15[t15["base_asset"] == r["ticker"]]))
+                      if r["ticker"] in active else None)
     alerts, realerts, cands, lates = split_by_trades(conn, t15, t, hmap, alerts, cands, recent_cut, trades)
     # для сповіщення: OB у момент сигналу і ліміт −0.5 ATR (ковзний бар 5-хв циклу → останній звичайний 15m-бар до нього)
     for e in alerts:
@@ -324,7 +325,24 @@ def model_trades(conn, g: pd.DataFrame, h: pd.DataFrame | None) -> list[dict]:
     pos = position_state(h, score, 1.0, m15.get("risk", {}).get("k"),
                          m15.get("exit_bars", 4), PARTIAL_EXIT, strategies.entry_rule(strat),
                          market.strategy_allow(conn, strat), entry_prob=entry_p)
+    pos = live_stop(conn, g["base_asset"].iloc[0], pos, h)
     return list(pos["trades"]) + ([pos] if pos.get("open") else [])
+
+
+def live_stop(conn, base: str, pos: dict, h: pd.DataFrame) -> dict:
+    """Відкрита угода + 5m-бари, що закрились після останнього 15m-бару в h: стоп спрацьовує одразу, як його торкнувся
+    5m-бар (risk.intrabar_stop), — список, заголовок і графік показують вихід на ~5 хв після події, а не після закриття
+    15m-бару. 5m-хвіст усього списку скринер тягне кожні 5 хв. Помилка читання — стан без змін."""
+    if not pos.get("open") or pos.get("stop") is None or h is None or h.empty:
+        return pos
+    try:
+        after = h["price"].dropna().index.max() + BAR_15M
+        h5 = aggregate(load_raw(conn, [base], "5min", since=after), base, "5min", light=True)
+        return pos if h5.empty else intrabar_stop(pos, h5.loc[h5.index >= after, "low"].dropna(), BAR_15M, PARTIAL_EXIT)
+    except Exception as e:
+        conn.rollback()
+        print(f"! стоп наживо {base}: {type(e).__name__}: {e}")
+        return pos
 
 
 def _in_trade(tr: list[dict], ts) -> dict | None:
@@ -374,10 +392,26 @@ def split_by_trades(conn, t15: pd.DataFrame, t: pd.DataFrame, hmap: dict, alerts
     return sorted(entries, key=key, reverse=True), sorted(re, key=key, reverse=True), cands, sorted(late, key=key, reverse=True)
 
 
-def trade_state(tr: list[dict], row: dict, now: datetime) -> dict | None:
+def alert_since(g: pd.DataFrame) -> pd.Timestamp | None:
+    """Початок поточного (останнього) епізоду Alert тікера: бари Alert з проміжками ≤ 1 год — один епізод
+    (як train.signal_episodes). g — рядки tier_frame тікера (звичайні 15m-бари)."""
+    a = g.loc[g["tier"] == "alert", "ts"].sort_values().to_list()
+    if not a:
+        return None
+    start = a[-1]
+    for ts in reversed(a[:-1]):
+        if start - ts > pd.Timedelta(hours=1):
+            break
+        start = ts
+    return start
+
+
+def trade_state(tr: list[dict], row: dict, now: datetime, since: pd.Timestamp | None = None) -> dict | None:
     """Стан рядка списку за угодами основного режиму (власник 12.10, варіант A): entry — модель увійшла за останню годину і
-    угода відкрита; open — угода відкрита давніше; late — Alert зараз (або згас < 1 год), а угоди немає (режим не увійшов:
-    не свіжий старт — split, після стопу, фільтр режиму). None — нічого з цього (рядок показує звичайний статус)."""
+    угода відкрита; open — угода відкрита давніше; closed — Alert ще горить, але модель у ЦЬОМУ епізоді вже відторгувала
+    і вийшла (стоп або вихід за моделлю; since — початок епізоду, alert_since; KGEN 12.10: після стопу рядок показував «Late»);
+    late — Alert зараз (або згас < 1 год), а угоди в цьому епізоді не було (режим не увійшов: не свіжий старт — split,
+    фільтр режиму). None — нічого з цього (рядок показує звичайний статус)."""
     op = next((x for x in tr if x.get("open")), None)
     if op is not None:
         entered = pd.Timestamp(op["entry_ts"]) + BAR_15M
@@ -388,6 +422,9 @@ def trade_state(tr: list[dict], row: dict, now: datetime) -> dict | None:
     alert_now = row.get("status") == "alert" or (sig and sig["tier"] == "alert" and pd.Timestamp(now) - sig["close"] <= pd.Timedelta(hours=1))
     if alert_now:
         last = max(tr, key=lambda x: x["entry_ts"]) if tr else None
+        if last is not None and since is not None and last.get("exit_ts") is not None and pd.Timestamp(last["exit_ts"]) >= since:
+            return {"state": "closed", "reason": last.get("reason"), "result_pct": last.get("result_pct"),
+                    "entry": last.get("entry"), "exit": last.get("exit"), "exit_at": pd.Timestamp(last["exit_ts"]) + BAR_15M}
         return {"state": "late", "last_exit": last.get("exit_ts") + BAR_15M if last and last.get("exit_ts") is not None else None,
                 "last_reason": last.get("reason") if last else None}
     return None
@@ -651,6 +688,7 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
         pos = position_state(h, score, 1.0, k, exit_bars, PARTIAL_EXIT, strategies.entry_rule(strat),
                              market.both(orderbook.allow_fn(book_rows) if strat.get("ob") else None,
                                          market.strategy_allow(conn, strat)), p_marks, entry_prob=entry_p)
+        pos = live_stop(conn, base, pos, h)             # стоп на 5m-барах поточного, ще не закритого 15m-бару
     last = t.iloc[-1] if len(t) else None
     # Drivers: внески ознак у P останнього оціненого бару (drivers.py; ознаки — як у скринері, бар кешується)
     drv = None

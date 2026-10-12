@@ -348,6 +348,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .chip.entry { background: var(--hot); color: var(--bg); }
 .chip.intrade { background: var(--alert-bg); color: var(--hot-soft); box-shadow: inset 0 0 0 1px var(--hot); }
 .chip.late { background: transparent; color: var(--fg3); box-shadow: inset 0 0 0 1px var(--line2); }
+.chip.closed { background: var(--line); color: var(--fg2); } .chip.closed.neg { color: var(--hot-soft); } .chip.closed.pos { color: var(--ok); }
 .chip.woke { border: 1px solid var(--mover); color: var(--mover); line-height: 14px; }
 .chip.vol { background: #221d33; color: var(--wake); }
 .chip.b { background: var(--ok-bg); color: var(--ok); }
@@ -820,6 +821,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const H = 3600;
   const LS = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+  const PARTIAL_FRAC = 0.5;            // частка часткового виходу — risk.PARTIAL_EXIT["frac"] (для результату стопу наживо)
   const st = {
     view: "forecast", model: "tier15",
     // режим — окремо для кожної вкладки (власник 02.10): Прогноз, Журнал і Бектест не перемикають одне одного
@@ -828,7 +830,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // вікна графіка: 1 або 2; «Повна інфо» (позиція, угоди, «прокидається», мітки сканера); активне вікно
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
     meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
-    secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(),
+    secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(), liveStops: new Map(),
     notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), seen: new Set(LS.get("pd-seen", [])),
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
@@ -913,7 +915,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди. Зелена «b» під свічкою — «залочка» з футпрінту: ціна проколола лоу попередніх 2 год, під лоу пройшло ≥ 30% обсягу бару (стопи, ліквідації, шорти на пробій), але бар закрився вище, обсяг унизу бару, обсяг ≥ 2× норми; лише коли за 6 год був Кандидат або Alert. Стоп — під лоу бару b. На історії (218 монет, місяць) у такому контексті +2R раніше за стоп у 38% проти 29% у входу моделі — це підказка, не сигнал моделі; перевіряй стакан. Помаранчева «p» над свічкою — те саме на хаях: покупців над хаєм поглинули. Наведи на бар — деталі й чим скінчилась мітка (+2R / стоп / 12 год). Мітки з'являються лише з моменту запуску записувача угод.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
     notify: "Кнопка «Sound ▾» біля Movers: п'ять незалежних перемикачів; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-подіях. Alert — ВХІД МОДЕЛІ: модель без позиції відкриває угоду (та сама мітка «Вхід» на графіку; повторний вхід після стопу теж), два високі тони і системне сповіщення. Re-alert — Alert спалахнув знову, а угода моделі ще відкрита (до 08.10 це приходило як звичайний Alert): один короткий високий тон; за замовчуванням вимкнено. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила, і модель без позиції (у відкритій угоді й одразу після сигналу за останню годину — тиша): один нижчий тон; хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах. Woke — перше спрацювання каналу WOKE (тиха монета ожила): два висхідні тони і сповіщення з причиною. Volume 5m і Woke — не сигнал на вхід. На кнопці — скільки увімкнено (off — жодного). Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
-    list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Колонка State — один головний стан: угода основного режиму (Entry 45m — модель увійшла; In +x% — угода відкрита; Late — Alert без входу), інакше сигнал, b / p, Vol 5m або Woke; решта — значки після тікера (W — Woke, V — Vol 5m, b / p — футпрінт, A — сканер), наведи — повний текст. Під P дрібно «5m 0.87» — ковзна 5-хв оцінка, якщо вона новіша й інша. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
+    list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Колонка State — один головний стан: угода основного режиму (Entry 45m — модель увійшла; In +x% — угода відкрита; Stop −x% / Exit +x% — модель у цьому епізоді Alert уже відторгувала й вийшла; Late — Alert, у якому входу моделі не було), інакше сигнал, b / p, Vol 5m або Woke; решта — значки після тікера (W — Woke, V — Vol 5m, b / p — футпрінт, A — сканер), наведи — повний текст. Під P дрібно «5m 0.87» — ковзна 5-хв оцінка, якщо вона новіша й інша. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
     period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду). Кнопка «Дати…» — конкретний день, тиждень, місяць чи рік (дні UTC, за моментом входу в угоду).",
     kinds: "Live + історія (за замовчуванням) — усі оцінки на барах, яких модель не бачила: так оцінюється сама модель. Історія — бари, оцінені пізніше (скринер не працював, сканер додав тікер пізніше): рішення моделі на тих самих даних те саме, різниця лише в тому, коли сигнал дійшов до тебе. Лише live — що ти реально міг отримати вчасно. In-sample — бари з навчання, лише для порівняння.",
@@ -1407,8 +1409,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const line = (ser, price, color, title) => { if (price != null) priceLines.push([ser, ser.createPriceLine({ price, color, title, lineWidth: 1, lineStyle: LWC.LineStyle.Dashed, axisLabelVisible: true })]); };
       if (is15() && d.limit && d.limit.until > Date.now() / 1000) line(S.candles, d.limit.price, cssVar("--link"), "Ліміт");
       if (pos.open) {
-        line(S.candles, pos.stop, warm, pos.partial_ts ? "Стоп · б/з" : pos.p_ts ? "Стоп · б/з (p)" : "Стоп");
-        if (pos.target != null && !pos.partial_ts) line(S.candles, pos.target, cssVar("--ok"), "Ціль ½");
+        const hitLive = P.stopLive && P.stopLive.entry_ts === pos.entry_ts;
+        line(S.candles, pos.stop, hitLive ? cssVar("--hot") : warm,
+          hitLive ? `Стоп спрацював ${fmtPct(P.stopLive.result_pct)}` : pos.partial_ts ? "Стоп · б/з" : pos.p_ts ? "Стоп · б/з (p)" : "Стоп");
+        if (pos.target != null && !pos.partial_ts && !hitLive) line(S.candles, pos.target, cssVar("--ok"), "Ціль ½");
       }
       line(S.prob, thr, fg2, is15() ? "поріг 15m" : "поріг");
       if (is15() && d.ctx && d.ctx.thr1h != null) line(S.ctx, d.ctx.share * d.ctx.thr1h, cssVar("--fg3"), "1h ≥");
@@ -1483,6 +1487,19 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         const t = d.series.t, last = t.length ? t[t.length - 1] : 0;
         if (bar.time <= last) return;                        // бар уже закрито і він є в базі
         S.candles.update({ time: bar.time, open: bar.o, high: bar.h, low: bar.l, close: bar.c });
+        // СТОП НАЖИВО (12.10, власник: «не чекати закриття свічки»): жива ціна торкнулась стопу відкритої угоди — показуємо
+        // вихід одразу (заголовок, лінія стопу, рядок списку); сервер підтвердить на 5m-барі (dashboard.live_stop) і на 15m
+        const pos = d.position;
+        if (pos && pos.open && pos.stop != null && !(P.stopLive && P.stopLive.entry_ts === pos.entry_ts)) {
+          const afterEntry = bar.time >= pos.entry_ts + 900;          // на барі входу виходи не перевіряються (як у risk.py)
+          if ((afterEntry ? bar.l : bar.c) <= pos.stop) {
+            const rest = pos.stop / pos.entry - 1;
+            const res = pos.partial_ts ? PARTIAL_FRAC * (pos.partial_price / pos.entry - 1) + (1 - PARTIAL_FRAC) * rest : rest;
+            P.stopLive = { entry_ts: pos.entry_ts, at: Date.now(), result_pct: res, entry: pos.entry, exit: pos.stop };
+            st.liveStops.set(d.ticker, P.stopLive);
+            P.renderHead(); P.renderChart(); if (isActive()) renderLeft(); renderList();
+          }
+        }
         if (full()) {
           S.vol.update({ time: bar.time, value: bar.bnQ + bar.byT });
           // OI — сума бірж тікера; поки якась біржа не відповіла, живий бар OI не малюємо:
@@ -1567,7 +1584,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const pos = d.position || {}, showPos = !d.light && !!pos.open;
       const posEl = q(".tk-pos"), stopEl = q(".tk-stop");
       posEl.hidden = !showPos; stopEl.hidden = !showPos;
-      if (showPos) {
+      if (P.stopLive && !(pos.open && P.stopLive.entry_ts === pos.entry_ts)) P.stopLive = null;   // сервер уже показує вихід / інша угода
+      if (showPos && P.stopLive) {
+        posEl.textContent = `стоп спрацював ${fmtPct(P.stopLive.result_pct)}`; posEl.className = "tk-pos neg";
+        posEl.title = "Жива ціна торкнулась стопу — угоду моделі закрито за ціною стопу. Сервер підтвердить на найближчому 5m-барі.";
+        stopEl.textContent = "live";
+      } else if (showPos) {
+        posEl.title = "";
         posEl.textContent = `позиція ${fmtPct(pos.result_pct)}`; posEl.className = "tk-pos" + (pos.result_pct < 0 ? " neg" : "");
         stopEl.textContent = `стоп ${pos.partial_ts ? "б/з" : pos.p_ts ? "б/з (p)" : fmtPx(pos.stop)}`;
       }
@@ -1834,11 +1857,21 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // TradingView / Bloomberg: колонки фіксовані, чіпи не виштовхують тікер і не налазять на спарклайн
     const ago = (t) => { const ms = msSince(t); return ms < 5 * 60e3 ? "now" : agoShort(ms); };
     const marks = [];                                   // [клас, короткий текст, повний текст, підказка, значок]
-    const tr = r.trade;                                 // стан угоди основного режиму (dashboard.trade_state)
+    let tr = r.trade;                                   // стан угоди основного режиму (dashboard.trade_state)
+    // стоп наживо на відкритому графіку: поки сервер ще показує угоду відкритою — рядок уже каже «Stop» (до 20 хв)
+    const ls = st.liveStops.get(r.ticker);
+    if (ls && !(tr && (tr.state === "entry" || tr.state === "open") && Date.now() - ls.at < 20 * 60e3)) st.liveStops.delete(r.ticker);
+    else if (ls) tr = { state: "closed", reason: "stop", result_pct: ls.result_pct, entry: ls.entry, exit: ls.exit, exit_at: new Date(ls.at).toISOString() };
     if (tr && tr.state === "entry") marks.push(["entry", `Entry ${ago(tr.entry_at)}`, `Entry · ${ago(tr.entry_at)}`,
       `Model entry (main mode) at ${tr.entry != null ? fmtNum(tr.entry) : "—"}${tr.result_pct != null ? ` · now ${fmtPct(tr.result_pct)}` : ""}`]);
     else if (tr && tr.state === "open") marks.push(["intrade", `In ${tr.result_pct != null ? fmtPct(tr.result_pct) : ""}`.trim(),
       `In trade ${tr.result_pct != null ? fmtPct(tr.result_pct) : ""}`.trim(), `Model position open since ${agoShort(msSince(tr.entry_at))} ago (main mode)`]);
+    else if (tr && tr.state === "closed") {            // модель у цьому епізоді Alert уже відторгувала й вийшла (12.10, KGEN: було «Late»)
+      const stop = tr.reason === "stop", res = tr.result_pct != null ? fmtPct(tr.result_pct) : "";
+      marks.push(["closed " + (tr.result_pct >= 0 ? "pos" : "neg"), `${stop ? "Stop" : "Exit"} ${res}`.trim(), `${stop ? "Stopped out" : "Exited"} ${res}`.trim(),
+        `Model already traded this Alert and is out (${stop ? "stop" : "4 bars without Alert"}): entry ${tr.entry != null ? fmtNum(tr.entry) : "—"} → `
+        + `exit ${tr.exit != null ? fmtNum(tr.exit) : "—"}, ${agoShort(msSince(tr.exit_at))} ago. Alert is still on; a new entry needs a fresh start signal.`]);
+    }
     else if (tr && tr.state === "late") marks.push(["late", "Late", "Alert · late",
       "Alert is on, but the model did not enter: not a fresh start (split mode), a re-entry after a stop, or the mode's filter."
       + (tr.last_exit ? ` Last trade closed ${agoShort(msSince(tr.last_exit))} ago (${tr.last_reason || "—"}).` : "")]);

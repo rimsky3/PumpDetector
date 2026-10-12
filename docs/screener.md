@@ -474,6 +474,18 @@ peak 18.8 ATR.
 A "trade" on the dashboard starts at the first hour with probability ≥ threshold and ends by the exit rule.
 It is a simulation to judge the model, not trading advice.
 
+**Stop shown without waiting for the bar close (2026-10-12).** `risk.position_state` works on closed 15m bars, so a stop
+used to appear only after the bar closed and the screener cycle ran (up to ~15 minutes later). Two layers now bring it
+forward; the trade result is unchanged because the exit price is the stop level in every case.
+
+| Where | How | Delay |
+|---|---|---|
+| Open chart | the browser compares the live candle (exchange WebSocket) with the open position's stop: header "стоп спрацював −x%", the stop line turns red, the list row shows `Stop −x%` (`P.stopLive`, `st.liveStops`) | seconds |
+| List, header and chart for every ticker | `dashboard.live_stop` → `risk.intrabar_stop`: 5m bars closed after the last 15m bar; a low at or below the stop closes the trade (`intrabar: true`, exit bar = the 15m bar it happened in) | up to ~5 min |
+
+The half-exit target is not checked intrabar: inside one bar `position_state` checks the stop before the target, and
+5m bars could give a different order than the closed bar will. Journal and backtest are untouched.
+
 ## 15m tier details
 
 - **Data per 15m cycle:** a new watchlist coin gets 10 days of 15m history; the rest get exactly the gap since their

@@ -108,6 +108,28 @@ def stop_multiplier(conn, interval: str = "1hour") -> dict:
     }
 
 
+def intrabar_stop(pos: dict, lows: pd.Series, bar: pd.Timedelta, partial: dict | None = None) -> dict:
+    """Стоп усередині ще не закритого бару (2026-10-12, власник: «коли ціна доходить до стопу — закривати й показувати
+    одразу, не чекати закриття свічки»). pos — відкрита угода з position_state; lows — лоу дрібніших барів (5m), що
+    закрились ПІСЛЯ останнього бару, який бачила position_state (індекс — відкриття). Якщо лоу торкнувся стопу — повертає
+    той самий стан, але із закритою угодою: вихід за ціною стопу, exit_ts — відкриття бару `bar`, у якому це сталося,
+    intrabar = True. Коли цей бар закриється, position_state дасть ту саму угоду (лоу бару ≤ стопу → вихід за стопом),
+    тож показ лише випереджає розрахунок. Ціль ½ тут НЕ перевіряється: у position_state стоп у барі перевіряється раніше
+    за ціль, і дрібніші бари могли б дати інший порядок, ніж дасть закритий бар."""
+    if not pos.get("open") or pos.get("stop") is None or lows is None or not len(lows):
+        return pos
+    hit = lows[lows <= pos["stop"]]
+    if not len(hit):
+        return pos
+    frac = partial["frac"] if partial else 0.0
+    rest = pos["stop"] / pos["entry"] - 1
+    res = rest if pos.get("partial_ts") is None else frac * (pos["partial_price"] / pos["entry"] - 1) + (1 - frac) * rest
+    tr = {k: v for k, v in pos.items() if k not in ("trades", "order", "open", "below_bars", "hours")}
+    tr.update({"exit_ts": hit.index[0].floor(bar), "exit": float(pos["stop"]), "reason": "stop", "result_pct": float(res),
+               "intrabar": True})
+    return {**tr, "open": False, "trades": list(pos.get("trades", [])) + [dict(tr)], "order": None}
+
+
 def trade_stats(trades: list[dict]) -> dict:
     """Підсумок закритих угод position_state (відкрита не рахується): кількість, прибуткові,
     середній виграш і програш, очікування на угоду, скільки закрито по стопу."""
