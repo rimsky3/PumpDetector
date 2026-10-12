@@ -15,7 +15,8 @@
 # Правило: спершу коміт, потім деплой. Скрипт копіює файли такими, як вони є на диску, — якщо є незакомічені зміни,
 # на сервер піде код, якого немає на GitHub; тоді скрипт попереджає і питає (окрім --labels: розмітку комітять пізніше).
 #
-# Файли, які на сервері змінює сам дашборд (watchlist.txt — «＋ у watchlist», scan_config.json — пороги сканера),
+# Файли, які на сервері змінює сам дашборд (watchlist.txt — «＋ у watchlist», scan_config.json — пороги сканера,
+# spread_config.json — пороги розбіжності бірж),
 # звичайне оновлення НЕ перезаписує — лише --first. Секрети (.env) скрипт не копіює ніколи.
 set -euo pipefail
 
@@ -23,7 +24,7 @@ HOST="ubuntu@45.76.90.13"
 PORT=2222
 KEY="D:/keys/pd.pem"
 DIR="pd"                                   # папка на сервері: /home/ubuntu/pd
-SERVER_OWNED='^(watchlist\.txt|scan_config\.json)$'
+SERVER_OWNED='^(watchlist\.txt|scan_config\.json|spread_config\.json)$'
 SKIP='^(notes/|images_bags/|data/|ТЗ )'      # особисте і великі локальні кеші — серверу не потрібні
 
 first=0; models=0; restart=0; labels=0; backtests=0; yes=0

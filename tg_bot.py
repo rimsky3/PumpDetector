@@ -6,7 +6,7 @@ tg_bot.py — Telegram-бот Pump Detector (2026-10-06): сповіщення �
 дашборді. Скринер і дашборд не змінюються.
 
 Що надсилає (вмикається кнопками в /settings): 🔴 Alert (вхід моделі), ⚪ Late (Alert без входу моделі, з 12.10),
-🟠 Кандидат (за замовчуванням вимкнено), 🟣 «прокидається».
+🟠 Кандидат (за замовчуванням вимкнено), 🟣 «прокидається», 🔷 Spread (ціни тікера розійшлись між біржами, з 13.10).
 Одне повідомлення на епізод; під ним — 📈 Графік (посилання на дашборд), 🔕 заглушити тікер на 2 год, 📌 у watchlist
 (для авто-тікерів сканера). Кнопки внизу чату: 📋 Статус, 📊 Результати (сьогодні / вчора / тиждень / місяць),
 ⚙️ Налаштування.
@@ -49,11 +49,13 @@ def main_mode() -> str:
 SEND_MAX_AGE_MIN = 45                     # старіші епізоди не надсилаємо (після простою — без «зливи» старих сигналів)
 MUTE_HOURS = 2
 POLL_SEC = 5
+SPREAD_BURST = 5                          # більше подій розбіжності за один прохід — одне зведене повідомлення
 # alert — лише ВХІД моделі (угода, як мітка «Вхід» на графіку); realert — новий спалах Alert, поки угода моделі відкрита
 # (до 2026-10-08 такі приходили як звичайний Alert; власник: «заходжу з моделлю», тож за замовчуванням вимкнено)
-DEFAULTS = {"alert": True, "realert": False, "late": True, "cand": False, "wake": True, "fp": True, "woke": True}
+# spread — ціни тікера аномально розійшлись між біржами (spread.py, 13.10): події монітора дашборда, /api/spreads
+DEFAULTS = {"alert": True, "realert": False, "late": True, "cand": False, "wake": True, "fp": True, "woke": True, "spread": True}
 TITLES = {"alert": "🔴 Alert", "realert": "🔁 Re-alert", "late": "⚪ Late", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p",
-          "woke": "🟪 WOKE"}
+          "woke": "🟪 WOKE", "spread": "🔷 Spread"}
 MENU = [["📋 Статус", "📊 Результати", "⚙️ Налаштування"]]
 
 
@@ -223,6 +225,61 @@ class Bot:
                 print(f"! надсилання {kind} {tk}: {ex}", flush=True)
         self.st.save()
 
+    def notify_spreads(self, first: bool):
+        """Розбіжність цін між біржами: нові події монітора дашборда (/api/spreads — без бази, тому кожні POLL_SEC).
+        Пороги й перелік монет — у дашборді («Spread ▾»); повтор по монеті раніше за cooldown приходить як quiet — не шлемо."""
+        s, new, fresh = self.st.d, False, []
+        for e in self.get("/api/spreads", timeout=20).get("events", []):
+            tk, key = e["ticker"], f"spread|{e['ticker']}|{e['ts']}"
+            if key in s["sent"]:
+                continue
+            with self.st.lock:
+                s["sent"][key] = time.time()
+            new = True
+            if first or e.get("quiet") or not s["settings"].get("spread", DEFAULTS["spread"]) or s["muted"].get(tk, 0) > time.time():
+                continue
+            fresh.append(e)
+        if len(fresh) > SPREAD_BURST:                 # десятки монет за один зріз — це збій / відставання біржі, а не десятки нагод
+            try:
+                top = sorted(fresh, key=lambda e: -e["pct"])
+                self.send(f"🔷 <b>Spread</b> · одразу {len(fresh)} монет — схоже на збій або відставання біржі, окремих повідомлень не шлю\n"
+                          + ", ".join(f"{html.escape(e['ticker'])} {pct(e['pct'])} ({e['hi']} › {e['lo']})" for e in top[:10])
+                          + ("…" if len(top) > 10 else ""))
+            except Exception as ex:
+                print(f"! надсилання spread (зведення): {ex}", flush=True)
+            fresh = []
+        for e in fresh:
+            tk = e["ticker"]
+            try:
+                mute = {"text": f"🔕 {tk} на {MUTE_HOURS} год", "callback_data": f"mute:{tk}"}
+                # монети поза списком у дашборді ще немає — замість графіка кнопка «у watchlist»
+                buttons = self.signal_buttons(tk, False) if e.get("in_list") else [
+                    [mute], [{"text": "📌 У watchlist (з'явиться графік)", "callback_data": f"watch:{tk}"}]]
+                self.send(self.spread_text(e), buttons)
+                print(f"[{now():%H:%M:%S}] надіслано spread {tk}", flush=True)
+            except Exception as ex:
+                print(f"! надсилання spread {tk}: {ex}", flush=True)
+        if new:
+            self.st.save()
+
+    def spread_text(self, e: dict) -> str:
+        tk, held = e["ticker"], e.get("held") or 0
+        lines = [f"🔷 <b>Spread</b> · <b>{html.escape(tk)}</b>",
+                 f"{e['hi']} на <b>{pct(e['pct'], 2)}</b> дорожча за {e['lo']} (бід проти аску)",
+                 f"Тримається {f'{held:.0f} с' if held < 90 else f'{held / 60:.0f} хв'} · звичайна для монети ±{e['norm'] * 100:.2f}%"]
+        try:                                            # ціни й funding по біржах — з картки тікера
+            ex = self.get(f"/api/spread?symbol={requests.utils.quote(tk)}", timeout=20).get("ex") or []
+            if ex:
+                lines.append("Ціни: " + " · ".join(f"{r['name']} {px((r['bid'] + r['ask']) / 2)}"
+                                                    + (f" ({pct(r['d'], 2)})" if r.get("d") is not None else "") for r in ex))
+            fund = [f"{r['name']} {pct(r['funding'], 3)}" for r in ex if r.get("funding") is not None]
+            if fund:
+                lines.append("Funding: " + " · ".join(fund))
+        except Exception as ex:
+            print(f"! картка spread {tk}: {ex}", flush=True)
+        lines.append("<i>Ціни розійшлись. Скільки можна взяти — дивись стакан.</i>")
+        return "\n".join(lines)
+
     def send_signal(self, kind: str, e: dict, row: dict):
         tk = e["ticker"]
         t = ts_of(e["ts"])
@@ -289,8 +346,14 @@ class Bot:
                 f"Контекст: {ctx} за 6 год · покупців на хаях поглинули — обережно з входом, подумай про вихід\n{bar}")
 
     def notifier(self):
-        last_pulse, first, last_full = None, True, 0.0
+        last_pulse, first, last_full, first_sp = None, True, 0.0, True
         while True:
+            try:
+                if self.st.d["owner"]:
+                    self.notify_spreads(first_sp)
+                    first_sp = False
+            except Exception as ex:
+                print(f"! сповіщення spread: {type(ex).__name__}: {ex}", flush=True)
             try:
                 if self.st.d["owner"]:
                     p = self.get("/api/pulse", timeout=20)

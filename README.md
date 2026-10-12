@@ -63,6 +63,7 @@ Every experiment, including the failed ones, is logged with its question, result
 | Screener | Scores the watchlist every 15 minutes, the hottest coins every 5 minutes on rolling bars |
 | Dashboard | Charts with signal zones, simulated trades and stops, a watchlist with trade states, a journal that forward-tests every mode, backtests, per-signal explanations (TreeSHAP) |
 | Alerts | Telegram bot driven by the same API as the dashboard |
+| Cross-exchange spread | Live monitor of the same perpetual on Binance, Bybit and OKX: a chart pane, a per-exchange card and an alert when the executable spread is far from the coin's normal |
 | Retraining | Label → retrain a candidate → compare with the live model on unseen coins → promote or reject |
 | Monitoring | Signal frequency, calibration by score level, feature drift (PSI) |
 | Deployment | Docker Compose on a 2-vCPU VPS: database, screener, dashboard behind HTTPS, bot, two recorders |
@@ -116,6 +117,7 @@ train.py                        rule vs logistic regression vs LightGBM, three m
 tiers.py, risk.py, strategies.py  signal tiers, simulated position (entry, partial exit, stop), trading modes
 scanner.py, screener.py         market scanner and the scoring loop
 wake.py, footprint.py, market.py, movers.py, drivers.py  early warnings, footprint marks, market breadth, movers, TreeSHAP
+spread.py                       cross-exchange price spread monitor (in memory, inside the dashboard process)
 dashboard.py, app/              dashboard server and page
 journal.py, backtest.py, monitor.py  forward test, backtest on unseen coins, drift and calibration
 tg_bot.py                       Telegram alerts

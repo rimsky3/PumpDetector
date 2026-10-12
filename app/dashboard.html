@@ -14,6 +14,7 @@
   --alert-bg: #4a1b0c; --cand-bg: #412402; --ok-bg: #173404; --live-bg: #0c2a44; --link: #85b7eb;
   --mover: #c792ea;  /* Movers (movers.py): рамка рядка в списку, чіп у заголовку вікна, заголовок таблиці Movers */
   --wake: #a78bfa;   /* «прокидається» (wake.py): свічка, обсяг, крапка в списку */
+  --spread: #5cc8c0; --spread-bg: #0f2f2c;   /* розбіжність цін між біржами (spread.py): чіп, значок Δ, кнопка Spread */
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -187,6 +188,31 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .tool { height: 30px; width: 34px; display: flex; align-items: center; justify-content: center; border-radius: 7px; border: 1px solid var(--line2); background: var(--card); color: var(--fg2); }
 .tool[aria-pressed="true"] { background: #2962ff; border-color: #2962ff; color: #fff; }
 .fptool { font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+/* розбіжність цін між біржами (spread.py, 13.10; макет A + C): панель Δ на графіку (кнопка Δ), чіп у заголовку вікна з
+   карткою бірж, значок Δ у списку, «Spread ▾» — події й налаштування порогів */
+.pnhead .tk-xs { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line2); background: transparent; color: var(--fg2); white-space: nowrap; }
+.pnhead .tk-xs:hover { border-color: var(--line3); color: var(--fg); }
+.pnhead .tk-xs.on { border-color: var(--spread); background: var(--spread-bg); color: var(--spread); }
+.pnhead .tk-xs[hidden] { display: none; }
+.sp-btn.on { border-color: #1f5a55; } .sp-btn.on .mk-dot { background: var(--spread); } .sp-btn.on .mk-st { color: var(--spread); }
+.sp-pop { width: 400px; } .xs-pop { width: 430px; }
+.sp-ttl { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--spread); }
+.sp-sub { font-size: 10.5px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--fg3); }
+.sp-ev { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: baseline; padding: 6px 8px; border-radius: 6px; font-size: 12px; background: var(--side); border: 0; width: 100%; text-align: left; color: var(--fg2); }
+.sp-ev + .sp-ev { margin-top: 4px; } .sp-ev:hover { background: var(--row); }
+.sp-ev b { color: var(--fg); font-weight: 500; } .sp-ev .v { color: var(--spread); font-weight: 600; font-variant-numeric: tabular-nums; } .sp-ev.past .v { color: var(--fg2); font-weight: 500; }
+.sp-grid { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 6px 10px; align-items: center; font-size: 12px; color: var(--fg2); }
+.sp-grid input, .sp-grid select { width: 100%; height: 26px; background: var(--side); border: 1px solid var(--line2); border-radius: 6px; font-size: 12px; text-align: right; padding: 0 6px; color: var(--fg); }
+.sp-grid .wide { grid-column: 1 / -1; display: grid; gap: 4px; } .sp-grid .wide input { text-align: left; }
+.sp-checks { display: flex; gap: 12px; flex-wrap: wrap; } .sp-checks label { display: inline-flex; gap: 5px; align-items: center; color: var(--fg); }
+.sp-acts { display: flex; align-items: center; gap: 10px; } .sp-acts .small { flex: 1; }
+.xs-tbl table { border-collapse: collapse; width: 100%; font-size: 12px; font-variant-numeric: tabular-nums; }
+.xs-tbl th, .xs-tbl td { padding: 5px 6px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.xs-tbl th { color: var(--fg3); font-weight: 500; font-size: 10.5px; letter-spacing: .03em; text-transform: uppercase; }
+.xs-tbl th:first-child, .xs-tbl td:first-child { text-align: left; } .xs-tbl td.d { color: var(--spread); font-weight: 600; } .xs-tbl .neg { color: var(--hot-soft); } .xs-tbl .pos { color: var(--ok); }
+.xs-svg svg { display: block; width: 100%; height: 110px; }
+.xs-lg { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--fg2); } .xs-lg i { display: inline-block; width: 12px; height: 2px; vertical-align: middle; margin-right: 5px; }
+.nt-row.spread[aria-pressed="true"] .sw { background: var(--spread); } .nt-row.spread .nt-k { background: var(--spread); }
 .chart-help { position: absolute; left: 10px; top: 8px; z-index: 5; }
 .hint { font-size: 11px; color: var(--fg3); margin: 0; }
 .error { font-size: 13px; color: var(--hot-soft); background: var(--alert-bg); border-radius: 8px; padding: 10px 14px; }
@@ -402,6 +428,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .trow .state .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .trow .gl { width: 14px; height: 14px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; flex: none; cursor: help; }
 .gl.woke { color: var(--mover); box-shadow: inset 0 0 0 1px var(--mover); border-radius: 50%; }
+.gl.sp { background: var(--spread-bg); color: var(--spread); box-shadow: inset 0 0 0 1px var(--spread); }
 .gl.vol { background: #221d33; color: var(--wake); }
 .gl.fpb, .chip.fpb { background: var(--ok-bg); color: var(--ok); } .gl.fpp, .chip.fpp { background: var(--cand-bg); color: var(--amber); }  /* не .p: .trow .p — колонка P */
 .gl.alert { background: var(--alert-bg); color: var(--hot-soft); } .gl.cand { background: var(--cand-bg); color: var(--amber); } .gl.past { opacity: .6; }
@@ -627,6 +654,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <button class="help" data-help="ruler" aria-label="Що це?">?</button>
         <button class="tool fptool" id="fpBtn" aria-pressed="false" title="Футпрінт: обсяг купівель / продажів на рівнях ціни в кожній свічці" aria-label="Футпрінт">FP</button>
         <button class="help" data-help="fp" aria-label="Що це?">?</button>
+        <button class="tool fptool" id="xsBtn" aria-pressed="true" title="Δ: панель під графіком — на скільки % ціна на Bybit і OKX відрізняється від Binance" aria-label="Розбіжність цін між біржами">Δ</button>
+        <button class="help" data-help="xs" aria-label="Що це?">?</button>
         <button class="tool" id="linkBtn" aria-pressed="true" title="Лінковка вікон: увімкнено — ТФ, FP і профіль обсягу змінюються в обох вікнах; вимкнено — лише в активному" aria-label="Лінковка вікон"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"></path><path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"></path></svg></button>
         <button class="help" data-help="link" aria-label="Що це?">?</button>
         <div class="seg sm" id="vpSeg" role="group" aria-label="Профіль обсягу за період">
@@ -648,6 +677,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
                   title="Монети з власним (ідіосинкратичним) рухом — рух, не пояснений ринком альтів"><span class="mk-dot" aria-hidden="true"></span>Movers <span class="mk-st" id="mvCount">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           <div class="mk-pop mv-pop" id="mvPop" role="dialog" aria-label="Монети з власним рухом" hidden></div>
         </div>
+        <div class="mk-wrap sp-wrap">
+          <button class="mk-btn sp-btn" id="spBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="spPop"
+                  title="Розбіжність цін одного тікера між біржами: події й налаштування порогів"><span class="mk-dot" aria-hidden="true"></span>Spread <span class="mk-st" id="spCount">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <div class="mk-pop sp-pop" id="spPop" role="dialog" aria-label="Розбіжність цін між біржами" hidden></div>
+        </div>
         <div class="mk-wrap nt-wrap">
           <button class="mk-btn nt-btn" id="ntBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="ntPop" title="Sound and browser notifications"><svg class="nt-bell" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path></svg>Sound <span class="mk-st" id="ntCount">off</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           <div class="mk-pop nt-pop" id="ntPop" role="dialog" aria-label="Sound and notifications" hidden></div>
@@ -660,6 +694,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       <div><div class="tt" id="toastT"></div><div class="ts" id="toastS"></div><a href="#" id="toastA" style="font-size:11px">Відкрити</a></div>
       <button class="x" id="toastX" aria-label="Закрити">×</button>
     </div>
+    <div class="mk-pop xs-pop" id="xsPop" role="dialog" aria-label="Ціни тікера на біржах" hidden></div>
     <div class="panes" id="panes"></div>
     <p class="hint">Колесо миші — масштаб, перетягування — зсув, межі панелей можна тягнути. Ймовірність — оцінка моделі, не торгова рекомендація.</p>
   </main>
@@ -671,6 +706,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <span class="live-dot off" title="Жива свічка з бірж">live</span>
         <span class="pill none tk-status">—</span><span class="tk-p"></span>
         <span class="tk-pos" hidden></span><span class="small tk-stop" hidden></span>
+        <button class="tk-xs" aria-haspopup="dialog" hidden></button>
         <span class="tk-mover" hidden></span>
         <span class="tk-why" hidden></span>
         <span class="badge tk-ins" hidden title="Ця година була в навчанні моделі">in-sample</span>
@@ -831,7 +867,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
     meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
     secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(), liveStops: new Map(),
-    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), seen: new Set(LS.get("pd-seen", [])),
+    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), notifySpread: LS.get("pd-notify-spread", false), seen: new Set(LS.get("pd-seen", [])),
+    spreads: null,                      // /api/spreads: події розбіжності цін між біржами, тікери списку, налаштування (spread.py)
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
 
@@ -888,10 +925,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   const show = (e, msg) => { e.textContent = msg || ""; e.hidden = !msg; };
   const modelInfo = () => (st.meta?.models || []).find((m) => m.name === st.model);
+  // активна подія розбіжності цін між біржами для тікера (spread.py) або null
+  const spEvent = (tk) => (st.spreads?.events || []).find((e) => e.ticker === tk) || null;
 
   // ---------- підказки «?» ----------
   const FP_TITLE = "Футпрінт: обсяг купівель / продажів на рівнях ціни в кожній свічці";
   const HELP = {
+    xs: "Δ — панель під графіком ціни: на скільки відсотків закриття бару на Bybit (жовта лінія) і OKX (синя) відрізняється від біржі графіка (Binance; нуль — її ціна). Вище нуля — там дорожче. Пунктир — поріг із «Spread ▾»; бірюзовий фон — бари, де розбіжність була не меншою за поріг. Остання точка оновлюється наживо з бірж. Панелі немає, якщо тікер торгується лише на одній з трьох бірж. Чіп «Δ Bybit +5.1%» у заголовку вікна — поточна найбільша розбіжність; бірюзовий — зараз аномалія; клік — ціни, обсяг на кращій ціні і funding на кожній біржі.",
+    spread: "Монітор розбіжності цін одного тікера між Binance, Bybit і OKX. Кожні 15 с бере найкращі бід і аск усіх перпів (три запити на весь ринок, у базу нічого не пишеться). Розбіжність «по біду й аску» = бід дорожчої біржі / аск дешевшої − 1: це те, що реально можна взяти ринком, а не різниця останніх цін. Подія — коли вона не менша за поріг, у задану кількість разів більша за звичайну для цієї монети (медіана за останні години) і тримається заданий час. Тоді: значок Δ у списку, бірюзовий чіп у заголовку вікна, звук (Sound ▾ → Spread) і Telegram. «Понад стільки % — інший актив»: під одним тікером на біржах бувають різні монети, таку пару монітор ігнорує. Після перезапуску дашборда перші ~5 хв подій немає — монітор збирає звичайну розбіжність. Це місце, де дивитись, а не готовий арбітраж: глибину стакану, funding і комісії перевіряй сам.",
     link: "Лінковка вікон (ланцюжок). Увімкнено — таймфрейм, FP (футпрінт) і профіль обсягу «День / Тиж» змінюються в обох вікнах одразу; при вмиканні друге вікно бере налаштування активного (з помаранчевою рамкою). Вимкнено — кнопки змінюють лише активне вікно: напр. ліворуч 15m з футпрінтом, праворуч 1h без нього. Налаштування кожного вікна зберігаються після перезавантаження сторінки. Тікер у вікнах і так незалежний.",
     fp: "FP — футпрінт у вигляді дельта-кластерів: у кожній свічці рівні ціни через 0.1% смугами — довжина = обсяг рівня, колір = хто переважав (зелений — агресивні купівлі, червоний — продажі), яскравість = наскільки сильно (бліда — порівну, яскрава — перекіс ≥ 40%); рамка — POC бару (рівень з найбільшим обсягом). На широких свічках — обсяг рівня числом ($, k / M). Видно лише, коли графік наближено (колесо миші): на віддаленому свічки завузькі. Дані — угоди Binance: живий записувач + історія з архіву Binance для монет зі списку (за 30 днів); для інших монет — лише з моменту запуску записувача. Вимкнено — нічого не завантажується й не малюється. Мітки b / p на графіку — з того самого футпрінту.",
     backtest: "Бектест — модель проходить історію монет, яких не бачила в навчанні: усі USDT-перпи Binance з середнім оборотом від заданого, OI не більше, ніж у сканері, без тікерів навчання і виключених. Список задається правилом ДО прогону, тож вибору «де був памп» немає. Угоди — тими самими правилами, що й «Позиція моделі». Без прослизання, стакану і твого фільтру стаканом; той самий період ринку, що й навчання.",
@@ -914,7 +955,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     full: "«Повна інфо» увімкнена — на графіку і в заголовку вікна позиція моделі, угоди, стоп і ціль, «прокидається» (фіолетові свічки), мітки сканера; ліворуч — історія угод і «Модель бачить OI». Вимкнена — лише свічки, OI, обсяг, ймовірність і зони сигналу: вікно відкривається в 2–3 рази швидше. Кнопки ▢ / ▢▢ — одне або два вікна графіка; активне (рамка) отримує тікер зі списку і ↑/↓, Tab — інше вікно; [ — згорнути / розгорнути ліву панель.",
     chart: "Остання свічка — жива (позначка live біля тікера): ціна, обсяг і OI поточного бару з WebSocket Binance/Bybit у реальному часі; на 1h — лише ціна. Модель і рівні сигналу рахуються тільки на закритих барах, кожні 15 хв. Свічки ціни, OI, обсяг і ймовірність (UTC). «15m + 1h»: 15-хвилинні бари; червона зона — Alert, жовта — Кандидат; у нижній панелі стовпчики — P 15m-моделі (пунктир — її поріг), лінія — оцінка годинної моделі (пунктир «1h ≥» — скільки їй треба для Alert). ▲ — вхід, ▼ — вихід з результатом (бліді «іст.» — угоди на історії, дораховані заднім числом; синій квадрат «сканер» — коли сканер додав би тікер у список), пунктир на ціні — стоп відкритої угоди. Зелена «b» під свічкою — «залочка» з футпрінту: ціна проколола лоу попередніх 2 год, під лоу пройшло ≥ 30% обсягу бару (стопи, ліквідації, шорти на пробій), але бар закрився вище, обсяг унизу бару, обсяг ≥ 2× норми; лише коли за 6 год був Кандидат або Alert. Стоп — під лоу бару b. На історії (218 монет, місяць) у такому контексті +2R раніше за стоп у 38% проти 29% у входу моделі — це підказка, не сигнал моделі; перевіряй стакан. Помаранчева «p» над свічкою — те саме на хаях: покупців над хаєм поглинули. Наведи на бар — деталі й чим скінчилась мітка (+2R / стоп / 12 год). Мітки з'являються лише з моменту запуску записувача угод.",
     search: "Пошук тікера у списку (Enter — відкрити перший знайдений). «Refresh» підтягує свіжі 15m-дані з бірж і ліквідації, годинні дані з Coinalyze (якщо останньої години ще немає) і переоцінює тікер усіма моделями.",
-    notify: "Кнопка «Sound ▾» біля Movers: п'ять незалежних перемикачів; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-подіях. Alert — ВХІД МОДЕЛІ: модель без позиції відкриває угоду (та сама мітка «Вхід» на графіку; повторний вхід після стопу теж), два високі тони і системне сповіщення. Re-alert — Alert спалахнув знову, а угода моделі ще відкрита (до 08.10 це приходило як звичайний Alert): один короткий високий тон; за замовчуванням вимкнено. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила, і модель без позиції (у відкритій угоді й одразу після сигналу за останню годину — тиша): один нижчий тон; хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах. Woke — перше спрацювання каналу WOKE (тиха монета ожила): два висхідні тони і сповіщення з причиною. Volume 5m і Woke — не сигнал на вхід. На кнопці — скільки увімкнено (off — жодного). Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
+    notify: "Кнопка «Sound ▾» біля Movers: шість незалежних перемикачів; працюють, поки дашборд відкритий (навіть у фоновій вкладці), лише на нових live-подіях. Alert — ВХІД МОДЕЛІ: модель без позиції відкриває угоду (та сама мітка «Вхід» на графіку; повторний вхід після стопу теж), два високі тони і системне сповіщення. Re-alert — Alert спалахнув знову, а угода моделі ще відкрита (до 08.10 це приходило як звичайний Alert): один короткий високий тон; за замовчуванням вимкнено. Candidate — 15m-модель уже бачить початок, годинна ще не підтвердила, і модель без позиції (у відкритій угоді й одразу після сигналу за останню годину — тиша): один нижчий тон; хибних ≈ в 1.5 раза більше — перевіряй стаканом. Volume 5m — монета зі списку «прокидається» (5m: обсяг ×5 від норми, ціна +2% за 15 хв, OI +2% за годину): голосом «Volume» і тікер по літерах. Woke — перше спрацювання каналу WOKE (тиха монета ожила): два висхідні тони і сповіщення з причиною. Spread — ціни тікера аномально розійшлись між біржами (пороги — «Spread ▾»): два низхідні тони і сповіщення. Volume 5m, Woke і Spread — не сигнал на вхід. На кнопці — скільки увімкнено (off — жодного). Після перезавантаження сторінки браузер дозволяє звук лише після одного кліку на ній.",
     list: "Тікери скринера чотирма секціями, кожна згортається стрілкою (стан запам'ятовується; ↑/↓ ходять лише по відкритих). NOW — щось сталося за останню годину: Alert / Candidate горить або згас < 1 год тому, Vol 5m (≤ 30 хв), b · Reclaim (≤ 1 год), перше спрацювання WOKE (1 год). WOKE UP — тихі монети (сер. оборот за 30 дн < 20 млн), що ожили: темп обороту ≥ 20 млн/добу, обсяг 4 год ×10 норми, ціна +5%, OI +20%; живуть 48 год (сигнал моделі продовжує), максимум 15. Це «де дивитись», не сигнал входу: на історії 42% дали +10% за добу, але медіана за добу −5%. WATCHLIST — ліквідні (сканер, мітка A) і твої ручні. QUIET — 24 год+ без сигналів. Колонка State — один головний стан: угода основного режиму (Entry 45m — модель увійшла; In +x% — угода відкрита; Stop −x% / Exit +x% — модель у цьому епізоді Alert уже відторгувала й вийшла; Late — Alert, у якому входу моделі не було), інакше сигнал, b / p, Vol 5m або Woke; решта — значки після тікера (W — Woke, V — Vol 5m, b / p — футпрінт, A — сканер), наведи — повний текст. Під P дрібно «5m 0.87» — ковзна 5-хв оцінка, якщо вона новіша й інша. Міні-графік — P за 24 год з пунктиром порогу; p — мітка футпрінту на хаях (у NOW не піднімає). ★ угорі — лише обрані.",
     recent: "Останні епізоди Alert (початок серії барів з сигналом). Повний журнал з результатами — на вкладці «Журнал».",
     period: "За який час рахувати статистику і показувати журнал (за часом входу в угоду). Кнопка «Дати…» — конкретний день, тиждень, місяць чи рік (дні UTC, за моментом входу в угоду).",
@@ -1222,9 +1263,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const chartEl = q(".chart"), ohlcEl = q(".ohlc");
     // налаштування вікна (лінковка вимкнена — кожне своє): ТФ графіка (null — ТФ моделі), FP, профіль обсягу за період
     const cfg0 = LS.get(`pd-pane-cfg-${n}`, null) || { tf: null, fp: LS.get("pd-fp", false), vp: LS.get("pd-vp-period", "off") };
-    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off" };
-    const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP });
+    // xs — панель «Δ бірж» під графіком (за замовчуванням увімкнена; з'являється, коли тікер є щонайменше на двох біржах)
+    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off", xs: cfg0.xs !== false };
+    const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP, xs: P.xs });
     let chart = null, S = {}, priceLines = [], markersApi = null, probMarkers = null, idx = new Map(), rangeKey = null;
+    let xsSer = {}, xsZone = null, xsKey = "";          // панель «Δ бірж»: лінія на біржу + підсвітка барів з розбіжністю ≥ порогу
     let ruler = null, vp = null, fpv = null, wakeAt = new Map(), fpAt = new Map(), candleCol = null;
     // з футпрінтом тіла свічок порожні (лише контур), як у кластерах ATAS — інакше заливка зливається з рівнями
     const hollow = (on) => {
@@ -1416,6 +1459,29 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       }
       line(S.prob, thr, fg2, is15() ? "поріг 15m" : "поріг");
       if (is15() && d.ctx && d.ctx.thr1h != null) line(S.ctx, d.ctx.share * d.ctx.thr1h, cssVar("--fg3"), "1h ≥");
+      // ПАНЕЛЬ «Δ БІРЖ» (13.10, макет A): закриття бару на Bybit / OKX відносно біржі графіка, %; одразу під ціною.
+      // Серії створюються лише коли панель увімкнена (кнопка Δ) і тікер є на ≥ 2 біржах — інакше панелі немає взагалі
+      const xs = P.xs && d.xs && Object.keys(d.xs.diff || {}).length ? d.xs : null, wantKey = xs ? Object.keys(xs.diff).join(",") : "";
+      if (wantKey !== xsKey) {
+        Object.values(xsSer).forEach((ser) => chart.removeSeries(ser)); if (xsZone) chart.removeSeries(xsZone);
+        xsSer = {}; xsZone = null; xsKey = wantKey;
+        if (xs) {
+          const pi = chart.panes().length, col = { Bybit: amber, OKX: cssVar("--link"), Binance: cssVar("--ok") };
+          xsZone = chart.addSeries(LWC.HistogramSeries, { priceLineVisible: false, lastValueVisible: false, priceScaleId: "xsz", color: rgba(cssVar("--spread"), .14) }, pi);
+          xsZone.priceScale().applyOptions({ scaleMargins: { top: 0, bottom: 0 }, visible: false });
+          Object.keys(xs.diff).forEach((ex) => { xsSer[ex] = chart.addSeries(LWC.LineSeries, { title: `Δ ${ex}`, color: col[ex] || fg2, lineWidth: 2,
+            priceLineVisible: false, priceFormat: { type: "custom", formatter: (v) => fmtPct(v, 2), minMove: 0.0001 } }, pi); });
+          try { const pn = chart.panes()[pi]; pn.setStretchFactor(1.4); pn.moveTo(1); } catch (e) {}
+        }
+      }
+      if (xs) {
+        const lim = (st.spreads?.config?.min_pct ?? 1) / 100;
+        Object.entries(xsSer).forEach(([ex, ser]) => ser.setData(s.t.map((time, i) => xs.diff[ex][i] != null ? { time, value: xs.diff[ex][i] } : { time })));
+        xsZone.setData(s.t.map((time, i) => Object.values(xs.diff).some((a) => a[i] != null && Math.abs(a[i]) >= lim) ? { time, value: 1 } : { time }));
+        const first = Object.values(xsSer)[0], l3 = cssVar("--line3");
+        priceLines.push([first, first.createPriceLine({ price: 0, color: l3, lineWidth: 1, lineStyle: LWC.LineStyle.Solid, axisLabelVisible: false, title: xs.ref })]);
+        [lim, -lim].forEach((v) => priceLines.push([first, first.createPriceLine({ price: v, color: l3, lineWidth: 1, lineStyle: LWC.LineStyle.Dotted, axisLabelVisible: false, title: v > 0 ? "поріг" : "" })]));
+      }
       const key = `${d.ticker}|${st.model}|${d.tf}`;
       if (key !== rangeKey) { rangeKey = key; setRange(); if (ruler) ruler.clear(); }
       if (ruler) ruler.redraw();
@@ -1487,6 +1553,18 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         const t = d.series.t, last = t.length ? t[t.length - 1] : 0;
         if (bar.time <= last) return;                        // бар уже закрито і він є в базі
         S.candles.update({ time: bar.time, open: bar.o, high: bar.h, low: bar.l, close: bar.c });
+        // панель «Δ бірж» і чіп у заголовку наживо: закриття поточної свічки на кожній біржі відносно біржі графіка
+        const xr = d.xs && bar.px ? bar.px[d.xs.ref] : null;
+        if (xr) {
+          let top = null;
+          Object.keys(d.xs.diff).forEach((ex) => {
+            const v = bar.px[ex]; if (!v) return;
+            const dv = v / xr - 1;
+            if (xsSer[ex]) { try { xsSer[ex].update({ time: bar.time, value: dv }); } catch (e) {} }
+            if (!top || Math.abs(dv) > Math.abs(top.d)) top = { ex, d: dv };
+          });
+          if (top) { P.xsLive = { ticker: d.ticker, at: Date.now(), ref: d.xs.ref, ...top }; renderXs(); }
+        }
         // СТОП НАЖИВО (12.10, власник: «не чекати закриття свічки»): жива ціна торкнулась стопу відкритої угоди — показуємо
         // вихід одразу (заголовок, лінія стопу, рядок списку); сервер підтвердить на 5m-барі (dashboard.live_stop) і на 15m
         const pos = d.position;
@@ -1522,13 +1600,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           // попередня жива свічка закрилась — тримаємо її на графіку, поки скринер не запише бар у базу
           if (bar && bar.c != null && bar.time > dbLast() && !fill.some((b) => b.time === bar.time))
             fill.push({ time: bar.time, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: full() ? bar.bnQ + bar.byT : null });
-          bar = { time, o: null, h: null, l: null, c: null, bnQ: 0, byT: 0, oiO: null, oiH: null, oiL: null };
+          bar = { time, o: null, h: null, l: null, c: null, bnQ: 0, byT: 0, oiO: null, oiH: null, oiL: null, px: {} };
         }
         if (time < bar.time) return;
+        bar.px[src] = c;                                     // закриття на кожній біржі — для панелі «Δ бірж»
         if (src === d.live.price_exchange) { bar.o = o; bar.h = h; bar.l = l; bar.c = c; }
         if (src === "Binance") bar.bnQ = quote; else bar.byT = quote;
         schedule();
       };
+      // OKX — лише ціна для панелі «Δ бірж» (в обсяг, OI і свічку графіка не йде)
+      const onPx = (src, startMs, c) => { if (bar && Math.floor(startMs / 1000) === bar.time && c > 0) { bar.px[src] = c; schedule(); } };
       const connect = (url, onOpen, onMsg) => {
         const k = key, w = new WebSocket(url);
         socks.push(w);
@@ -1565,6 +1646,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
             });
           timers.push(setInterval(() => socks.forEach((w) => { if (w.readyState === 1 && w.url.includes("bybit")) w.send('{"op":"ping"}'); }), 20000));
         }
+        if (L.okx && d.xs && d.xs.diff.OKX) {
+          const ch = { "5m": "candle5m", "15m": "candle15m", "1h": "candle1H" }[d.tf];
+          connect("wss://ws.okx.com:8443/ws/v5/business",
+            (w) => w.send(JSON.stringify({ op: "subscribe", args: [{ channel: ch, instId: L.okx }] })),
+            (m) => { if (m.data && m.arg && m.arg.channel === ch) m.data.forEach((k) => onPx("OKX", +k[0], +k[4])); });
+          timers.push(setInterval(() => socks.forEach((w) => { if (w.readyState === 1 && w.url.includes("okx")) w.send("ping"); }), 25000));
+        }
       };
       return { start, stop, draw, gapFill, redraw: () => { if (S.candles && P.data) { drawFill(); draw(); } } };
     })();
@@ -1573,7 +1661,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const renderHead = () => {
       q(".tk-name").textContent = P.data ? P.data.ticker : (P.ticker || "—");
       root.classList.toggle("active", st.panes > 1 && isActive());
-      const d = P.data; if (!d) { q(".tk-mover").hidden = true; q(".tk-why").hidden = true; return; }
+      const d = P.data; if (!d) { q(".tk-mover").hidden = true; q(".tk-why").hidden = true; q(".tk-xs").hidden = true; return; }
       const ch = q(".tk-chg"); ch.textContent = fmtPct(d.chg_24h); ch.className = "tk-chg " + pctCls(d.chg_24h);
       q(".tk-ins").hidden = !d.in_sample;
       q(".tk-tf").textContent = `USDT Perp · ${d.tf || "1h"}` + (d.native_tf ? ` · модель ${d.native_tf}` : "");
@@ -1613,6 +1701,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           + "\nPushing up: " + dr.for.slice(0, 4).map((x) => `${x.label} ${x.text}`).join(" · ");
       }
       why.hidden = !top.length || !!mv; why.replaceChildren();
+      renderXs();
       if (top.length && !mv) {
         const warn = (dr.warnings || []).length > 0;
         why.className = "tk-why" + (warn ? " warn" : "");
@@ -1630,6 +1719,22 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           + "\nДеталі — картка DRIVERS у лівій панелі.";
       }
     };
+
+    // чіп «Δ Bybit +5.1%» у заголовку (макет C): найбільша розбіжність відносно біржі графіка; бірюзовий — аномалія зараз
+    // (подія монітора spread.py). Значення — з живих свічок бірж, а поки їх немає — з останнього зрізу монітора (15 с).
+    const renderXs = () => {
+      const b = q(".tk-xs"), d = P.data, tk = d?.ticker;
+      const lv = tk && P.xsLive && P.xsLive.ticker === tk && Date.now() - P.xsLive.at < 20000 ? P.xsLive : null;
+      const cur = lv || (tk ? st.spreads?.rows?.[tk] : null), ev = tk ? spEvent(tk) : null;
+      b.hidden = !cur && !ev;
+      if (b.hidden) return;
+      const txt = ev ? `Δ ${ev.hi} › ${ev.lo} ${fmtPct(ev.pct)} ▾` : `Δ ${cur.ex} ${fmtPct(cur.d, Math.abs(cur.d) < 0.01 ? 2 : 1)} ▾`;
+      if (b.textContent !== txt) b.textContent = txt;
+      b.classList.toggle("on", !!ev);
+      b.title = (ev ? `Аномальна розбіжність: ${ev.hi} на ${fmtPct(ev.pct, 2)} дорожче за ${ev.lo} по біду й аску, тримається ${fmtMin(ev.held / 60)}\n` : "")
+        + (cur ? `${cur.ex} відносно ${cur.ref || "Binance"}: ${fmtPct(cur.d, 2)}. ` : "") + "Клік — ціни, funding і графік розбіжності на всіх біржах.";
+    };
+    q(".tk-xs").addEventListener("click", (e) => { e.stopPropagation(); toggleXsPop(P, q(".tk-xs")); });
 
     const load = async (opts = {}) => {             // opts.quiet — фонове оновлення (нові оцінки): без «Оновлюю…»
       renderHead();
@@ -1683,7 +1788,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
     root.addEventListener("pointerdown", () => setActive(n), true);
     Object.assign(P, {
-      load, renderHead, renderChart, setRange, live,
+      load, renderHead, renderChart, setRange, live, renderXs,
+      setXs: (v) => { P.xs = !!v; saveCfg(); renderChart(); },
       toggleRuler: () => { if (ruler) ruler.toggle(); }, toggleVp: () => { if (vp) vp.toggle(); },
       setVpPeriod: (p) => { P.vpP = p; saveCfg(); if (vp) vp.setPeriod(p); },
       setFp: (v) => { P.fp = !!v; saveCfg(); if (fpv) fpv.setOn(P.fp); hollow(P.fp); },
@@ -1698,6 +1804,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const d = st.data, P = activePane();
     if (d) pressIn("tfSeg", "tf", d.tf || "1h");
     $("fpBtn").setAttribute("aria-pressed", String(!!P.fp)); pressIn("vpSeg", "vp", P.vpP || "off");
+    $("xsBtn").setAttribute("aria-pressed", String(!!P.xs));
     $("linkBtn").setAttribute("aria-pressed", String(st.link));
   };
   // лінковка вікон (кнопка біля FP): увімкнена — ТФ, FP і профіль обсягу міняються в обох вікнах, вимкнена — лише в активному
@@ -1757,13 +1864,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const v = !activePane().fp; LS.set("pd-fp", v);
     targetPanes().forEach((p) => p.setFp(v)); renderToolbar();
   });
+  $("xsBtn").addEventListener("click", () => { const v = !activePane().xs; targetPanes().forEach((p) => p.setXs(v)); renderToolbar(); });
   // лінковка: при вмиканні інші вікна беруть налаштування активного (ТФ, FP, профіль)
   const syncFromActive = () => {
     const a = activePane();
     shownPanes().forEach((p) => {
       if (p === a) return;
       const tfChanged = p.tf !== a.tf;
-      p.setTf(a.tf); p.setFp(a.fp); p.setVpPeriod(a.vpP);
+      p.setTf(a.tf); p.setFp(a.fp); p.setVpPeriod(a.vpP); p.setXs(a.xs);
       if (tfChanged) p.load();
     });
   };
@@ -1896,6 +2004,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       ch.title = full + (tip ? `\n${tip}` : ""); state.appendChild(ch);
     }
     marks.slice(1).forEach(([c, , full, tip, g]) => { const x = el("span", "gl " + c, g); x.title = full + (tip ? `\n${tip}` : ""); name.appendChild(x); });
+    // Δ — ціни тікера аномально розійшлись між біржами (spread.py); колонку State не займає
+    const sp = spEvent(r.ticker);
+    if (sp) { const x = el("span", "gl sp", "Δ"); x.title = `Exchange spread: ${sp.hi} ${fmtPct(sp.pct, 2)} above ${sp.lo} (bid vs ask) · ${agoShort(sp.held * 1000)}\nNormal for this coin: ±${(sp.norm * 100).toFixed(2)}%. Open the chart → chip Δ for prices and funding.`; name.appendChild(x); }
     if (r.source === "auto" && r.channel !== "woke") { const x = el("span", "gl auto", "A"); x.title = "Added by the market scanner"; name.appendChild(x); }
     const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
     // ковзна 5-хв оцінка, новіша за офіційний бар, — дрібно під P: сірим, кольоровим — якщо вона вже Кандидат / Alert
@@ -2310,7 +2421,19 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       o.start(t); o.stop(t + 0.13);
     } catch (e) {}
   };
-  // «Sound ▾» біля Movers: п'ять незалежних перемикачів (localStorage pd-notify / -re / -cand / -wake / -woke).
+  // Spread — два низхідні тони: ціни тікера аномально розійшлись між біржами (spread.py)
+  const spreadTone = () => {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [[0, 700], [0.16, 470]].forEach(([dt, f]) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = f; o.connect(g); g.connect(audioCtx.destination);
+        const t = audioCtx.currentTime + dt; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.16, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14);
+        o.start(t); o.stop(t + 0.15);
+      });
+    } catch (e) {}
+  };
+  // «Sound ▾» біля Movers: шість незалежних перемикачів (localStorage pd-notify / -re / -cand / -wake / -woke / -spread).
   // Alert — лише вхід моделі (/api/list → alerts); Re-alert — новий спалах Alert у відкритій угоді (realerts)
   const NT = { open: false };
   const NT_ROWS = [
@@ -2319,6 +2442,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     { key: "notifyCand", ls: "pd-notify-cand", cls: "cand", name: "Candidate", desc: "One low tone · only when the model has no open trade · check the order book" },
     { key: "notifyWake", ls: "pd-notify-wake", cls: "wake", name: "Volume 5m", desc: "Voice: “Volume” + ticker · not an entry signal" },
     { key: "notifyWoke", ls: "pd-notify-woke", cls: "woke", name: "Woke", desc: "Two rising tones · dormant coin came alive (first trigger)" },
+    { key: "notifySpread", ls: "pd-notify-spread", cls: "spread", name: "Spread", desc: "Two falling tones · prices diverged between exchanges (thresholds — Spread ▾)" },
   ];
   const askPermission = async () => {
     if ("Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
@@ -2344,7 +2468,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         if (!st[r.key]) return;
         // звук дозволено лише після дії користувача — «розігріваємо» цим кліком
         if (r.key === "notifyWake") { say("Volume test"); return; }
-        ({ notify: beep, notifyRe: reTone, notifyCand: chime, notifyWoke: wokeTone })[r.key]();
+        ({ notify: beep, notifyRe: reTone, notifyCand: chime, notifyWoke: wokeTone, notifySpread: spreadTone })[r.key]();
         await askPermission();
       });
       p.appendChild(b);
@@ -2655,6 +2779,214 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   addEventListener("keydown", (e) => { if (e.key === "Escape" && MV.open) { toggleMovers(false); $("mvBtn").focus(); } });
   addEventListener("resize", () => { if (MV.open) placeMovers(); });
   loadMovers(); setInterval(loadMovers, 5 * 60 * 1000);
+
+  // ---------- «Spread ▾» і картка «Δ»: розбіжність цін тікера між біржами (spread.py; монітор у процесі дашборда, зріз кожні 15 с) ----------
+  // Подія = розбіжність по біду й аску ≥ порогу, у кілька разів більша за звичайну для монети, і тримається заданий час.
+  // У базу нічого не пишеться: події й «нещодавні» живуть у пам'яті сервера до його перезапуску.
+  const SP = { open: false };
+  const XS = { open: false, pane: null, anchor: null, data: null, tk: null };
+  const XS_COL = () => ({ Bybit: cssVar("--amber"), OKX: cssVar("--link"), Binance: cssVar("--ok") });
+  const spHeld = (sec) => sec < 90 ? `${Math.round(sec)} с` : fmtMin(sec / 60);
+  const spUsd = (v) => v == null ? "—" : v >= 1e6 ? `$${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(1)}K` : `$${Math.round(v)}`;
+  const spInList = () => new Set((st.list?.rows || []).map((r) => r.ticker));
+  const SP_FIELDS = [                                  // [ключ spread_config.json, підпис, мін, макс, крок]
+    ["min_pct", "Розбіжність по біду й аску, від %", 0.1, 20, 0.1],
+    ["norm_x", "і більша за звичайну для монети, разів", 1, 50, 0.5],
+    ["hold_sec", "Тримається, секунд", 0, 600, 15],
+    ["cooldown_min", "Повтор по тій самій монеті не раніше, хв", 0, 720, 5],
+    ["norm_hours", "«Звичайна» — медіана за останні, год", 0.25, 3, 0.25],
+    ["max_pct", "Понад стільки % — інший актив, ігнорувати", 2, 500, 1],
+  ];
+  const renderSpreadBtn = () => {
+    const d = st.spreads, n = (d?.events || []).length, off = d && d.enabled === false;
+    $("spCount").textContent = !d || d.at == null ? "—" : off ? "off" : String(n);
+    $("spBtn").classList.toggle("on", n > 0);
+    $("spBtn").title = "Розбіжність цін між біржами: " + (!d ? "завантаження…" : d.status + (n ? " · " + d.events.map((e) => `${e.ticker} ${fmtPct(e.pct)}`).join(", ") : ""));
+  };
+  const renderSpreadEvents = () => {
+    const box = $("spEvents"); if (!box) return;
+    const d = st.spreads || {}, inList = spInList(), now = d.events || [];
+    box.replaceChildren();
+    const row = (e, past) => {
+      const b = el("button", "sp-ev" + (past ? " past" : "")), who = el("span");
+      who.append(el("b", "", e.ticker), ` ${e.hi} › ${e.lo}`);
+      b.append(who, el("span", "v", past ? `пік ${fmtPct(e.peak)}` : fmtPct(e.pct, 2)),
+        el("span", "small", past ? `${fmtTs(e.since).slice(-5)}–${fmtTs(e.end).slice(-5)} UTC` : spHeld(e.held)));
+      b.title = `${e.hi} дорожча за ${e.lo}: ${past ? "пік " + fmtPct(e.peak, 2) : fmtPct(e.pct, 2)} по біду й аску · звичайна ±${(e.norm * 100).toFixed(2)}%`
+        + (e.quiet ? " · повтор (без сповіщення)" : "") + (inList.has(e.ticker) ? "\nКлік — графік" : "\nМонети немає у списку: клік — додати у watchlist");
+      b.addEventListener("click", (ev) => { ev.stopPropagation(); if (inList.has(e.ticker)) { toggleSpread(false); selectTicker(e.ticker); } else addTicker(e.ticker); });
+      return b;
+    };
+    box.appendChild(el("div", "sp-sub", `Зараз · ${now.length}`));
+    if (!now.length) box.appendChild(el("div", "mk-note", d.status && d.status !== "працює" ? `Монітор: ${d.status}.` : `Аномальних розбіжностей немає (монет на ≥ 2 біржах: ${d.coins ?? "—"}).`));
+    now.forEach((e) => box.appendChild(row(e, false)));
+    if ((d.recent || []).length) { box.appendChild(el("div", "sp-sub", "Нещодавно · 6 год")); d.recent.slice(0, 8).forEach((e) => box.appendChild(row(e, true))); }
+  };
+  const saveSpread = async () => {
+    const body = { enabled: $("spOn").checked, scope: $("spScope").value, min_turnover: +$("spTurn").value, ignore: $("spIgnore").value,
+      exchanges: ["Binance", "Bybit", "OKX"].filter((x) => $("spEx" + x).checked) };
+    SP_FIELDS.forEach(([k]) => { body[k] = +$("sp_" + k).value; });
+    try {
+      const r = await api("/api/spread/config", { method: "POST", body: JSON.stringify(body) });
+      st.spreads = { ...(st.spreads || {}), config: r.config };
+      renderSpreadForm(); $("spSaved").textContent = "Збережено · діє з наступного зрізу (до 15 с)";
+      renderAllCharts();                                // лінії порогу на панелі Δ
+    } catch (e) { $("spSaved").textContent = e.message; }
+  };
+  const renderSpreadForm = () => {
+    const box = $("spForm"), c = st.spreads?.config; if (!box) return;
+    box.replaceChildren();
+    if (!c) { box.appendChild(el("div", "mk-note", "Завантаження…")); return; }
+    const g = el("div", "sp-grid");
+    const check = (id, text, on) => { const l = el("label"), i = el("input"); i.type = "checkbox"; i.id = id; i.checked = !!on; i.style.width = "auto"; i.style.height = "auto"; l.append(i, text); return l; };
+    const on = el("div", "wide sp-checks"); on.appendChild(check("spOn", "Монітор увімкнено", c.enabled)); g.appendChild(on);
+    SP_FIELDS.forEach(([k, name, lo, hi, step]) => {
+      const i = el("input"); i.type = "number"; i.id = "sp_" + k; i.min = lo; i.max = hi; i.step = step; i.value = c[k];
+      g.append(el("span", "", name), i);
+    });
+    const exs = el("div", "wide"), exRow = el("div", "sp-checks");
+    ["Binance", "Bybit", "OKX"].forEach((x) => exRow.appendChild(check("spEx" + x, x, (c.exchanges || []).includes(x))));
+    exs.append(el("span", "", "Біржі (щонайменше дві)"), exRow); g.appendChild(exs);
+    const sc = el("select"); sc.id = "spScope";
+    [["list", "мій список"], ["all", "увесь ринок"]].forEach(([v, t]) => { const o = el("option", "", t); o.value = v; o.selected = c.scope === v; sc.appendChild(o); });
+    const turn = el("input"); turn.type = "number"; turn.id = "spTurn"; turn.min = 0; turn.step = 1; turn.value = c.min_turnover; turn.disabled = c.scope !== "all";
+    sc.addEventListener("change", () => { turn.disabled = sc.value !== "all"; });
+    g.append(el("span", "", "Монети"), sc, el("span", "", "Увесь ринок: оборот від, млн $/добу"), turn);
+    const ig = el("div", "wide"), igI = el("input"); igI.id = "spIgnore"; igI.placeholder = "напр. BB ON QNT"; igI.value = (c.ignore || []).join(" ");
+    ig.append(el("span", "", "Не перевіряти тікери"), igI); g.appendChild(ig);
+    const acts = el("div", "sp-acts"), save = el("button", "btn-primary", "Зберегти"), msg = el("span", "small"); msg.id = "spSaved";
+    save.style.height = "28px"; save.style.fontSize = "12px";
+    save.addEventListener("click", (e) => { e.stopPropagation(); saveSpread(); });
+    acts.append(msg, save);
+    box.append(g, acts);
+  };
+  const renderSpreadPop = () => {
+    const p = $("spPop"); p.replaceChildren();
+    const head = el("div", "mk-head"); head.appendChild(el("span", "sp-ttl", "Exchange spread"));
+    const hb = el("button", "help", "?"); hb.dataset.help = "spread"; hb.setAttribute("aria-label", "Що це?"); head.appendChild(hb);
+    const ev = el("div"); ev.id = "spEvents"; ev.style.display = "grid"; ev.style.gap = "4px";
+    const form = el("div"); form.id = "spForm"; form.style.display = "grid"; form.style.gap = "10px";
+    p.append(head, ev, el("div", "sp-sub", "Налаштування"), form,
+      el("div", "mk-note", "Telegram: тип «Spread» у ⚙️ Налаштуваннях бота. Звук у браузері — Sound ▾ → Spread. Панель на графіку — кнопка Δ."));
+    renderSpreadEvents(); renderSpreadForm();
+  };
+  const placeSpread = () => {
+    const p = $("spPop"), r = $("spBtn").getBoundingClientRect(), w = p.offsetWidth, hgt = p.offsetHeight;
+    let top = r.bottom + 6; if (top + hgt > innerHeight - 8) top = Math.max(8, innerHeight - hgt - 8);
+    p.style.left = Math.max(8, Math.min(r.right - w, innerWidth - w - 8)) + "px"; p.style.top = top + "px";
+  };
+  const toggleSpread = (open) => {
+    SP.open = open; $("spPop").hidden = !open; $("spBtn").setAttribute("aria-expanded", String(open));
+    if (open) { renderSpreadPop(); placeSpread(); }
+  };
+  $("spBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!SP.open) { if (MK.open) toggleMarket(false); if (MV.open) toggleMovers(false); if (NT.open) toggleNotify(false); }
+    toggleSpread(!SP.open);
+  });
+  document.addEventListener("click", (e) => { if (SP.open && !e.target.closest(".sp-wrap") && !e.target.closest("#pop")) toggleSpread(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && SP.open) { toggleSpread(false); $("spBtn").focus(); } });
+  addEventListener("resize", () => { if (SP.open) placeSpread(); if (XS.open) placeXs(); });
+
+  // картка «Δ» (клік по чіпу в заголовку вікна): бід / аск, розмір на кращій ціні, funding і 3 години розбіжності
+  const xsSvg = (h, lim) => {
+    const box = el("div", "xs-svg"), n = (h?.t || []).length, exs = Object.keys(h || {}).filter((k) => k !== "t");
+    if (n < 2 || !exs.length) { box.appendChild(el("div", "mk-note", "Історії ще немає: монітор тримає останні 3 години від свого запуску.")); return box; }
+    const W = 400, Ht = 110, L = 4, R = 44, T = 8, B = 16, all = exs.flatMap((k) => h[k]).filter((v) => v != null);
+    const top = Math.max(lim * 1.25, ...all.map(Math.abs)) * 1.1, t0 = h.t[0], t1 = h.t[n - 1];
+    const X = (t) => L + (W - L - R) * (t - t0) / Math.max(1, t1 - t0), Y = (v) => T + (Ht - T - B) * (1 - (v + top) / (2 * top));
+    const path = (a) => a.map((v, i) => v == null ? "" : `${i && a[i - 1] != null ? "L" : "M"}${X(h.t[i]).toFixed(1)},${Y(v).toFixed(1)}`).join("");
+    const col = XS_COL(), fg3 = cssVar("--fg3"), l3 = cssVar("--line3"), hm = (t) => fmtTs(t).slice(-5);
+    box.innerHTML = `<svg viewBox="0 0 ${W} ${Ht}" preserveAspectRatio="none" role="img" aria-label="Розбіжність цін бірж за останні години">
+      ${[lim, -lim].map((v) => `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="${l3}" stroke-dasharray="2 3"></line>`).join("")}
+      ${(Y(0) - Y(lim) >= 11 ? [lim, -lim] : [top / 1.1, -top / 1.1]).map((v) => `<text x="${W - R + 4}" y="${Y(v) + 3}" fill="${fg3}" font-size="9.5">${fmtPct(v, 1)}</text>`).join("")}
+      <line x1="${L}" x2="${W - R}" y1="${Y(0)}" y2="${Y(0)}" stroke="${l3}"></line><text x="${W - R + 4}" y="${Y(0) + 3}" fill="${fg3}" font-size="9.5">0</text>
+      ${exs.map((k) => `<path d="${path(h[k])}" fill="none" stroke="${col[k] || fg3}" stroke-width="1.6" stroke-linejoin="round"></path>`).join("")}
+      <text x="${L}" y="${Ht - 3}" fill="${fg3}" font-size="9.5">${hm(t0)}</text><text x="${W - R}" y="${Ht - 3}" fill="${fg3}" font-size="9.5" text-anchor="end">${hm(t1)} UTC</text></svg>`;
+    return box;
+  };
+  const renderXsPop = () => {
+    const p = $("xsPop"), d = XS.data; p.replaceChildren();
+    const head = el("div", "mk-head"), ttl = el("span"); ttl.append(el("b", "", XS.tk || "—"), " · ціни на біржах"); head.appendChild(ttl);
+    if (!d) { p.append(head, el("div", "mk-note", "Завантаження…")); return; }
+    if (d.error || !(d.ex || []).length) { p.append(head, el("div", "mk-note", d.error || `Котирувань немає (монітор: ${d.note || "ще не зробив зріз"}).`)); return; }
+    const ev = d.event, lim = (d.rule?.min_pct ?? 1) / 100, col = XS_COL();
+    const pill = el("span", "mk-pill", ev ? `аномалія · ${spHeld(ev.held)}` : "звичайно");
+    if (ev) { pill.style.background = cssVar("--spread-bg"); pill.style.color = cssVar("--spread"); }
+    head.appendChild(pill);
+    const t = el("table"), hr = el("tr");
+    [["Біржа", ""], ["Бід / аск", "Найкраща ціна купівлі / продажу в стакані"], [`До ${d.ref}`, `Середина спреду відносно ${d.ref}`],
+     ["На кращій ціні", "Обсяг у $ на найкращому біді / аску — лише перший рівень стакану"], ["Funding", "Поточна ставка фінансування; наведи — коли наступна виплата"]]
+      .forEach(([name, tip]) => { const c = el("th", "", name); if (tip) c.title = tip; hr.appendChild(c); });
+    const thd = el("thead"); thd.appendChild(hr); t.appendChild(thd);
+    const tb = el("tbody");
+    d.ex.forEach((r) => {
+      const tr = el("tr"), f = el("td", r.funding == null ? "" : r.funding < 0 ? "neg" : "pos", r.funding == null ? "—" : fmtPct(r.funding, 3));
+      if (r.next) f.title = `Наступна виплата ${fmtTs(r.next)} UTC`;
+      tr.append(el("td", "", r.name), el("td", "", `${fmtPx(r.bid)} / ${fmtPx(r.ask)}`),
+        el("td", r.d != null && Math.abs(r.d) >= lim ? "d" : "", r.d == null ? "—" : fmtPct(r.d, 2)), el("td", "", `${spUsd(r.bid_usd)} / ${spUsd(r.ask_usd)}`), f);
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    const wrap = el("div", "xs-tbl"); wrap.appendChild(t);
+    const lg = el("div", "xs-lg");
+    Object.keys(d.hist || {}).filter((k) => k !== "t").forEach((k) => { const s = el("span"), i = el("i"); i.style.background = col[k]; s.append(i, `${k} − ${d.ref}`); lg.appendChild(s); });
+    const nm = Object.entries(d.norm || {}).map(([k, v]) => `${k} ±${(v * 100).toFixed(2)}%`).join(", ");
+    const note = el("div", "mk-note");
+    note.textContent = (ev ? `${ev.hi} на ${fmtPct(ev.pct, 2)} дорожча за ${ev.lo} по біду й аску, пік ${fmtPct(ev.peak, 2)}. ` : "")
+      + `Звичайна для монети: ${nm || "ще збирається (перші 5 хв після старту монітора)"}.`
+      + (d.index ? ` Спотовий індекс ${fmtPx(d.index)}.` : "")
+      + ` Правило: від ${d.rule.min_pct}%, ×${d.rule.norm_x} до звичайної, тримається ${d.rule.hold_sec} с.`;
+    p.append(head, wrap, xsSvg(d.hist, lim), lg, note,
+      el("div", "mk-note", "«На кращій ціні» — лише перший рівень стакану: скільки реально можна взяти, дивись стакан. Funding на біржах платиться з різним інтервалом (1 / 4 / 8 год)."));
+  };
+  const placeXs = () => {
+    const p = $("xsPop"), a = XS.anchor; if (!a) return;
+    const r = a.getBoundingClientRect(), w = p.offsetWidth, hgt = p.offsetHeight;
+    let top = r.bottom + 6; if (top + hgt > innerHeight - 8) top = Math.max(8, innerHeight - hgt - 8);
+    p.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + "px"; p.style.top = top + "px";
+  };
+  const loadXs = async () => {
+    const tk = XS.pane?.data?.ticker; if (!XS.open || !tk) return;
+    if (tk !== XS.tk) { XS.tk = tk; XS.data = null; renderXsPop(); }       // у вікні відкрили інший тікер
+    try { const d = await api(`/api/spread?symbol=${encodeURIComponent(tk)}`, { quiet: true }); if (!XS.open || XS.pane?.data?.ticker !== tk) return; XS.data = d; }
+    catch (e) { XS.data = { error: e.message }; }
+    renderXsPop(); placeXs();
+  };
+  const toggleXsPop = (pane, anchor) => {
+    const open = !(XS.open && XS.pane === pane);
+    XS.open = open; XS.pane = open ? pane : null; XS.anchor = open ? anchor : null; XS.tk = null; XS.data = null;
+    $("xsPop").hidden = !open;
+    if (open) { loadXs(); placeXs(); }
+  };
+  setInterval(() => { if (XS.open) loadXs(); }, 5000);
+  document.addEventListener("click", (e) => { if (XS.open && !e.target.closest("#xsPop") && !e.target.closest(".tk-xs")) toggleXsPop(XS.pane); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && XS.open) toggleXsPop(XS.pane); });
+
+  // опитування монітора: кнопка, чіпи вікон, значок Δ у списку, звук на нову подію (Sound ▾ → Spread)
+  let spKeys = "";
+  const loadSpreads = async () => {
+    let d; try { d = await api("/api/spreads", { quiet: true }); } catch (e) { return; }
+    const first = st.spreads === null;
+    st.spreads = { ...d, config: SP.open && st.spreads?.config ? st.spreads.config : d.config };
+    renderSpreadBtn(); if (SP.open) renderSpreadEvents();
+    PANES.forEach((p) => p.renderXs());
+    const keys = (d.events || []).map((e) => e.ticker).sort().join(",");
+    if (keys !== spKeys) { spKeys = keys; renderList(); }
+    const fresh = (d.events || []).filter((e) => !e.quiet && !st.seen.has(`s|${e.ticker}|${e.ts}`));
+    if (!fresh.length) return;
+    fresh.forEach((e) => st.seen.add(`s|${e.ticker}|${e.ts}`));
+    LS.set("pd-seen", [...st.seen].slice(-300));
+    if (first || !st.notifySpread) return;              // після завантаження сторінки старі події не озвучуємо
+    spreadTone();
+    if ("Notification" in window && Notification.permission === "granted") {
+      fresh.slice(0, 3).forEach((e) => {
+        try { const n = new Notification(`Pump Detector: Spread ${e.ticker}`, { body: `${e.hi} ${fmtPct(e.pct, 2)} above ${e.lo} · held ${spHeld(e.held)}`, tag: `pd-s-${e.ticker}-${e.ts}` });
+          n.onclick = () => { window.focus(); if (spInList().has(e.ticker)) selectTicker(e.ticker); }; } catch (err) {}
+      });
+    }
+  };
+  loadSpreads(); setInterval(loadSpreads, 10000);
 
   document.querySelectorAll("#oiSeg [data-oi]").forEach((b) => b.addEventListener("click", () => { st.oiUsd = b.dataset.oi === "usd"; LS.set("pd-oiusd", st.oiUsd); pressIn("oiSeg", "oi", b.dataset.oi); renderAllCharts(); }));
   $("favBtn").setAttribute("aria-pressed", String(st.favOnly));

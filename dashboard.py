@@ -50,6 +50,7 @@ import volume_profile
 import wake
 import strategies
 import scanner
+import spread
 import journal as J
 import tiers as T
 
@@ -133,6 +134,7 @@ class State:
     models: list[dict] = []
     m15: dict | None = None          # 15m-модель (models/lightgbm_15m.joblib)
     client: Coinalyze | None = None
+    spread: "spread.Monitor | None" = None   # монітор розбіжності цін між біржами (spread.py), потік у цьому процесі
 
 
 def share() -> float:
@@ -917,12 +919,38 @@ def ensure_fresh(conn, base: str, tf: str) -> bool:
 
 
 def live_symbols(conn, base: str) -> dict:
-    """Символи USDT-перпів на Binance і Bybit — для живої свічки на сторінці (WebSocket бірж напряму)."""
+    """Символи USDT-перпів на Binance і Bybit — для живої свічки на сторінці (WebSocket бірж напряму);
+    OKX — лише для панелі розбіжності бірж (ціна, без обсягу й OI)."""
     rows = dict(conn.execute("""SELECT exchange_name, symbol_on_exchange FROM markets
-                                WHERE base_asset = %s AND quote_asset = 'USDT' AND exchange_name IN ('Binance', 'Bybit')""",
+                                WHERE base_asset = %s AND quote_asset = 'USDT' AND exchange_name IN ('Binance', 'Bybit', 'OKX')""",
                              (base,)).fetchall())
-    return {"binance": rows.get("Binance"), "bybit": rows.get("Bybit"),
+    return {"binance": rows.get("Binance"), "bybit": rows.get("Bybit"), "okx": rows.get("OKX"),
             "price_exchange": "Binance" if "Binance" in rows else ("Bybit" if "Bybit" in rows else None)}
+
+
+def exchange_diffs(conn, base: str, res: dict) -> dict | None:
+    """Панель «Δ бірж» на графіку (spread.py, 13.10): закриття бару на кожній біржі відносно еталонної біржі графіка
+    (Binance, а якщо її немає — Bybit), частка: 0.01 = на 1% дорожче. Бари — ті самі, що на графіку (5m / 15m з бірж,
+    1h з Coinalyze). None — тікер торгується лише на одній з трьох бірж."""
+    t = res.get("series", {}).get("t") or []
+    interval = {"5m": "5min", "15m": "15min", "1h": "1hour"}.get(res.get("tf"))
+    if not t or interval is None:
+        return None
+    rows = conn.execute("""SELECT m.exchange_name, o.ts, o.c FROM ohlcv o JOIN markets m USING (symbol)
+                           WHERE m.base_asset = %s AND m.quote_asset = 'USDT' AND m.exchange_name = ANY(%s)
+                             AND o.interval = %s AND o.ts >= %s AND o.ts <= %s""",
+                        (base, list(spread.EXCHANGES), interval, t[0], t[-1])).fetchall()
+    if not rows:
+        return None
+    w = pd.DataFrame(rows, columns=["ex", "ts", "c"]).pivot_table(index="ts", columns="ex", values="c", aggfunc="last")
+    w.index = pd.to_datetime(w.index, utc=True)
+    w = w.reindex(pd.DatetimeIndex(t)).astype(float)
+    w = w.where(w > 0)
+    ref = next((e for e in spread.EXCHANGES if e in w), None)
+    others = [e for e in spread.EXCHANGES if e in w and e != ref]
+    if ref is None or not others:
+        return None
+    return {"ref": ref, "diff": {e: (w[e] / w[ref] - 1).tolist() for e in others}}
 
 
 _ticker_cache: dict = {}                    # (тікер, модель, дні, ТФ, режим, light) → (стан, час, відповідь)
@@ -981,6 +1009,12 @@ def _ticker(conn, base: str, model: str, days: int, tf: str | None = None, strat
         res = ticker_1h(conn, base, model, days)
     res = rebar(conn, res, base, tf, days) if tf else res
     res["live"] = live_symbols(conn, base)
+    try:
+        res["xs"] = exchange_diffs(conn, base, res)
+    except Exception as e:                      # панель розбіжності — доповнення: без неї графік має відкритись
+        print(f"! розбіжність бірж {base}: {type(e).__name__}: {e}")
+        conn.rollback()
+        res["xs"] = None
     res["tail_refresh"] = refreshing
     if refreshing:                              # свіжі бари ще дописуються у фоні — наступний запит має перечитати базу
         _bars_cache.pop((base, days), None)
@@ -1097,6 +1131,21 @@ def list_sources() -> tuple[list[str], dict]:
     manual = [t.upper() for t in read_tickers_file(os.path.join(ROOT, WATCHLIST_FILE)) if t.upper() not in excluded]
     auto = {b: r for b, r in scanner.active_auto().items() if b not in set(manual)}
     return manual, auto
+
+
+_list_tickers: dict = {"at": 0.0, "set": set()}
+
+
+def list_tickers() -> set[str]:
+    """Тікери списку (твої + авто) для монітора розбіжності; файли перечитуємо не частіше разу на 30 с."""
+    if time.time() - _list_tickers["at"] > 30:
+        try:
+            manual, auto = list_sources()
+            _list_tickers.update(at=time.time(), set=set(manual) | set(auto))
+        except Exception as e:
+            print(f"  ! список для spread: {e}")
+            _list_tickers["at"] = time.time()
+    return _list_tickers["set"]
 
 
 def scan_view(q: dict) -> dict:
@@ -1510,6 +1559,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(lambda c: market.api(c, int(q.get("days", 7))))
         if url.path == "/api/book":            # біди / аски ±2% наживо (Binance + Bybit), кеш кілька секунд
             return self._route(lambda c: orderbook.live(c, q.get("symbol", "").upper()) or {"ratio": None})
+        if url.path == "/api/spreads":          # розбіжність цін між біржами (spread.py): події, тікери списку, налаштування
+            return self._send(200, spread.api(State.spread))
+        if url.path == "/api/spread":           # картка тікера: бід / аск, розмір на кращій ціні, funding, 3 години
+            if State.spread is None:
+                return self._send(400, {"error": "монітор розбіжності не запущено"})
+            return self._send(200, State.spread.detail(q.get("symbol", "").upper()))
         if url.path == "/api/profile":          # профіль обсягу: дні / тижні / фрагмент (app/js/profile.js)
             return self._route(lambda c: volume_profile.api(c, q))
         if url.path == "/api/ticker":
@@ -1529,6 +1584,11 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if url.path == "/api/backtest/run":
                 return self._send(200, backtest_start(body))
+            if url.path == "/api/spread/config":
+                cfg = spread.save_config(body)
+                if State.spread is not None:
+                    State.spread.cfg = cfg
+                return self._send(200, {"ok": True, "config": cfg})
             if url.path == "/api/scan/config":
                 return self._send(200, {"ok": True, "config": scanner.save_config(body)})
             if url.path == "/api/watchlist/add":
@@ -1576,6 +1636,9 @@ def main() -> None:
         threading.Thread(target=journal_warmer, daemon=True).start()
     if os.getenv("LIST_WARMER", "1") != "0":
         threading.Thread(target=list_warmer, daemon=True).start()
+    # розбіжність цін між біржами (spread.py): три запити на весь ринок кожні 15 с, у пам'яті; SPREAD_MONITOR=0 — вимкнути
+    if os.getenv("SPREAD_MONITOR", "1") != "0":
+        State.spread = spread.Monitor(State.db_url, list_tickers).start()
 
     # На Windows SO_REUSEADDR дозволяє двом процесам зайняти один порт: другий «стартує», але запитів не отримує.
     # Вимикаємо його, щоб повторний запуск одразу казав, що порт зайнятий.

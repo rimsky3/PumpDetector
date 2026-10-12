@@ -457,6 +457,20 @@ needs this table — on a new machine or server run `python alt_index.py` once b
 The screener records snapshots for coins near a signal into `book_ratio` (every cycle); the dashboard reads the live value
 (`/api/book`) and the value at each Alert.
 
+### `spread.py` — cross-exchange price spread
+
+| Usage | Meaning |
+|---|---|
+| `python spread.py` | two snapshots of every USDT perpetual on Binance / Bybit / OKX and the largest price differences right now (`--top N`, default 15); nothing is written |
+| `python spread.py DOS` | one coin: bid / ask, top-of-book size in USD and funding on each exchange |
+
+In production the same class runs as a thread inside `dashboard.py` (three all-market requests every 15 s, the last three
+hours kept in memory, no database writes). `SPREAD_MONITOR=0` in the dashboard's environment switches it off. Thresholds
+live in `spread_config.json` (created by the dashboard's "Spread ▾" popover; `tools/deploy.sh` never overwrites it):
+`min_pct`, `norm_x`, `hold_sec`, `exchanges`, `scope` (`list` / `all`), `min_turnover`, `cooldown_min`, `max_pct`,
+`norm_hours`, `ignore`. Endpoints: `GET /api/spreads` (events, list tickers, config), `GET /api/spread?symbol=X` (the
+card), `POST /api/spread/config`. See docs/screener.md, "Cross-exchange spread".
+
 ### `wake.py`
 
 | Usage | Meaning |
@@ -610,6 +624,14 @@ the new exit differ (candles, Alert strip, entry, both exits, stop, the half-of-
 Entering in parts: a fraction of the position on the Candidate, the rest added on the Alert, against all-in on the Alert
 and all-in on the Candidate. One stop for the whole position from the first entry, 0.1% fee per part, results in units
 of a full position; split by trades inside labeled impulses and outside them.
+
+### `experiments/round_levels.py`
+
+Do round price levels hold the price more often than random levels? Levels by the price mantissa (major: 1 / 2 / 5 × 10^k,
+integer: 3, 4, 6–9, half: x.5) inside the previous day's range, against random levels in the same range; the bounce-or-pass
+test of `profile_levels.py` on 1m candles (`data/klines1m`, April–September). `--limit N` — first N coins;
+`--d-atr X` — reaction size as a fraction of the hourly ATR (default 1.0; 0.3 tests small reactions, report suffix `_d0.3`). Writes
+`reports/round_levels.md` and `reports/round_levels_events.csv`; about ten minutes for all coins.
 
 ### `experiments/in_play_examples.py`
 

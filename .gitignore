@@ -33,3 +33,5 @@ data/
 reports/signals_stamp
 # кеші експериментів (перераховуються скриптами; experiments/entry_model.py — ~25 МБ)
 reports/*.pkl
+# пороги монітора розбіжності бірж (spread.py): файл створює дашборд, на сервері свій
+spread_config.json

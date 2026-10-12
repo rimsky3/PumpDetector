@@ -167,6 +167,32 @@ after its rolling score). A model that still uses them (`uses_liq`) keeps the ol
   than a market buy in either half of the period. The position simulation still enters at market.
 - Notifications add "OB 1.38 · ліміт 0.1092".
 
+## Cross-exchange spread (since 2026-10-13)
+
+During an impulse the same perpetual trades at different prices on different exchanges (DOS, 2026-10-12: at the peak
+OKX was 5.5% below Binance; after the crash Bybit stayed 5% above Binance for 18+ minutes, against a normal 0.1–0.2%).
+`spread.py` shows this and alerts on it. It is a "where to look" tool, not an arbitrage signal: depth, funding and fees
+are the owner's check. Nothing is stored in the database (the owner's decision).
+
+- **Monitor** — a thread in the dashboard process. Every 15 s it requests the best bid / ask of all perpetuals from
+  Binance, Bybit and OKX (one request per exchange) and keeps three hours of mid prices in memory. Coins are matched
+  through the `markets` table (so `PUMP` maps to `PUMPFUNUSDT` on Bybit) and by symbol name for the rest of the market.
+- **Executable spread** of an exchange pair = bid of the expensive one / ask of the cheap one − 1: what a market order
+  could actually capture, not the difference of last prices.
+- **Event**: executable spread ≥ `min_pct` (1%) **and** ≥ `norm_x` (5) × the coin's normal spread for that pair (median
+  absolute mid difference over `norm_hours`, floor 0.05%) **and** held for `hold_sec` (30 s). It ends after two
+  snapshots below 0.7 × the threshold. A repeat on the same coin within `cooldown_min` is shown but not notified.
+- **Safeguards**: a pair with a mid difference above `max_pct` (30%) is treated as two different assets under one
+  ticker and ignored; a quote older than 3 minutes drops that exchange for the coin; no events until a pair has 20
+  snapshots (about 5 minutes after a dashboard restart), so a permanent offset becomes "normal" instead of alerting.
+- **Scope**: `list` — only coins of the dashboard list (default); `all` — the whole market above `min_turnover`.
+- **Dashboard**: the "Δ" pane under the price (toolbar button Δ, per chart window) — the bar close on Bybit and OKX
+  relative to the chart's exchange, from the per-exchange candles already in the database, with the last point live from
+  the exchanges' WebSockets; the header chip "Δ Bybit +5.1%" (teal while an event is on) opens a card with bid / ask,
+  top-of-book size, funding per exchange and the last three hours; a "Δ" glyph after the ticker in the list; the
+  "Spread ▾" popover lists current and recent events and holds the settings form; "Sound ▾ → Spread" turns on the tone.
+- **Telegram**: type "🔷 Spread" (docs/telegram.md).
+
 ## Watchlist
 
 `watchlist.txt` lists the coins to scan, in the same format as `tickers.txt`. The two files are separate on
