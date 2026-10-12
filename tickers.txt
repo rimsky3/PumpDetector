@@ -24,3 +24,8 @@ VELVET    # переглянуто повністю в label.py
 ORCA    # переглянуто повністю в label.py
 RLC    # переглянуто повністю в label.py
 CHIP    # переглянуто повністю в label.py
+S    # переглянуто повністю в label.py
+STRK    # переглянуто повністю в label.py
+BAT    # переглянуто повністю в label.py
+CKB    # переглянуто повністю в label.py
+AERO    # переглянуто повністю в label.py

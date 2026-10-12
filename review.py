@@ -196,6 +196,117 @@ def bars(conn, ticker: str, entry_ts: int, tf: str) -> dict:
             "oi": col("oi") if "oi" in h else [None] * len(t), "cutoff": int(cutoff.timestamp()), "tf": tf}
 
 
+# ---------------------------------------------------------------- розбір дня (2026-10-12)
+# Власник: «взяти угоди моделі за день і донавчити на них» → оцінка входу людиною, а не результатом (результат — шум:
+# outcome_target, entry_model). Варіант C макета https://claude.ai/artifact/Q6TvabtKq9rBQXRwUvKdxE: черга угод дня,
+# графік з ШИРОКИМ контекстом до входу («по куску графіка не визначити»), після оцінки — продовження й результат.
+# Оцінки — у той самий reviews.csv (ticker_seen = 1): добрий = take, поганий = skip, запізно = skip + тег LATE_TAG.
+
+LATE_TAG = "запізно"
+WIDE = {"5m": pd.Timedelta(days=3), "15m": pd.Timedelta(days=10), "1h": pd.Timedelta(days=30), "4h": pd.Timedelta(days=90)}
+REVEAL_AFTER = pd.Timedelta(hours=6)       # скільки показати після виходу з угоди
+_day_cache: dict = {}
+
+
+def journal_trades(conn, mode: str | None = None) -> pd.DataFrame:
+    """Угоди режиму з журналу — ті самі, що власник бачив у дашборді (вхід / вихід / результат). mode — id режиму зі
+    strategies.json; None — ОСНОВНИЙ. Перераховуються лише після нових оцінок у базі (перший раз — десятки секунд).
+    Потрібні оцінки моделей у таблиці signals: для split — і моделі «старт» (є в копії бази після pull_db)."""
+    import journal as J
+    import strategies
+    import train
+    from tiers import TIER_MODEL
+    strat = strategies.get(mode)
+    key = (strat["id"], conn.execute("SELECT max(scored_at) FROM signals").fetchone()[0])
+    with _lock:
+        hit = _day_cache.get(strat["id"])
+        if hit and hit["key"] == key:
+            return hit["tr"]
+    m15 = train.load_model(train.M15_NAME)
+    tr = J.build_trades(conn, TIER_MODEL, m15, J.DEFAULT_RULE, cache={}, strat=strat)
+    tr = tr.assign(ets=[int(pd.Timestamp(x).timestamp()) for x in tr["entry_ts"]])
+    tr["id"] = [f"{t}|{e}" for t, e in zip(tr["ticker"], tr["ets"])]
+    tr["day"] = [(pd.Timestamp(x) + pd.Timedelta(seconds=BAR)).strftime("%Y-%m-%d") for x in tr["entry_ts"]]   # день входу = закриття бару
+    with _lock:
+        _day_cache[strat["id"]] = {"key": key, "tr": tr}
+    return tr
+
+
+def rating(review: dict | None) -> str | None:
+    """Оцінка розбору з рядка reviews.csv: good / bad / late / unsure."""
+    if not review:
+        return None
+    if review["decision"] == "take":
+        return "good"
+    if review["decision"] == "unsure":
+        return "unsure"
+    return "late" if LATE_TAG in (review.get("reasons") or "").split(";") else "bad"
+
+
+def day_view(conn, day: str | None, mode: str | None = None) -> dict:
+    """Черга угод дня: до оцінки — лише тікер, час і ціна входу; результат і вихід — тільки в оцінених."""
+    import strategies
+    strat = strategies.get(mode)
+    tr, done = journal_trades(conn, mode), read_reviews()
+    days = [{"day": d, "n": int(len(g)), "rated": int(g["id"].isin(done).sum())} for d, g in tr.groupby("day")][-30:]
+    if not day:
+        day = days[-1]["day"] if days else datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    items, good, rest = [], [], []
+    for r in tr[tr["day"] == day].sort_values("ets").itertuples():
+        rev = done.get(r.id)
+        it = {"id": r.id, "ticker": r.ticker, "entry_ts": r.ets, "entry": float(r.entry), "kind": r.kind, "rating": rating(rev)}
+        if rev:
+            ret = None if r.result_pct is None or pd.isna(r.result_pct) else float(r.result_pct) - (0 if r.open else FEE)
+            it.update({"ret": ret, "reason": r.reason, "open": bool(r.open), "review": rev,
+                       "exit_ts": None if r.open or pd.isna(r.exit_ts) else int(pd.Timestamp(r.exit_ts).timestamp())})
+            if ret is not None and it["rating"] != "unsure":
+                (good if it["rating"] == "good" else rest).append(ret)
+        items.append(it)
+    return {"day": day, "days": days, "items": items, "mode": strat.get("title") or strat["id"], "mode_id": strat["id"],
+            "main": bool(strat.get("main")), "reasons": REASONS, "late_tag": LATE_TAG,
+            "reviews_total": len(done),
+            "summary": {"good_n": len(good), "good_sum": float(sum(good)), "rest_n": len(rest), "rest_sum": float(sum(rest))}}
+
+
+def day_bars(conn, rid: str, tf: str, reveal: bool, mode: str | None = None) -> dict:
+    """Графік для розбору: широка історія до входу (WIDE); reveal — ще й після входу до виходу + REVEAL_AFTER, з мітками
+    виходу. Продовження віддається ЛИШЕ для вже оцінених угод — інакше оцінка повторювала б результат."""
+    from features import aggregate, load_raw
+    if tf not in WIDE:
+        raise ValueError("ТФ: 5m / 15m / 1h / 4h")
+    ticker, ets = rid.split("|")[0], int(rid.split("|")[1])
+    entry_close = pd.Timestamp(ets + BAR, unit="s", tz="UTC")
+    now = pd.Timestamp(datetime.now(timezone.utc))
+    cutoff, trade = entry_close, None
+    if reveal and rid in read_reviews():
+        tr = journal_trades(conn, mode)
+        row = tr[tr["id"] == rid]
+        if len(row):
+            r = row.iloc[0]
+            closed = not r["open"] and not pd.isna(r["exit_ts"])
+            ex = pd.Timestamp(r["exit_ts"]) if closed else None
+            cutoff = min(now, ex + pd.Timedelta(seconds=BAR) + REVEAL_AFTER) if closed else now
+            trade = {"exit_ts": int(ex.timestamp()) if closed else None, "exit": float(r["exit"]) if closed else None,
+                     "reason": r["reason"], "open": bool(r["open"]),
+                     "ret": None if pd.isna(r["result_pct"]) else float(r["result_pct"]) - (FEE if closed else 0)}
+    interval, freq, step = ("5min", "5min", 300) if tf == "5m" else ("15min", "15min", 900)
+    h = aggregate(load_raw(conn, [ticker], interval, since=entry_close - WIDE[tf] - pd.Timedelta(hours=4)), ticker, freq)
+    if h.empty:
+        raise ValueError(f"немає {tf}-даних для цієї угоди")
+    h = h[h.index + pd.Timedelta(seconds=step) <= cutoff]                 # лише бари, закриті до межі показу
+    if tf in ("1h", "4h"):
+        # бар, що ще не закрився на межі показу, — частковою свічкою (як його бачив би трейдер у цей момент)
+        h = h.resample(tf).agg({"open": "first", "high": "max", "low": "min", "price": "last", "volume": "sum",
+                                "oi": "last"}).dropna(subset=["price"])
+    h = h[h.index >= entry_close - WIDE[tf]]
+    t = [int(x.timestamp()) for x in h.index]
+    col = lambda c: [None if pd.isna(v) else float(v) for v in h[c]]  # noqa: E731
+    return {"t": t, "o": col("open"), "h": col("high"), "l": col("low"), "c": col("price"), "v": col("volume"),
+            "oi": col("oi") if "oi" in h else [None] * len(t), "cutoff": int(entry_close.timestamp()), "tf": tf,
+            "revealed": trade is not None, "trade": trade,
+            "from": t[0] if t else None, "bar": {"5m": 300, "15m": 900, "1h": 3600, "4h": 14400}[tf]}
+
+
 # ---------------------------------------------------------------- підсумок
 
 def _stats(v: pd.Series) -> dict:

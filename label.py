@@ -273,6 +273,7 @@ def retrain_accept() -> str:
 
 COMPARE_PAGE = os.path.join(ROOT, "tools", "compare.html")
 REVIEW_PAGE = os.path.join(ROOT, "tools", "review.html")
+DEBRIEF_PAGE = os.path.join(ROOT, "tools", "debrief.html")       # розбір дня: оцінка вчорашніх угод моделі (review.day_view)
 _prefetching: set = set()
 
 
@@ -863,6 +864,18 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == "/review":
                 with open(REVIEW_PAGE, "rb") as f:
                     return self._send(200, f.read(), "text/html; charset=utf-8")
+            if url.path == "/debrief":
+                with open(DEBRIEF_PAGE, "rb") as f:
+                    return self._send(200, f.read(), "text/html; charset=utf-8")
+            if url.path.startswith("/api/debrief/"):
+                import review as R
+                qs = {k: v[0] for k, v in parse_qs(url.query).items()}
+                with psycopg.connect(self.db_url) as conn:
+                    if url.path == "/api/debrief/day":
+                        return self._send(200, _json_safe(R.day_view(conn, qs.get("date"), qs.get("mode"))))
+                    if url.path == "/api/debrief/bars":
+                        return self._send(200, _json_safe(R.day_bars(conn, qs.get("id", "|0"), qs.get("tf", "15m"), qs.get("reveal") == "1", qs.get("mode"))))
+                return self._error(404, "не знайдено")
             if url.path.startswith("/api/review/"):
                 import review as R
                 qs = {k: v[0] for k, v in parse_qs(url.query).items()}

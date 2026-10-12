@@ -611,6 +611,32 @@ Entering in parts: a fraction of the position on the Candidate, the rest added o
 and all-in on the Candidate. One stop for the whole position from the first entry, 0.1% fee per part, results in units
 of a full position; split by trades inside labeled impulses and outside them.
 
+### `experiments/candidate_6m.py`
+
+Ready model sets (no training) on the six-month archive: the 15m main model, the start model and the hourly model from
+each folder, in `market` and `split` modes, on the honest coin list minus the training tickers of every set, with one
+stop multiplier for all. The check to run before accepting a retrained candidate, next to the 30-day `backtest.py`.
+
+| Option | Default | Meaning |
+|---|---|---|
+| `--sets name=dir …` | `current=models candidate=models/candidate` | model sets; the first is the live one, the last is the candidate (the pass criterion compares these two) |
+| `--k` | 2.13 | stop in ATR(15m) for every set |
+
+Writes `reports/candidate_6m.md`. Needs the `data/long_bin` cache; about 4 minutes for three sets.
+
+### `experiments/entry_kind_6m.py`
+
+Six-month check of the hypotheses from `entry_kind.py`: trades grouped by the entry bar's distance from the 24h high /
+low and the 4-hour run (15m prices from the `data/long_bin` cache), for split trades (`reports/early_target_trades.csv`,
+the pre-registered set), market trades over five seeds (`reports/time_seeds_trades.csv`) and the purged split run
+(`reports/purged_split_trades.csv`). Files only, no database. Writes `reports/entry_kind_6m.md`. No options.
+
+### `experiments/entry_kind.py`
+
+Exploratory, no pass criterion: split-mode trades of the control backtest (87 coins, score cache of `random_entry.py`)
+grouped by where the entry sits — distance from the 24h high, rise from the 24h low, run over the last 4 hours — plus
+counts of labeled setups in `pumps.csv`. Prints to the console only. No options.
+
 ### `experiments/time_seeds.py`
 
 Time-of-day features and seed averaging (2026-10-12, ideas from Kaggle solution write-ups): `time` = base features plus

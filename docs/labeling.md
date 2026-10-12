@@ -151,6 +151,18 @@ decisions): seeing results changes later decisions. Missing 5m data for backtest
 on demand (only the ~2.5 days the chart shows, a few seconds; the next five signals are prefetched in the background). `python review.py --rebuild` refreshes the pool
 after new backtest runs; `--summary` prints the same summary.
 
+**Daily debrief** (`http://127.0.0.1:8765/debrief`, link *Розбір дня* in the header; `review.day_view` / `review.day_bars`,
+page `tools/debrief.html`; since 2026-10-12). The owner rates the entries the model actually made on a given day — the
+trades of the main mode from the journal, the same ones the dashboard showed. Left: the day's queue (ticker and entry
+time; the result stays hidden until the trade is rated). Middle: the chart with wide context before the entry — 5m
+(3 days), 15m (10 days), 1h (30 days), 4h (90 days), zoom and scroll, OI and volume panes — cut at the close of the
+entry bar. Right: *Добрий* / *Поганий* / *Запізно* (keys 1 / 2 / 3), setup, reason tags, a note. Saving reveals the
+rest of the chart up to the exit plus six hours and the trade result; the footer sums the day's rated trades.
+Ratings go to the same `reviews.csv` (`ticker_seen = 1`): good = `take`, bad = `skip`, late = `skip` with the tag
+`запізно`. The rating is taken before the outcome is shown on purpose: a rating made with the result in sight repeats the
+result, and trade outcomes proved to be mostly noise as a training target. `/debrief?mode=market` reviews another mode.
+Split-mode trades need the start model's scores in `signals`, so refresh the local copy with `tools/pull_db.sh` first.
+
 **Comparison page** (`http://127.0.0.1:8765/compare`, link *Детальне порівняння* in the panel): summary cards (new
 value, old value, change marked better/worse) for the Alert or Candidate tier; a **fair comparison** block over tickers
 where both models' scores are out-of-sample (tickers the live model never saw, or its saved out-of-fold predictions);

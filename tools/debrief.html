@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Розбір дня</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Розбір дня (2026-10-12, варіант C макета): черга угод основного режиму за день · графік з широким контекстом до входу ·
+   оцінка входу · після оцінки — продовження графіка й результат. Стилі — як у tools/review.html. */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #dfe3ea; --grid: #edf0f4;
+  --fg: #111418; --fg2: #515966; --fg3: #808895;
+  --up: #2e9e5b; --down: #e34948; --oi: #1baf7a; --vol: #aab2bf; --entry: #2a78d6; --late: #c98500;
+  --good-bg: rgba(46,158,91,.12); --bad-bg: rgba(227,73,72,.1); --late-bg: rgba(201,133,0,.14);
+  --accent: #2a78d6; --accent-fg: #ffffff; --chip: #eef1f5; --sel: #e8eef8;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
+  --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --up: #3fb56f; --down: #e66767; --oi: #199e70; --vol: #4a515c; --entry: #3987e5; --late: #e0a52e;
+  --good-bg: rgba(63,181,111,.16); --bad-bg: rgba(230,103,103,.14); --late-bg: rgba(224,165,46,.16);
+  --accent: #3987e5; --accent-fg: #ffffff; --chip: #23272e; --sel: #222a36; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121418; --panel: #1a1d22; --line: #2c3139; --grid: #23272e;
+  --fg: #f2f4f7; --fg2: #b3bac6; --fg3: #7e8794;
+  --up: #3fb56f; --down: #e66767; --oi: #199e70; --vol: #4a515c; --entry: #3987e5; --late: #e0a52e;
+  --good-bg: rgba(63,181,111,.16); --bad-bg: rgba(230,103,103,.14); --late-bg: rgba(224,165,46,.16);
+  --accent: #3987e5; --accent-fg: #ffffff; --chip: #23272e; --sel: #222a36; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--fg); font: 13px/1.45 var(--sans); font-variant-numeric: tabular-nums; }
+button, select { font: inherit; cursor: pointer; color: inherit; }
+.app { display: grid; grid-template-rows: auto 1fr auto; height: 100vh; }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex-wrap: wrap; }
+header h1 { font-size: 15px; font-weight: 600; margin: 0; }
+.sp { flex: 1; }
+.lnk { color: var(--accent); text-decoration: none; font-size: 12px; }
+.btn { height: 30px; padding: 0 10px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); font-size: 12px; }
+.btn:hover { border-color: var(--fg3); } .btn:disabled { opacity: .4; cursor: default; }
+select.btn { padding-right: 6px; }
+.prog { display: flex; align-items: center; gap: 8px; color: var(--fg2); }
+.prog .bar { width: 120px; height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; } .prog .bar i { display: block; height: 100%; background: var(--accent); }
+main { display: grid; grid-template-columns: 230px minmax(0, 1fr) 300px; min-height: 0; }
+.queue { border-right: 1px solid var(--line); background: var(--panel); overflow-y: auto; }
+.qrow { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px; border: 0; border-bottom: 1px solid var(--grid); background: transparent; text-align: left; font-size: 12px; }
+.qrow:hover { background: var(--chip); } .qrow.sel { background: var(--sel); box-shadow: inset 2px 0 0 var(--accent); }
+.qrow b { font-weight: 600; font-size: 13px; } .qrow .tm { font-family: var(--mono); font-size: 11px; color: var(--fg3); }
+.pill { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 10px; white-space: nowrap; }
+.pill.good { background: var(--good-bg); color: var(--up); } .pill.bad { background: var(--bad-bg); color: var(--down); }
+.pill.late { background: var(--late-bg); color: var(--late); } .pill.wait, .pill.unsure { background: var(--chip); color: var(--fg3); }
+.pos { color: var(--up); } .neg { color: var(--down); }
+.empty { padding: 20px 14px; color: var(--fg3); font-size: 12px; }
+.chartwrap { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 10px 12px 12px 14px; gap: 8px; }
+.chead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 30px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.seg button { border: 0; background: transparent; height: 28px; padding: 0 11px; font-size: 12px; color: var(--fg2); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+.who { font-family: var(--mono); font-size: 12px; color: var(--fg2); } .who b { color: var(--fg); font-family: var(--sans); font-size: 15px; }
+.res { font-size: 13px; font-weight: 600; }
+#chart { flex: 1; min-height: 380px; position: relative; border-radius: 8px; overflow: hidden; background: var(--panel); border: 1px solid var(--line); }
+.loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--fg3); background: color-mix(in srgb, var(--panel) 70%, transparent); z-index: 5; text-align: center; padding: 20px; }
+.loading[hidden] { display: none; }
+.hint { font-size: 11.5px; color: var(--fg3); }
+aside { border-left: 1px solid var(--line); background: var(--panel); padding: 14px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+.blk { display: flex; flex-direction: column; gap: 8px; }
+.lbl { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--fg3); display: flex; justify-content: space-between; }
+.kbd { font-family: var(--mono); font-size: 10px; color: var(--fg3); text-transform: none; letter-spacing: 0; }
+.dec { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.dec button { height: 46px; border-radius: 9px; border: 1.5px solid var(--line); background: var(--bg); font-size: 13px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.2; }
+.dec button small { font-family: var(--mono); font-size: 10px; font-weight: 400; color: var(--fg3); }
+.dec .good[aria-pressed="true"] { border-color: var(--up); background: var(--good-bg); color: var(--up); }
+.dec .bad[aria-pressed="true"] { border-color: var(--down); background: var(--bad-bg); color: var(--down); }
+.dec .late[aria-pressed="true"] { border-color: var(--late); background: var(--late-bg); color: var(--late); }
+.unsure { height: 28px; border-radius: 8px; border: 1px solid var(--line); background: transparent; font-size: 12px; color: var(--fg2); }
+.unsure[aria-pressed="true"] { border-color: var(--fg3); color: var(--fg); }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1px solid var(--line); background: var(--chip); border-radius: 14px; padding: 3px 10px; font-size: 12px; color: var(--fg2); }
+.chips button[aria-pressed="true"] { border-color: var(--accent); color: var(--fg); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+textarea { width: 100%; min-height: 50px; resize: vertical; border: 1px solid var(--line); border-radius: 7px; background: var(--bg); color: var(--fg); font: 12px/1.4 var(--sans); padding: 6px 8px; }
+.go { display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+.primary { height: 40px; border-radius: 9px; border: 0; background: var(--accent); color: var(--accent-fg); font-weight: 600; font-size: 14px; }
+.primary:disabled { opacity: .45; cursor: default; }
+.err { color: var(--down); font-size: 12px; min-height: 16px; }
+.reveal { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--bg); font-size: 12px; color: var(--fg2); }
+.reveal b { color: var(--fg); font-size: 14px; }
+footer { display: flex; gap: 22px; padding: 8px 16px; border-top: 1px solid var(--line); background: var(--panel); font-size: 12px; color: var(--fg2); flex-wrap: wrap; }
+footer b { color: var(--fg); }
+@media (max-width: 980px) { main { grid-template-columns: 1fr; } .queue { border-right: 0; border-bottom: 1px solid var(--line); max-height: 180px; } aside { border-left: 0; border-top: 1px solid var(--line); } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Розбір дня</h1>
+    <button class="btn" id="prevDay" aria-label="Попередній день">←</button>
+    <select class="btn" id="daySel" aria-label="День"></select>
+    <button class="btn" id="nextDay" aria-label="Наступний день">→</button>
+    <span class="prog"><span id="progTxt">—</span><span class="bar"><i id="progBar" style="width:0"></i></span></span>
+    <select class="btn" id="modeSel" aria-label="Режим, чиї угоди розбираємо" title="Чиї угоди розбираємо">
+      <option value="">основний режим</option><option value="market">старий: вхід на кожному Alert</option>
+    </select>
+    <span class="hint" id="modeTxt"></span>
+    <span class="sp"></span>
+    <a class="lnk" href="/review">Сліпий перегляд</a>
+    <a class="lnk" href="/">← Розмітка</a>
+  </header>
+  <main>
+    <nav class="queue" id="queue" aria-label="Угоди дня"><div class="empty">Рахую угоди моделі… перший раз — до хвилини.</div></nav>
+    <section class="chartwrap">
+      <div class="chead">
+        <div class="seg" id="tfSeg" role="group" aria-label="Таймфрейм">
+          <button data-tf="5m">5m</button><button data-tf="15m" aria-pressed="true">15m</button><button data-tf="1h">1h</button><button data-tf="4h">4h</button>
+        </div>
+        <span class="who" id="who">—</span>
+        <span class="res" id="res"></span>
+        <span class="sp"></span>
+        <button class="btn" id="fitBtn" title="Показати всю завантажену історію">Уся історія</button>
+        <button class="btn" id="nearBtn" title="Повернутись до входу">До входу</button>
+      </div>
+      <div id="chart"><div class="loading" id="loading">Завантажую…</div></div>
+      <span class="hint" id="chartHint"></span>
+    </section>
+    <aside>
+      <div class="blk">
+        <span class="lbl">Оцінка входу <span class="kbd">1 · 2 · 3</span></span>
+        <div class="dec">
+          <button class="good" data-rate="good" aria-pressed="false">Добрий<small>1</small></button>
+          <button class="bad" data-rate="bad" aria-pressed="false">Поганий<small>2</small></button>
+          <button class="late" data-rate="late" aria-pressed="false">Запізно<small>3</small></button>
+        </div>
+        <button class="unsure" data-rate="unsure" aria-pressed="false">Не можу оцінити <span class="kbd">U</span></button>
+      </div>
+      <div class="blk">
+        <span class="lbl">Сетап <span class="kbd">B · P · O</span></span>
+        <div class="chips" id="setupChips">
+          <button data-setup="breakout">Пробій</button><button data-setup="pullback">Підбір</button><button data-setup="other">Інше</button>
+        </div>
+      </div>
+      <div class="blk">
+        <span class="lbl">Чому</span>
+        <div class="chips" id="reasonChips"></div>
+      </div>
+      <div class="blk">
+        <span class="lbl">Нотатка</span>
+        <textarea id="note" placeholder="Що побачив — своїми словами (необов'язково)"></textarea>
+      </div>
+      <div class="reveal" id="revealBox" hidden></div>
+      <div class="go">
+        <div class="err" id="err"></div>
+        <button class="primary" id="saveBtn" disabled>Зберегти й показати результат <span class="kbd" style="color:inherit;opacity:.7">Enter</span></button>
+        <button class="btn" id="nextBtn">Наступна неоцінена <span class="kbd">→</span></button>
+      </div>
+    </aside>
+  </main>
+  <footer id="sum"></footer>
+</div>
+
+<script src="/vendor/lightweight-charts.standalone.production.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const css = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const api = async (method, path, body) => {
+    const r = await fetch(path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body ? JSON.stringify(body) : undefined });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+    return d;
+  };
+  const LWC = window.LightweightCharts;
+  const RATE = { good: "добрий", bad: "поганий", late: "запізно", unsure: "не оцінено", wait: "чекає" };
+  const st = { view: null, item: null, tf: "15m", draft: null, bars: null };
+  // ?mode=market в адресі — розбір угод іншого режиму (за замовчуванням — основний зі strategies.json)
+  const MODE = new URLSearchParams(location.search).get("mode"), MQ = MODE ? `&mode=${encodeURIComponent(MODE)}` : "";
+  const blank = () => ({ rate: null, setup: null, reasons: new Set(), note: "" });
+  const pad = (n) => String(n).padStart(2, "0");
+  const hhmm = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  const dmhm = (t) => { const d = new Date(t * 1000); return `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)} ${hhmm(t)}`; };
+  const pct = (v, d = 1) => v == null ? "—" : `${v >= 0 ? "+" : "−"}${Math.abs(v * 100).toFixed(d)}%`;
+  const fmtUsd = (v) => { const a = Math.abs(v); return a >= 1e9 ? (v / 1e9).toFixed(2) + "B" : a >= 1e6 ? (v / 1e6).toFixed(1) + "M" : a >= 1e3 ? (v / 1e3).toFixed(0) + "K" : v.toFixed(0); };
+  const decimals = (p) => Math.max(2, Math.min(8, 4 - Math.floor(Math.log10(Math.max(p, 1e-12)))));
+
+  // ---------- графік: свічки, OI, обсяг; масштаб і прокрутка мишею ----------
+  let chart = null, S = {}, entryLine = null, markers = null;
+  const makeChart = () => {
+    chart = LWC.createChart($("chart"), {
+      autoSize: true,
+      layout: { background: { type: "solid", color: css("--panel") }, textColor: css("--fg2"), fontFamily: "IBM Plex Sans, system-ui", fontSize: 11,
+        panes: { separatorColor: css("--line"), separatorHoverColor: css("--line") } },
+      grid: { vertLines: { color: css("--grid") }, horzLines: { color: css("--grid") } },
+      rightPriceScale: { borderColor: css("--line") },
+      timeScale: { borderColor: css("--line"), timeVisible: true, secondsVisible: false, rightOffset: 8 },
+      crosshair: { mode: 0 },
+      localization: { timeFormatter: dmhm },
+    });
+    S.c = chart.addSeries(LWC.CandlestickSeries, { upColor: css("--up"), downColor: css("--down"), wickUpColor: css("--up"), wickDownColor: css("--down"), borderVisible: false }, 0);
+    markers = LWC.createSeriesMarkers(S.c, []);
+    S.oi = chart.addSeries(LWC.LineSeries, { color: css("--oi"), lineWidth: 2, title: "OI", priceLineVisible: false, lastValueVisible: true, priceFormat: { type: "custom", formatter: fmtUsd } }, 1);
+    S.v = chart.addSeries(LWC.HistogramSeries, { color: css("--vol"), title: "Обсяг", priceLineVisible: false, lastValueVisible: false, priceFormat: { type: "custom", formatter: fmtUsd } }, 2);
+    const p = chart.panes(); [4, 1.5, 1.1].forEach((f, i) => p[i] && p[i].setStretchFactor(f));
+  };
+  // бар графіка, що містить момент t (для міток входу / виходу на 1h і 4h)
+  const barOf = (t) => { const b = st.bars, ts = b.t; let j = -1; for (let i = 0; i < ts.length; i++) { if (ts[i] <= t) j = i; else break; } return j >= 0 ? ts[j] : null; };
+  const near = () => {            // за замовчуванням: ~160 барів до входу + усе після (якщо відкрито результат)
+    const b = st.bars; if (!b || !b.t.length) return;
+    const entryBar = barOf(b.cutoff - 1) ?? b.t[b.t.length - 1], i = b.t.indexOf(entryBar);
+    chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, i - 160), to: b.t.length + 6 });
+  };
+  const draw = (keepRange) => {
+    const b = st.bars; if (!b) return;
+    if (!chart) makeChart();
+    const dec = decimals(st.item.entry);
+    S.c.applyOptions({ priceFormat: { type: "price", precision: dec, minMove: Math.pow(10, -dec) } });
+    const cs = [], oi = [], v = [];
+    b.t.forEach((t, i) => {
+      if (b.c[i] == null) return;
+      cs.push({ time: t, open: b.o[i], high: b.h[i], low: b.l[i], close: b.c[i] });
+      if (b.oi[i] != null) oi.push({ time: t, value: b.oi[i] });
+      if (b.v[i] != null) v.push({ time: t, value: b.v[i], color: b.c[i] >= b.o[i] ? css("--up") + "88" : css("--down") + "88" });
+    });
+    S.c.setData(cs); S.oi.setData(oi); S.v.setData(v);
+    const m = [], eb = barOf(b.cutoff - 1);
+    if (eb != null) m.push({ time: eb, position: "belowBar", color: css("--entry"), shape: "arrowUp", text: "вхід" });
+    if (b.revealed && b.trade && b.trade.exit_ts != null) {
+      const xb = barOf(b.trade.exit_ts);
+      if (xb != null) m.push({ time: xb, position: "aboveBar", color: b.trade.ret >= 0 ? css("--up") : css("--down"), shape: "arrowDown",
+        text: `${b.trade.reason === "stop" ? "стоп" : "вихід"} ${pct(b.trade.ret)}` });
+    }
+    markers.setMarkers(m.sort((x, y) => x.time - y.time));
+    if (entryLine) S.c.removePriceLine(entryLine);
+    entryLine = S.c.createPriceLine({ price: st.item.entry, color: css("--entry"), lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: "вхід" });
+    if (!keepRange) near();
+    const days = b.t.length ? Math.round((b.cutoff - b.from) / 86400) : 0;
+    $("chartHint").textContent = `Історія до входу: ${days} дн. на ${b.tf} — колесо миші масштабує, перетягування гортає. ` +
+      (b.revealed ? "Результат відкрито." : "Після входу графік приховано до оцінки.");
+  };
+  const loadBars = async (keepRange) => {
+    if (!st.item) return;
+    $("loading").hidden = false; $("loading").textContent = "Завантажую…";
+    try {
+      st.bars = await api("GET", `/api/debrief/bars?id=${encodeURIComponent(st.item.id)}&tf=${st.tf}${st.item.rating ? "&reveal=1" : ""}${MQ}`);
+      $("err").textContent = ""; draw(keepRange); $("loading").hidden = true;
+    } catch (e) { $("loading").textContent = e.message; }
+  };
+
+  // ---------- черга і підсумок ----------
+  const renderQueue = () => {
+    const v = st.view, box = $("queue"); box.replaceChildren();
+    if (!v.items.length) {
+      const em = el("div", "empty", v.days.length ? "Цього дня угод цього режиму не було."
+        : "У базі немає угод цього режиму. Для режиму «вхід на старті» потрібні оцінки моделі «старт» — онови копію бази (tools/pull_db.sh). ");
+      if (!v.days.length && v.mode_id !== "market") {      // поки копія бази стара — можна розбирати угоди режиму «ринок»
+        const a = el("a", "lnk", "Показати угоди режиму «ринок» →"); a.href = "/debrief?mode=market"; em.append(el("br"), el("br"), a);
+      }
+      box.appendChild(em);
+      return;
+    }
+    v.items.forEach((it) => {
+      const b = el("button", "qrow" + (st.item && st.item.id === it.id ? " sel" : ""));
+      b.append(el("b", "", it.ticker), el("span", "tm", hhmm(it.entry_ts + 900)), el("span", "sp"));
+      b.appendChild(el("span", "pill " + (it.rating || "wait"), RATE[it.rating || "wait"]));
+      if (it.rating) b.appendChild(el("span", it.ret == null ? "" : it.ret >= 0 ? "pos" : "neg", it.open ? `${pct(it.ret)} …` : pct(it.ret)));
+      b.addEventListener("click", () => select(it.id));
+      box.appendChild(b);
+    });
+    const rated = v.items.filter((x) => x.rating).length;
+    $("progTxt").textContent = `оцінено ${rated} з ${v.items.length}`;
+    $("progBar").style.width = v.items.length ? `${rated / v.items.length * 100}%` : "0";
+    // перший пункт перемикача — основний режим з його назвою (зараз «вхід на старті» = Alert + підтвердження моделі «старт»)
+    if (v.main) $("modeSel").options[0].textContent = `основний: ${v.mode.replace(/^.*·\s*/, "")}`;
+    $("modeTxt").textContent = v.main ? "ті самі угоди, що в списку NOW і Telegram" : "для порівняння: модель входить на першому барі кожного Alert";
+    const s = v.summary, f = $("sum"); f.replaceChildren();
+    const part = (label, n, sum) => { const x = el("span"); x.append(`${label}: `, el("b", "", String(n)), " угод, сума ", el("b", sum >= 0 ? "pos" : "neg", pct(sum))); return x; };
+    f.append(part("Твої «добрі»", s.good_n, s.good_sum), part("«Погані» й «запізно»", s.rest_n, s.rest_sum),
+      el("span", "", `Оцінок у reviews.csv: ${v.reviews_total} (для моделі-фільтра потрібно ~200)`),
+      el("span", "", "Підсумок одного дня — кілька угод; висновки робити на десятках днів."));
+  };
+  const renderDays = () => {
+    const v = st.view, sel = $("daySel"); sel.replaceChildren();
+    [...v.days].reverse().forEach((d) => { const o = el("option", "", `${d.day.slice(8)}.${d.day.slice(5, 7)} · ${d.rated}/${d.n}`); o.value = d.day; sel.appendChild(o); });
+    sel.value = v.day;
+    const i = v.days.findIndex((d) => d.day === v.day);
+    $("prevDay").disabled = i <= 0; $("nextDay").disabled = i < 0 || i >= v.days.length - 1;
+  };
+  const renderReasons = () => {
+    const box = $("reasonChips"); box.replaceChildren();
+    const r = st.view.reasons || {}, good = st.draft.rate === "good";
+    const tags = [...(good ? r.take || [] : r.skip || []), ...(good ? r.skip || [] : r.take || [])];
+    tags.forEach((tag, i) => {
+      const b = el("button", "", tag); b.setAttribute("aria-pressed", String(st.draft.reasons.has(tag)));
+      b.style.opacity = i < (good ? (r.take || []).length : (r.skip || []).length) || st.draft.reasons.has(tag) ? 1 : 0.6;
+      b.addEventListener("click", () => { const s = st.draft.reasons; s.has(tag) ? s.delete(tag) : s.add(tag); renderReasons(); });
+      box.appendChild(b);
+    });
+  };
+  const renderDraft = () => {
+    const d = st.draft;
+    document.querySelectorAll("[data-rate]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.rate === d.rate)));
+    document.querySelectorAll("[data-setup]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.setup === d.setup)));
+    $("note").value = d.note; $("saveBtn").disabled = !d.rate || !st.item;
+    $("saveBtn").firstChild.textContent = st.item && st.item.rating ? "Зберегти зміни " : "Зберегти й показати результат ";
+    renderReasons();
+  };
+  const renderWho = () => {
+    const it = st.item;
+    if (!it) { $("who").textContent = "—"; $("res").textContent = ""; $("revealBox").hidden = true; return; }
+    $("who").replaceChildren(el("b", "", it.ticker), ` · вхід ${dmhm(it.entry_ts + 900)} UTC · ${it.entry}`);
+    const box = $("revealBox");
+    if (it.rating) {
+      $("res").textContent = it.open ? `відкрита ${pct(it.ret)}` : `${it.reason === "stop" ? "стоп" : "вихід"} ${pct(it.ret)}`;
+      $("res").className = "res " + (it.ret >= 0 ? "pos" : "neg");
+      box.hidden = false; box.replaceChildren(el("b", it.ret >= 0 ? "pos" : "neg", pct(it.ret, 2)),
+        it.open ? " — угода ще відкрита (поточний результат)" : ` — ${it.reason === "stop" ? "вихід по стопу" : "вихід за моделлю"}${it.exit_ts ? ` о ${dmhm(it.exit_ts + 900)} UTC` : ""}, з комісією`);
+    } else { $("res").textContent = ""; box.hidden = true; }
+  };
+  const select = (id) => {
+    const it = st.view.items.find((x) => x.id === id); if (!it) return;
+    st.item = it; st.draft = blank();
+    const r = it.review;
+    if (r) {
+      const reasons = new Set((r.reasons || "").split(";").filter(Boolean)); reasons.delete(st.view.late_tag);
+      st.draft = { rate: it.rating, setup: r.setup || null, reasons, note: r.note || "" };
+    }
+    renderQueue(); renderWho(); renderDraft(); loadBars();
+  };
+  const nextUnrated = () => {
+    const items = st.view.items, i = st.item ? items.findIndex((x) => x.id === st.item.id) : -1;
+    const order = [...items.slice(i + 1), ...items.slice(0, Math.max(0, i))];
+    const n = order.find((x) => !x.rating);
+    if (n) select(n.id); else $("err").textContent = "Усі угоди цього дня оцінено.";
+  };
+  const load = async (day, keepId) => {
+    try {
+      st.view = await api("GET", `/api/debrief/day?date=${day || ""}${MQ}`);
+      renderDays();
+      const keep = keepId && st.view.items.find((x) => x.id === keepId);
+      if (keep) { st.item = keep; renderQueue(); renderWho(); renderDraft(); loadBars(true); }
+      else {
+        st.item = null; st.draft = blank(); renderQueue(); renderWho(); renderDraft();
+        const first = st.view.items.find((x) => !x.rating) || st.view.items[0];
+        if (first) select(first.id); else { $("loading").hidden = false; $("loading").textContent = "Цього дня угод не було."; }
+      }
+    } catch (e) { $("queue").replaceChildren(el("div", "empty", e.message)); $("loading").textContent = e.message; }
+  };
+  const save = async () => {
+    const d = st.draft, it = st.item; if (!it || !d.rate) return;
+    const reasons = [...d.reasons]; if (d.rate === "late") reasons.push(st.view.late_tag);
+    try {
+      await api("POST", "/api/review", { id: it.id, decision: d.rate === "good" ? "take" : d.rate === "unsure" ? "unsure" : "skip",
+        setup: d.setup, reasons, note: $("note").value.trim(), ticker_seen: true });
+      $("err").textContent = "";
+      await load(st.view.day, it.id);            // оцінено → сервер віддає результат і продовження графіка
+    } catch (e) { $("err").textContent = e.message; }
+  };
+
+  document.querySelectorAll("[data-rate]").forEach((b) => b.addEventListener("click", () => { st.draft.rate = b.dataset.rate; renderDraft(); }));
+  document.querySelectorAll("[data-setup]").forEach((b) => b.addEventListener("click", () => { st.draft.setup = st.draft.setup === b.dataset.setup ? null : b.dataset.setup; renderDraft(); }));
+  document.querySelectorAll("[data-tf]").forEach((b) => b.addEventListener("click", () => {
+    st.tf = b.dataset.tf; document.querySelectorAll("[data-tf]").forEach((x) => x.setAttribute("aria-pressed", String(x === b))); loadBars();
+  }));
+  $("note").addEventListener("input", (e) => { st.draft.note = e.target.value; });
+  $("saveBtn").addEventListener("click", save);
+  $("nextBtn").addEventListener("click", nextUnrated);
+  $("fitBtn").addEventListener("click", () => chart && chart.timeScale().fitContent());
+  $("nearBtn").addEventListener("click", () => chart && near());
+  $("daySel").addEventListener("change", (e) => load(e.target.value));
+  $("modeSel").value = MODE || "";
+  $("modeSel").addEventListener("change", (e) => { location.search = e.target.value ? `?mode=${encodeURIComponent(e.target.value)}` : ""; });
+  const stepDay = (k) => { const v = st.view, i = v.days.findIndex((d) => d.day === v.day), n = v.days[i + k]; if (n) load(n.day); };
+  $("prevDay").addEventListener("click", () => stepDay(-1));
+  $("nextDay").addEventListener("click", () => stepDay(1));
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "TEXTAREA" || e.target.tagName === "SELECT" || e.ctrlKey || e.metaKey || e.altKey || !st.view) return;
+    const k = e.key.toLowerCase();
+    const rate = { 1: "good", 2: "bad", 3: "late", u: "unsure", г: "unsure" }[k];
+    const setups = { b: "breakout", и: "breakout", p: "pullback", з: "pullback", o: "other", щ: "other" };
+    if (rate) { st.draft.rate = rate; renderDraft(); e.preventDefault(); }
+    else if (setups[k]) { st.draft.setup = st.draft.setup === setups[k] ? null : setups[k]; renderDraft(); e.preventDefault(); }
+    else if (e.key === "Enter") { save(); e.preventDefault(); }
+    else if (e.key === "ArrowRight") { nextUnrated(); e.preventDefault(); }
+  });
+
+  if (!LWC) { $("chart").textContent = "Бібліотеку графіків не знайдено (app/vendor)."; return; }
+  load();
+})();
+</script>
+</body>
+</html>
