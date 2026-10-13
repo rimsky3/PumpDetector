@@ -49,6 +49,7 @@ def main_mode() -> str:
 SEND_MAX_AGE_MIN = 45                     # старіші епізоди не надсилаємо (після простою — без «зливи» старих сигналів)
 MUTE_HOURS = 2
 POLL_SEC = 5
+JOURNAL_TIMEOUT = 360                     # с: скільки чекати журнал (холодний розрахунок на сервері — 240 с, замір 13.10)
 SPREAD_BURST = 5                          # більше подій розбіжності за один прохід — одне зведене повідомлення
 # alert — лише ВХІД моделі (угода, як мітка «Вхід» на графіку); realert — новий спалах Alert, поки угода моделі відкрита
 # (до 2026-10-08 такі приходили як звичайний Alert; власник: «заходжу з моделлю», тож за замовчуванням вимкнено)
@@ -382,7 +383,8 @@ class Bot:
             "today": (today, today, "Сьогодні"), "yday": (today - timedelta(days=1), today - timedelta(days=1), "Вчора"),
             "week": (today - timedelta(days=6), today, "Тиждень"), "month": (today - timedelta(days=29), today, "Місяць"),
         }[period]
-        j = self.get(f"/api/journal?model={main_mode()}&kind=hist&from={a:%Y-%m-%d}&to={b:%Y-%m-%d}", timeout=180)
+        # журнал рахується на запит (з 13.10 фон тримає його свіжим лише 2 год після звернення): після перерви — до ~4 хв
+        j = self.get(f"/api/journal?model={main_mode()}&kind=hist&from={a:%Y-%m-%d}&to={b:%Y-%m-%d}", timeout=JOURNAL_TIMEOUT)
         rows = j.get("rows", [])
         closed = [r for r in rows if not r.get("open") and r.get("result_pct") is not None]
         opened = [r for r in rows if r.get("open")]
@@ -479,7 +481,7 @@ class Bot:
             except Exception as ex:
                 note = f"Не вдалось: {ex}"
         elif kind == "res":
-            self.tg("answerCallbackQuery", callback_query_id=cq["id"], text="Рахую…")
+            self.tg("answerCallbackQuery", callback_query_id=cq["id"], text="Рахую… після перерви це до 4 хв")
             try:
                 self.send(self.results(arg), self.results_markup())
             except Exception as ex:

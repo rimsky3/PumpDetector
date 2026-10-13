@@ -97,9 +97,10 @@ def query_df(conn, sql: str, params=()) -> pd.DataFrame:
 
 
 def load_raw(conn, bases: list[str] | None = None, interval: str = INTERVAL, since=None,
-             exchanges=None) -> dict[str, pd.DataFrame]:
+             exchanges=None, light: bool = False) -> dict[str, pd.DataFrame]:
     """Сирі ряди з назвою тікера і біржі в кожному рядку. interval: '1hour' (Coinalyze) або '15min' / '5min'
-    (біржі напряму + ліквідації Coinalyze; тоді ще й liq_coverage — з якого моменту ліквідації ринку повні)."""
+    (біржі напряму + ліквідації Coinalyze; тоді ще й liq_coverage — з якого моменту ліквідації ринку повні).
+    light=True — лише свічки й OI (два запити замість п'яти-шести): досить для aggregate(..., light=True)."""
     cond = "t.interval = %s" + (" AND m.base_asset = ANY(%s)" if bases else "")
     params = (interval, bases) if bases else (interval,)
     tcond, tparams = (cond + " AND t.ts >= %s", params + (since,)) if since is not None else (cond, params)
@@ -117,6 +118,9 @@ def load_raw(conn, bases: list[str] | None = None, interval: str = INTERVAL, sin
             FROM {table} t JOIN markets m USING (symbol)
             WHERE {c}""", p)
 
+    if light:
+        return {"ohlcv": q("ohlcv", "t.o, t.h, t.l, t.c, t.v, t.bv, m.volume_denominated"),
+                "oi": q("open_interest", "t.o, t.h, t.l, t.c")}
     raw = {
         "ohlcv": q("ohlcv", "t.o, t.h, t.l, t.c, t.v, t.bv, m.volume_denominated"),
         "oi": q("open_interest", "t.o, t.h, t.l, t.c"),

@@ -108,7 +108,9 @@ The server's cores are about 3× slower per thread than the laptop, so redundant
   tickers first. Now the list covers only the tickers of the list and the last 3 days of each ticker's scores (read
   through the `(base_asset, ts)` index), is recomputed on new data or every 5 minutes. The journal is computed on demand:
   the first request after a pause computes it (minutes on the server), and the warmer then keeps it fresh for two hours
-  after the last request (`JOURNAL_KEEP_WARM`), once per bar (it waits until the version is the same on two checks). On a copy of the database the list went from 7.3 s to 1.1 s with identical
+  after the last request (`JOURNAL_KEEP_WARM`), once per bar (it waits until the version is the same on two checks).
+  The journal also loads only candles and open interest for its per-ticker series (`load_raw(light=True)`,
+  `aggregate(light=True)`) instead of the full series: about twice as fast with identical trades. On a copy of the database the list went from 7.3 s to 1.1 s with identical
   rows, notifications and mini charts; the only visible difference is that "quiet for N hours" is capped at 3 days.
 
 - `features.aggregate(..., light=True)` builds only price/OHLC/volume/OI. The ticker list needs just the 24 h changes and

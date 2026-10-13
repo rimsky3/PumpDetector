@@ -190,10 +190,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .fptool { font-size: 12px; font-weight: 600; letter-spacing: .02em; }
 /* розбіжність цін між біржами (spread.py, 13.10; макет A + C): панель Δ на графіку (кнопка Δ), чіп у заголовку вікна з
    карткою бірж, значок Δ у списку, «Spread ▾» — події й налаштування порогів */
-.pnhead .tk-xs { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--line2); background: transparent; color: var(--fg2); white-space: nowrap; }
-.pnhead .tk-xs:hover { border-color: var(--line3); color: var(--fg); }
-.pnhead .tk-xs.on { border-color: var(--spread); background: var(--spread-bg); color: var(--spread); }
-.pnhead .tk-xs[hidden] { display: none; }
+/* чіп стоїть у другому рядку заголовка (.ohlc), після «P 5m» (власник 13.10: щоб заголовок вміщався у два рядки) */
+.tk-xs { font-size: 10.5px; font-weight: 500; padding: 0 7px; line-height: 14px; border-radius: 20px; border: 1px solid var(--line2); background: transparent; color: var(--fg2); white-space: nowrap; align-self: flex-start; }
+.tk-xs:hover { border-color: var(--line3); color: var(--fg); }
+.tk-xs.on { border-color: var(--spread); background: var(--spread-bg); color: var(--spread); }
+.tk-xs[hidden] { display: none; }
 .sp-btn.on { border-color: #1f5a55; } .sp-btn.on .mk-dot { background: var(--spread); } .sp-btn.on .mk-st { color: var(--spread); }
 .sp-pop { width: 400px; } .xs-pop { width: 430px; }
 .sp-ttl { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--spread); }
@@ -725,12 +726,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <span class="live-dot off" title="Жива свічка з бірж">live</span>
         <span class="pill none tk-status">—</span><span class="tk-p"></span>
         <span class="tk-pos" hidden></span><span class="small tk-stop" hidden></span>
-        <button class="tk-xs" aria-haspopup="dialog" hidden></button>
         <span class="tk-mover" hidden></span>
         <span class="tk-why" hidden></span>
         <span class="badge tk-ins" hidden title="Ця година була в навчанні моделі">in-sample</span>
       </div>
-      <div class="ohlc"></div>
+      <div class="ohlc"><button class="tk-xs" aria-haspopup="dialog" hidden></button></div>
       <div class="chart-card">
         <div class="chart-help"><button class="help" data-help="chart" aria-label="Що це?">?</button></div>
         <div class="chart" role="img" aria-label="Свічковий графік ціни з зонами сигналу, OI, обсяг і ймовірність імпульсу"></div>
@@ -1293,7 +1293,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const root = $("paneTpl").content.firstElementChild.cloneNode(true);
     $("panes").appendChild(root);
     const q = (s) => root.querySelector(s);
-    const chartEl = q(".chart"), ohlcEl = q(".ohlc");
+    const chartEl = q(".chart"), ohlcEl = q(".ohlc"), xsBtn = q(".tk-xs");   // чіп «Δ бірж»: рядок .ohlc перебудовується — тримаємо сам елемент
     // налаштування вікна (лінковка вимкнена — кожне своє): ТФ графіка (null — ТФ моделі), FP, профіль обсягу за період
     const cfg0 = LS.get(`pd-pane-cfg-${n}`, null) || { tf: null, fp: LS.get("pd-fp", false), vp: LS.get("pd-vp-period", "off") };
     // xs — панель «Δ бірж» під графіком (за замовчуванням увімкнена; з'являється, коли тікер є щонайменше на двох біржах)
@@ -1401,6 +1401,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         const rl = d.rolling;
         add("P 5m", fmtP(rl.p15), rl.tier === "alert" ? "hot" : rl.tier === "candidate" ? "amber" : "");
       }
+      ohlcEl.appendChild(xsBtn);                              // чіп «Δ бірж» — останнім у рядку, після «P 5m»
     };
     const setRange = () => {
       const t = P.data?.series.t; if (!chart || !t?.length) return;
@@ -1712,7 +1713,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const renderHead = () => {
       q(".tk-name").textContent = P.data ? P.data.ticker : (P.ticker || "—");
       root.classList.toggle("active", st.panes > 1 && isActive());
-      const d = P.data; if (!d) { q(".tk-mover").hidden = true; q(".tk-why").hidden = true; q(".tk-xs").hidden = true; return; }
+      const d = P.data; if (!d) { q(".tk-mover").hidden = true; q(".tk-why").hidden = true; xsBtn.hidden = true; return; }
       const ch = q(".tk-chg"); ch.textContent = fmtPct(d.chg_24h); ch.className = "tk-chg " + pctCls(d.chg_24h);
       q(".tk-ins").hidden = !d.in_sample;
       q(".tk-tf").textContent = `USDT Perp · ${d.tf || "1h"}` + (d.native_tf ? ` · модель ${d.native_tf}` : "");
@@ -1774,7 +1775,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // чіп «Δ Bybit +5.1%» у заголовку (макет C): найбільша розбіжність відносно біржі графіка; бірюзовий — аномалія зараз
     // (подія монітора spread.py). Значення — з живих свічок бірж, а поки їх немає — з останнього зрізу монітора (15 с).
     const renderXs = () => {
-      const b = q(".tk-xs"), d = P.data, tk = d?.ticker;
+      const b = xsBtn, d = P.data, tk = d?.ticker;
       const lv = tk && P.xsLive && P.xsLive.ticker === tk && Date.now() - P.xsLive.at < 20000 ? P.xsLive : null;
       const cur = lv || (tk ? st.spreads?.rows?.[tk] : null), ev = tk ? spEvent(tk) : null;
       b.hidden = !cur && !ev;
@@ -1785,7 +1786,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       b.title = (ev ? `Аномальна розбіжність: ${ev.hi} на ${fmtPct(ev.pct, 2)} дорожче за ${ev.lo} по біду й аску, тримається ${fmtMin(ev.held / 60)}\n` : "")
         + (cur ? `${cur.ex} відносно ${cur.ref || "Binance"}: ${fmtPct(cur.d, 2)}. ` : "") + "Клік — ціни, funding і графік розбіжності на всіх біржах.";
     };
-    q(".tk-xs").addEventListener("click", (e) => { e.stopPropagation(); toggleXsPop(P, q(".tk-xs")); });
+    xsBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleXsPop(P, xsBtn); });
 
     const load = async (opts = {}) => {             // opts.quiet — фонове оновлення (нові оцінки): без «Оновлюю…»
       renderHead();

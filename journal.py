@@ -111,8 +111,10 @@ def _series(conn, base: str, interval: str, freq: str, cache: dict) -> pd.DataFr
             cache["first_ts"] = {b: pd.Timestamp(t) for b, t in
                                  conn.execute("SELECT base_asset, min(ts) FROM signals GROUP BY 1").fetchall()}
         first = cache["first_ts"].get(base)
-        raw = load_raw(conn, [base], interval, since=None if first is None else (first - SERIES_WARMUP).to_pydatetime())
-        cache[hk] = aggregate(raw, base, freq)
+        # журналу з ряду потрібні лише свічки ціни (угоди, ATR) і сума OI (автоправило) — «легкий» ряд дає ті самі
+        # значення; повний (funding, ліквідації, L/S, свічки OI) забирав 2/3 часу розрахунку журналу (13.10)
+        raw = load_raw(conn, [base], interval, since=None if first is None else (first - SERIES_WARMUP).to_pydatetime(), light=True)
+        cache[hk] = aggregate(raw, base, freq, light=True)
     return cache[hk]
 
 
