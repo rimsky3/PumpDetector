@@ -415,6 +415,19 @@ cut-off is in-sample: a high probability there means the model remembers the pum
 no extra dependencies. `#forecast/NMR` opens a ticker, `#journal` the journal. Every block has a **?** button
 with a short explanation.
 
+**Charts tab (since 2026-10-13).** `#charts` shows every ticker of the list's NOW and WOKE UP sections as a grid of
+mini charts: the last 96 closed 15m candles, Alert / Candidate zones, the model's entries and the stop of an open trade
+(main mode), with the same state chip and glyphs as the list row, P and the 24 h change. The data comes from
+`/api/minicharts?symbols=…`, which reads the list cache (`dashboard.mini_charts` builds it together with the list from
+bars that are already loaded, so the tab adds almost no database work; `/api/list` does not carry it). The last candle
+is live through one combined Binance WebSocket for the whole grid; charts are plain SVG. A switch selects the
+timeframe: 15m (24 h) and 1h (2 days, aggregated from the cached 15m bars; a bar shows the highest signal level of its
+hour) come from the list cache, 5m (8 h) takes one extra candle query for all tickers of the grid (cached 20 s; a 5m bar
+shows the level of its 15m bar). Sections collapse (a collapsed
+section is not loaded; WOKE UP is collapsed by default). Keys: PageDown from Forecast opens the tab, PageUp returns
+(Up / Down on Forecast already step through the list), arrows move the selection, Enter or a click opens the ticker in
+Forecast.
+
 **One or two chart windows (since 2026-10-06).** The toolbar above the chart has ▢ / ▢▢ (one window or two side by
 side), **Full info** and **Period ▾** (1d / 3d / 7d / 30d). The *active* window (orange frame; click it or press Tab)
 takes the ticker clicked in the list and ↑/↓, and is the one the left panel describes; the list marks the other

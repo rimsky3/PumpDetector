@@ -312,7 +312,110 @@ def watch_list_15m(conn) -> dict:
     for r in rows:
         f = last_fp.get(r["ticker"])
         r["fp"] = {"kind": f["kind"], "at": pd.Timestamp(f["ts"]) + BAR_15M} if f else None
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "realerts": realerts, "cands": cands, "lates": lates, "wakes": wakes, "fps": fps}
+    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "realerts": realerts, "cands": cands, "lates": lates, "wakes": wakes, "fps": fps,
+            "minis": mini_charts(conn, t15, hmap, trades)}
+
+
+MINI_BARS = 192                                # у кеші — дві доби 15m-барів (з них же збирається 1h-вигляд)
+MINI_VIEW = {"5m": (96, 300), "15m": (96, 900), "1h": (48, 3600)}     # таймфрейм вкладки «Charts» → (барів, секунд у барі)
+MINI_KEYS = ("t", "o", "h", "l", "c", "tier")
+
+
+def mini_charts(conn, t15: pd.DataFrame, hmap: dict, trades: dict) -> dict:
+    """Дані міні-графіків вкладки «Charts» (13.10): останні MINI_BARS закритих 15m-барів кожного тікера списку, рівень сигналу
+    на бар, входи моделі й стоп відкритої угоди (основний режим — ті самі угоди, що в колонці State). Рахуються разом зі
+    списком з уже завантажених барів, тому додаткових запитів до бази майже немає; у відповідь /api/list не йдуть
+    (watch_list їх прибирає) — їх віддає /api/minicharts лише для запитаних тікерів."""
+    code = {"alert": 2, "candidate": 1, "calm": 0}
+    try:                                        # символ Binance — для живої свічки (один WebSocket на всю сітку)
+        syms = dict(conn.execute("""SELECT base_asset, symbol_on_exchange FROM markets
+                                    WHERE exchange_name = 'Binance' AND quote_asset = 'USDT' AND base_asset = ANY(%s)""",
+                                 (list(hmap),)).fetchall())
+    except Exception:
+        conn.rollback()
+        syms = {}
+    closed, out = last_closed_15m(), {}
+    for base, g in t15.groupby("base_asset"):
+        h = hmap.get(base)
+        if h is None or h.empty:
+            continue
+        v = h.loc[h.index <= closed, ["open", "high", "low", "price"]].dropna().tail(MINI_BARS)
+        if v.empty:
+            continue
+        tier = g.drop_duplicates("ts", keep="last").set_index("ts")["tier"].map(code).reindex(v.index)
+        tr = trades.get(base) or []
+        last = tr[-1] if tr else None
+        out[base] = {"t": list(v.index), "o": v["open"].tolist(), "h": v["high"].tolist(), "l": v["low"].tolist(),
+                     "c": v["price"].tolist(), "tier": tier.tolist(), "binance": syms.get(base),
+                     "entries": [x["entry_ts"] for x in tr if x["entry_ts"] >= v.index[0]],
+                     "stop": last.get("stop") if last and last.get("open") else None}
+    return out
+
+
+def _mini_15m(m: dict, n: int) -> dict:
+    t0 = m["t"][-n:][0]
+    return {**m, **{k: m[k][-n:] for k in MINI_KEYS}, "entries": [e for e in m["entries"] if e >= t0]}
+
+
+def _mini_1h(m: dict, n: int) -> dict:
+    """Години з 15m-барів кешу: рівень сигналу — найвищий за годину (Alert усередині години не губиться), вхід — на свою годину.
+    Остання година може бути неповною — її доповнює жива свічка на сторінці."""
+    d = pd.DataFrame({k: m[k] for k in MINI_KEYS[1:]}, index=pd.DatetimeIndex(m["t"]))
+    g = d.groupby(d.index.floor("h"))
+    a = pd.DataFrame({"o": g["o"].first(), "h": g["h"].max(), "l": g["l"].min(), "c": g["c"].last(), "tier": g["tier"].max()}).tail(n)
+    ent = sorted({pd.Timestamp(e).floor("h") for e in m["entries"]})
+    return {**m, "t": list(a.index), **{k: a[k].tolist() for k in MINI_KEYS[1:]}, "entries": [e for e in ent if e >= a.index[0]]}
+
+
+_mini5_cache: dict = {}                        # (тікери) → (час, відповідь): 5m-бари читаються з бази, не частіше разу на 20 с
+
+
+def _mini_5m(conn, symbols: list[str], minis: dict, n: int) -> dict:
+    """5m-вигляд: бари біржі графіка (Binance, інакше Bybit) одним запитом на всі запитані тікери; рівень сигналу і вхід —
+    з 15m-кешу (5m-бар бере рівень свого 15m-бару; вхід — на останній 5m-бар сигнального 15m-бару, тобто на його закриття)."""
+    key, now = tuple(sorted(symbols)), time.monotonic()
+    hit = _mini5_cache.get(key)
+    if hit and now - hit[0] < 20:
+        return hit[1]
+    five = pd.Timedelta(minutes=5)
+    closed = pd.Timestamp(datetime.now(timezone.utc)).floor("5min") - five
+    rows = conn.execute("""SELECT m.base_asset, m.exchange_name, o.ts, o.o, o.h, o.l, o.c FROM ohlcv o JOIN markets m USING (symbol)
+                           WHERE m.base_asset = ANY(%s) AND m.quote_asset = 'USDT' AND m.exchange_name = ANY(%s)
+                             AND o.interval = '5min' AND o.ts >= %s""",
+                        (symbols, list(INTRADAY_EXCHANGES), (closed - n * five).to_pydatetime())).fetchall()
+    out = {}
+    if rows:
+        df = pd.DataFrame(rows, columns=["base", "ex", "ts", "o", "h", "l", "c"])
+        for base, g in df.groupby("base"):
+            ex = "Binance" if (g["ex"] == "Binance").any() else g["ex"].iloc[0]
+            v = g[g["ex"] == ex].drop_duplicates("ts", keep="last").set_index("ts").sort_index()
+            v.index = pd.to_datetime(v.index, utc=True)
+            v = v.loc[v.index <= closed, ["o", "h", "l", "c"]].astype(float).dropna().tail(n)
+            if v.empty:
+                continue
+            m = minis[base]
+            tier = pd.Series(m["tier"], index=pd.DatetimeIndex(m["t"])).reindex(v.index.floor("15min"))
+            ent = [pd.Timestamp(e) + 2 * five for e in m["entries"]]
+            out[base] = {**m, "t": list(v.index), **{k: v[k].tolist() for k in MINI_KEYS[1:5]}, "tier": tier.tolist(),
+                         "entries": [e for e in ent if e >= v.index[0]]}
+    if len(_mini5_cache) > 20:
+        _mini5_cache.clear()
+    _mini5_cache[key] = (now, out)
+    return out
+
+
+def minicharts(conn, model: str, symbols: list[str], tf: str = "15m") -> dict:
+    """/api/minicharts: міні-графіки запитаних тікерів. 15m і 1h — з кешу списку (той самий стан, що й рядки списку),
+    5m — ще один запит свічок до бази на всі тікери разом."""
+    tf = tf if tf in MINI_VIEW else "15m"
+    n, sec = MINI_VIEW[tf]
+    minis = _watch_list_cached(conn, model).get("minis") or {}
+    have = [s for s in symbols[:80] if s in minis]
+    if tf == "5m":
+        charts = _mini_5m(conn, have, minis, n) if have else {}
+    else:
+        charts = {s: (_mini_1h if tf == "1h" else _mini_15m)(minis[s], n) for s in have}
+    return {"tf": tf, "bar": sec, "charts": charts}
 
 
 def model_trades(conn, g: pd.DataFrame, h: pd.DataFrame | None) -> list[dict]:
@@ -538,6 +641,7 @@ def watch_list(conn, model: str) -> dict:
     з позначкою джерела: source manual / auto, причина і до коли тікер у списку.
     Важка частина (_watch_list) — з кешу, що гріється у фоні; джерела й «додається…» — свіжі на кожен запит."""
     res = dict(_watch_list_cached(conn, model))
+    res.pop("minis", None)                      # міні-графіки вкладки «Charts» — окремим запитом /api/minicharts
     manual, auto = list_sources()
     keep = set(manual) | set(auto)
     woke = scanner.load_woke()      # події каналу WOKE (і ручних тікерів): first — «Woke · 3h» і година в секції NOW
@@ -1523,6 +1627,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(meta)
         if url.path == "/api/list":
             return self._route(lambda c: watch_list(c, model))
+        if url.path == "/api/minicharts":       # вкладка «Charts»: міні-графіки тікерів із секцій NOW / WOKE UP
+            syms = [x for x in q.get("symbols", "").upper().split(",") if x]
+            return self._route(lambda c: minicharts(c, model, syms, q.get("tf", "15m")))
         if url.path == "/api/journal":
             return self._route(lambda c: journal_view(c, q))
         if url.path == "/api/footprint":

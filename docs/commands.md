@@ -497,6 +497,15 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 | `python experiments/l_shock.py` | "liquidation fade" event test on 5m and 1m with controls → `reports/l_shock.md`, `reports/l_shock_trades.csv` (`--no-oi` skips the database) |
 | `python experiments/profile_levels.py` | previous-day POC / VAH / VAL and impulse POC vs random levels → `reports/profile_levels.md` |
 
+### `experiments/upbit_events.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/upbit_events.py` | event study: what the Binance perpetual does after an Upbit KRW listing announcement (public announcements API, 1m candles from Binance REST, cache in `data/upbit_events/`); compares with random moments of the same coin by randomization; `--since DATE` (default 2025-01-01), `--refresh` re-reads the announcement list. Writes `reports/upbit_events.md` and `.csv` |
+
+Result (2026-10-13, 100 events): the whole move (median +15%) happens within the first minute after publication; entering
+three minutes later has zero expectation, and over the next 24 hours the coin gives back a median 6%.
+
 ### `experiments/time_of_day.py`
 
 | Usage | Meaning |
