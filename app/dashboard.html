@@ -687,6 +687,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <div class="seg sm" id="oiSeg" role="group" aria-label="Одиниці OI">
           <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
         </div>
+        <button class="tool fptool" id="logBtn" aria-pressed="false" title="Логарифмічна шкала ціни: однакова відстань на графіку = однакова зміна у %. Пояснення — у «?» ліворуч" aria-label="Логарифмічна шкала ціни">log</button>
         <div class="mk-wrap">
           <button class="mk-btn" id="mkBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mkPop"
                   title="Стан ринку альтів: частка альтів, дорожчих ніж тиждень тому"><span class="mk-dot" aria-hidden="true"></span>Market: <span class="mk-st" id="mkState">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
@@ -977,7 +978,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     metrics: "Ключові ознаки, на які дивиться модель: зміна open interest за 4 год (у USD, як бачить модель, без стрибків від лістингів), обсяг відносно звичайного за 7 днів (у σ), частка акаунтів у лонг.",
     position: "Симуляція угоди за сигналами моделі. Для «15m + 1h»: вхід — перший 15m-бар з Alert (по ринку; плитка «Ліміт» — підказка входу на відкаті −0.5 ATR, у журналі є рядок «лімітом» для порівняння); половина позиції закривається на цілі +3 ATR, після цього стоп на решту переноситься в беззбиток («Б/з» на графіку); решта виходить, коли Alert згас 4 бари поспіль (1 год), або по стопу — під входом на k ATR 15m-барів (просідання від фактичного входу моделі на розмічених імпульсах). Результат угоди — усієї позиції. Для годинних моделей — те саме на годинах, вихід через 2 години. Не торгова рекомендація.",
     insample: "Ця година була в навчальних даних моделі: оцінка показує, що модель запам'ятала, а не передбачила. Чесна перевірка — лише нові (live) години.",
-    oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша.",
+    oiunit: "Coinalyze множить OI на ціну закриття години, тож у USD OI між годинами стрибає разом із ціною. У монетах — чиста кількість відкритих позицій. Модель використовує USD: на ньому вона точніша. Кнопка «log» поруч — шкала ЦІНИ. Логарифмічна шкала ціни. На звичайній (лінійній) шкалі однакова відстань по вертикалі — це однакова різниця в ціні: рух 0.10 → 0.20 виглядає так само, як 0.20 → 0.30, хоча перший — це +100%, а другий — +50%. На логарифмічній однакова відстань — це однакова зміна у відсотках: +100% завжди однакової висоти, де б воно не було. Корисно, коли на екрані великий діапазон — монета виросла в 2–3 рази: видно структуру руху до пампу (на лінійній вона сплющена в смужку) і чесно порівнюються хвилі росту у %. На вузькому діапазоні (кілька відсотків за день) різниці майже немає. Незручність: рівні, що стоять на однаковій відстані в ціні (стоп і ціль у ATR), на вигляд стають нерівними — нижче по ціні інтервал виглядає ширшим. Шкала змінюється лише на панелі ціни; OI, обсяг і P — як були. Налаштування вікна, запам'ятовується.",
     tf: "Таймфрейм графіка. Модель від цього не змінюється: «15m + 1h» рахує на 15m, годинні — на 1h. На крупнішому ТФ бар показує найвищу оцінку й рівень сигналу за свій час (Alert усередині години не загубиться), на дрібнішому — останню оцінку, відому на момент закриття бару. 5m — для точного входу; оновлюється скринером.",
     vp: "Профіль обсягу, як в ATAS: скільки обсягу пройшло на кожному рівні ціни. «День» / «Тиж» — профіль на кожен день або тиждень UTC (зліва від свічок періоду). Кнопка з гістограмою або клавіша V — профіль фрагмента: клік — початок, клік — кінець; межі тягнуться мишею, × або Del (курсор над фрагментом) — прибрати; фрагменти зберігаються для тікера. Помаранчева лінія — POC (рівень з найбільшим обсягом; у фрагмента продовжується праворуч пунктиром), пунктир — межі value area (70% обсягу), яскравіші рівні — усередині неї. Будується з 5m-свічок Binance + Bybit (немає 5m — з 15m / 1h): обсяг свічки розподілено по її діапазону, тому це наближення до тикового профілю ATAS.",
     ruler: "Лінійка, як у TradingView: Shift + клік на графіку (або кнопка) — початок, рух миші — кінець, клік — зафіксувати, ще клік або Esc — прибрати. Показує зміну ціни, кількість барів і час, обсяг, зміну OI у USD і в монетах, максимальну ймовірність і скільки годин сигнал був вище порогу.",
@@ -1297,8 +1298,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // налаштування вікна (лінковка вимкнена — кожне своє): ТФ графіка (null — ТФ моделі), FP, профіль обсягу за період
     const cfg0 = LS.get(`pd-pane-cfg-${n}`, null) || { tf: null, fp: LS.get("pd-fp", false), vp: LS.get("pd-vp-period", "off") };
     // xs — панель «Δ бірж» під графіком (за замовчуванням увімкнена; з'являється, коли тікер є щонайменше на двох біржах)
-    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off", xs: cfg0.xs !== false };
-    const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP, xs: P.xs });
+    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off", xs: cfg0.xs !== false, log: !!cfg0.log };
+    const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP, xs: P.xs, log: P.log });
     let chart = null, S = {}, priceLines = [], markersApi = null, probMarkers = null, idx = new Map(), rangeKey = null;
     let xsSer = {}, xsZone = null, xsKey = "";          // панель «Δ бірж»: лінія на біржу + підсвітка барів з розбіжністю ≥ порогу
     let ruler = null, vp = null, fpv = null, wakeAt = new Map(), fpAt = new Map(), candleCol = null;
@@ -1381,7 +1382,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           symbol: () => P.ticker || "", tf: () => P.data?.tf || "15m", onInfo: (t) => { if (isActive()) $("fpBtn").title = t || FP_TITLE; } });
         fpv.setOn(P.fp); hollow(P.fp);
       }
+      applyLog();
     };
+    // логарифмічна шкала ціни (кнопка «log», 14.10): однаковий відсоток руху — однакова висота на графіку
+    const applyLog = () => { if (S.candles) S.candles.priceScale().applyOptions({ mode: P.log ? LWC.PriceScaleMode.Logarithmic : LWC.PriceScaleMode.Normal }); };
     const renderOhlc = (i) => {
       const d = P.data; if (!d || !d.series.t.length) return;
       const s = d.series; if (i == null) i = s.t.length - 1;
@@ -1851,6 +1855,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     Object.assign(P, {
       load, renderHead, renderChart, setRange, live, renderXs,
       setXs: (v) => { P.xs = !!v; saveCfg(); renderChart(); },
+      setLog: (v) => { P.log = !!v; saveCfg(); applyLog(); },
       toggleRuler: () => { if (ruler) ruler.toggle(); }, toggleVp: () => { if (vp) vp.toggle(); },
       setVpPeriod: (p) => { P.vpP = p; saveCfg(); if (vp) vp.setPeriod(p); },
       setFp: (v) => { P.fp = !!v; saveCfg(); if (fpv) fpv.setOn(P.fp); hollow(P.fp); },
@@ -1866,6 +1871,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (d) pressIn("tfSeg", "tf", d.tf || "1h");
     $("fpBtn").setAttribute("aria-pressed", String(!!P.fp)); pressIn("vpSeg", "vp", P.vpP || "off");
     $("xsBtn").setAttribute("aria-pressed", String(!!P.xs));
+    $("logBtn").setAttribute("aria-pressed", String(!!P.log));
     $("linkBtn").setAttribute("aria-pressed", String(st.link));
   };
   // лінковка вікон (кнопка біля FP): увімкнена — ТФ, FP і профіль обсягу міняються в обох вікнах, вимкнена — лише в активному
@@ -1927,13 +1933,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     targetPanes().forEach((p) => p.setFp(v)); renderToolbar();
   });
   $("xsBtn").addEventListener("click", () => { const v = !activePane().xs; targetPanes().forEach((p) => p.setXs(v)); renderToolbar(); });
+  $("logBtn").addEventListener("click", () => { const v = !activePane().log; targetPanes().forEach((p) => p.setLog(v)); renderToolbar(); });
   // лінковка: при вмиканні інші вікна беруть налаштування активного (ТФ, FP, профіль)
   const syncFromActive = () => {
     const a = activePane();
     shownPanes().forEach((p) => {
       if (p === a) return;
       const tfChanged = p.tf !== a.tf;
-      p.setTf(a.tf); p.setFp(a.fp); p.setVpPeriod(a.vpP); p.setXs(a.xs);
+      p.setTf(a.tf); p.setFp(a.fp); p.setVpPeriod(a.vpP); p.setXs(a.xs); p.setLog(a.log);
       if (tfChanged) p.load();
     });
   };
