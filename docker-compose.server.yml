@@ -55,7 +55,7 @@ services:
       - ./:/app
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pump_detector
-      JOURNAL_WARMER: "1"           # фоновий прогрів журналу (на Lightsail з 20% CPU був вимкнений; Vultr — без кредитів)
+      JOURNAL_WARMER: "1"           # журнал у фоні — лише 2 год після останнього звернення до нього (dashboard.JOURNAL_KEEP_WARM); "0" — ніколи
     # лише 127.0.0.1 сервера: з інтернету не видно, доступ — SSH-тунелем
     ports:
       - "127.0.0.1:8766:8766"

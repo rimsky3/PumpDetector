@@ -102,6 +102,15 @@ twice as fast. Running backtests from the dashboard on the server is still heavy
 
 The server's cores are about 3× slower per thread than the laptop, so redundant work that was invisible locally shows up:
 
+- **Background load (2026-10-13).** The dashboard's two worker processes (list and journal) were using about 80% of one
+  core around the clock. The list was computed for every ticker that had ever been scored, over its whole score history,
+  every minute even without new data; the journal was recomputed twice per 15m bar because the screener scores hot
+  tickers first. Now the list covers only the tickers of the list and the last 3 days of each ticker's scores (read
+  through the `(base_asset, ts)` index), is recomputed on new data or every 5 minutes. The journal is computed on demand:
+  the first request after a pause computes it (minutes on the server), and the warmer then keeps it fresh for two hours
+  after the last request (`JOURNAL_KEEP_WARM`), once per bar (it waits until the version is the same on two checks). On a copy of the database the list went from 7.3 s to 1.1 s with identical
+  rows, notifications and mini charts; the only visible difference is that "quiet for N hours" is capped at 3 days.
+
 - `features.aggregate(..., light=True)` builds only price/OHLC/volume/OI. The ticker list needs just the 24 h changes and
   ATR for the limit hint; the full series (OI candles, funding, liquidations, L/S) is not built for ~64 tickers anymore.
 - `features.split_raw` splits the raw frames by ticker with one `groupby` instead of filtering all rows for every ticker.

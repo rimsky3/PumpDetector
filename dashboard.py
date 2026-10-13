@@ -95,7 +95,7 @@ def status_of(p: float | None, thr: float) -> str:
     return "candidate" if p >= CANDIDATE_SHARE * thr else "calm"
 
 
-def latest_signals(conn, base: str | None = None) -> pd.DataFrame:
+def latest_signals(conn, base: str | None = None, bases: list[str] | None = None, days: float | None = None) -> pd.DataFrame:
     """Оцінки лише найсвіжішої версії кожної моделі. Для одного тікера — версія серед ЙОГО рядків (індекс signals:
     base_asset, ts — мілісекунди): max(model_version) по всій таблиці на кожне відкриття тікера під навантаженням тривав
     хвилину, запити накладались один на одного (07.10: 15 таких одночасно, база 117% CPU, графіки не відкривались)."""
@@ -106,6 +106,18 @@ def latest_signals(conn, base: str | None = None) -> pd.DataFrame:
             FROM w JOIN (SELECT model, max(model_version) AS v FROM w GROUP BY model) m
               ON w.model = m.model AND w.model_version = m.v
             ORDER BY w.ts""", (base,))
+    if bases is not None:
+        # список дашборда (13.10): лише його тікери і лише останні days днів КОЖНОГО тікера (від його останньої оцінки —
+        # так тікер, який давно не оцінювали, не зникає зі списку, і копія бази на ноутбуці показує те саме).
+        # Читається за індексом (base_asset, ts), а не вся таблиця.
+        return query_df(conn, """
+            WITH last AS (SELECT b AS base_asset, (SELECT max(ts) FROM signals WHERE base_asset = b) AS mx
+                          FROM unnest(%s::text[]) AS b),
+                 w AS (SELECT s.* FROM last l JOIN signals s ON s.base_asset = l.base_asset AND s.ts >= l.mx - %s::interval)
+            SELECT w.base_asset, w.ts, w.model, w.probability, w.threshold, w.signal, w.live, w.in_sample, w.scored_at
+            FROM w JOIN (SELECT model, max(model_version) AS v FROM w GROUP BY model) m
+              ON w.model = m.model AND w.model_version = m.v
+            ORDER BY w.base_asset, w.ts""", (list(bases), timedelta(days=days)))
     return query_df(conn, """
         SELECT s.base_asset, s.ts, s.model, s.probability, s.threshold, s.signal, s.live, s.in_sample, s.scored_at
         FROM signals s
@@ -141,10 +153,12 @@ def share() -> float:
     return (State.m15 or {}).get("confirm", {}).get("share", 0.75)
 
 
-def tier_rows(conn, base: str | None = None, rolling: bool = False) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
+def tier_rows(conn, base: str | None = None, rolling: bool = False, bases: list[str] | None = None,
+              days: float | None = None) -> pd.DataFrame | tuple[pd.DataFrame, pd.DataFrame]:
     """Рівні сигналу (tiers.py) з оцінок найсвіжіших версій 15m- і годинного LightGBM.
-    rolling=True — ще й рівні на ковзних 15m-барах (5-хв цикл скринера): (звичайні, ковзні)."""
-    sig = latest_signals(conn, base)
+    rolling=True — ще й рівні на ковзних 15m-барах (5-хв цикл скринера): (звичайні, ковзні).
+    bases + days — лише ці тікери і лише останні days днів кожного (список дашборда)."""
+    sig = latest_signals(conn, base, bases, days)
     s1h = sig[sig["model"] == J.CONFIRM_MODEL]
     t = T.tier_frame(sig[sig["model"] == J.M15], s1h, share())
     return (t, T.tier_frame(sig[sig["model"] == T.ROLL_MODEL], s1h, share())) if rolling else t
@@ -220,10 +234,17 @@ def episodes(sig: pd.DataFrame, bar: pd.Timedelta = pd.Timedelta(hours=1)) -> li
 
 def watch_list_15m(conn) -> dict:
     """Права панель для 15m + 1h: P 15m-моделі, рівень сигналу, міні-графік P за 24 год (96 барів)."""
-    t, troll = tier_rows(conn, rolling=True)
+    # РОЗВАНТАЖЕННЯ СЕРВЕРА (13.10): раніше список рахувався для ВСІХ тікерів, що колись мали оцінки (на сервері — утричі
+    # більше, ніж у списку), на всій їх історії, і щохвилини: ~50% одного ядра. Тепер — лише тікери списку (решту
+    # watch_list однаково відкидав) і оцінки за LIST_SIGNAL_DAYS днів: угоди й епізоди рахуються на 2 добах барів.
+    now = datetime.now(timezone.utc)
+    manual, auto = list_sources()
+    keep = sorted(set(manual) | set(auto))
+    if not keep:
+        return {"rows": [], "recent": [], "alerts": []}
+    t, troll = tier_rows(conn, rolling=True, bases=keep, days=LIST_SIGNAL_DAYS)
     if t.empty:
         return {"rows": [], "recent": [], "alerts": []}
-    now = datetime.now(timezone.utc)
     raw = load_raw(conn, sorted(t["base_asset"].unique()), INTERVAL_15M, since=now - timedelta(days=2))
     parts = split_raw(raw)                      # сирі ряди по тікерах — один раз, а не фільтр усього raw на кожен тікер
     newest = troll.sort_values("ts").groupby("base_asset").tail(1).set_index("base_asset") if len(troll) else None
@@ -556,7 +577,8 @@ def fp_rows(conn, bases: list[str] | None = None, since: pd.Timestamp | None = N
 # і одразу перераховує; запит віддає готове. Нові оцінки → запит чекає свіжий розрахунок (сповіщення мають бути
 # актуальні); лише «застаріло за часом» (LIST_MAX_AGE, бо «N хв тому» і 6-год вікна зсуваються) → віддаємо наявне
 # і оновлюємо у фоні.
-LIST_MAX_AGE = 60
+LIST_MAX_AGE = 300        # с: без нових даних список перераховується раз на 5 хв (було 60 — половина ядра сервера на це)
+LIST_SIGNAL_DAYS = 3      # скільки днів оцінок кожного тікера читає список (бари для угод — 2 доби); «тихо N год» — не більше цього
 LIST_WARM_MODELS = (T.TIER_MODEL,)          # основна модель списку — гріємо завжди; решта — за запитом, з кешем
 _list_pool = None
 _list_lock = threading.Lock()
@@ -566,7 +588,8 @@ _list_futures: dict = {}                    # модель → (key, future)
 
 def _list_key() -> tuple:
     mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else 0      # noqa: E731
-    return mt(SIGNALS_STAMP), mt(wake.EVENTS_FILE)
+    # склад списку — теж у ключі: список рахується лише для своїх тікерів, тож доданий тікер має викликати перерахунок
+    return mt(SIGNALS_STAMP), mt(wake.EVENTS_FILE), tuple(sorted(list_tickers()))
 
 
 def _watch_list_in_child(db_url: str, model: str) -> dict:
@@ -1543,18 +1566,35 @@ def prepared_for(conn, rule: dict) -> tuple[dict, tuple]:
         return _prepared["data"], key
 
 
+JOURNAL_KEEP_WARM = 2 * 3600                   # с: стільки після останнього звернення до журналу фон тримає його свіжим
+_journal_used = {"at": 0.0}                    # коли журнал востаннє запитували (вкладка «Журнал», «Результати» бота)
+
+
 def journal_warmer() -> None:
-    """Фоновий перерахунок угод, щойно скринер записав нові оцінки, — щоб «Журнал» відкривався одразу."""
+    """Фоновий перерахунок угод — ЛИШЕ поки журналом користуються (13.10, власник: «завантажувати тільки коли потрібно»):
+    перше відкриття після перерви рахує журнал на запит (на сервері ~1–2 хв), далі JOURNAL_KEEP_WARM секунд після
+    останнього звернення фон оновлює його з кожним новим баром, і вкладка відкривається одразу. Ніхто не дивиться —
+    нічого не рахується (раніше журнал рахувався цілодобово, двічі на кожен 15m-бар)."""
+    seen = None
     while True:
         try:
-            with psycopg.connect(State.db_url) as conn:
-                prepared_for(conn, _prepared["rule"])
+            if time.time() - _journal_used["at"] < JOURNAL_KEEP_WARM:
+                with psycopg.connect(State.db_url) as conn:
+                    # Скринер оцінює бар двома порціями (гарячі тікери першими, решта — за 1–4 хв): версія журналу
+                    # змінюється двічі на бар. Рахуємо, коли вона однакова на двох перевірках поспіль.
+                    v = journal_version(conn)
+                    if v == seen:
+                        prepared_for(conn, _prepared["rule"])
+                    seen = v
+            else:
+                seen = None
         except Exception as e:  # журнал не має валити дашборд
             print(f"  ! журнал (фон): {e}")
         time.sleep(60)
 
 
 def journal_view(conn, q: dict) -> dict:
+    _journal_used["at"] = time.time()           # журналом користуються — фон тримає його свіжим ще JOURNAL_KEEP_WARM
     rule = {
         "horizon": max(1, min(168, int(q.get("horizon", J.DEFAULT_RULE["horizon"])))),
         "price": float(q.get("price", J.DEFAULT_RULE["price"])),
