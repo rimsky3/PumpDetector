@@ -1732,7 +1732,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       } else if (showPos) {
         posEl.title = "";
         posEl.textContent = `позиція ${fmtPct(pos.result_pct)}`; posEl.className = "tk-pos" + (pos.result_pct < 0 ? " neg" : "");
-        stopEl.textContent = `стоп ${pos.partial_ts ? "б/з" : pos.p_ts ? "б/з (p)" : fmtPx(pos.stop)}`;
+        // Стоп — у % (власник 13.10: «щоб розуміти, який ризик брати на угоду»): початковий ризик угоди від входу моделі
+        // (k × ATR входу ÷ ціна входу = 1R). Після перенесення в беззбиток — «б/з» і той самий початковий ризик поруч.
+        const risk0 = pos.entry && pos.atr_entry != null && d.k != null ? -(d.k * pos.atr_entry) / pos.entry
+          : pos.entry && pos.stop != null && !pos.partial_ts && !pos.p_ts ? pos.stop / pos.entry - 1 : null;
+        const be = pos.partial_ts ? "б/з" : pos.p_ts ? "б/з (p)" : null;
+        stopEl.textContent = be ? `стоп ${be}${risk0 != null ? " · " + fmtPct(risk0) : ""}` : `стоп ${risk0 != null ? fmtPct(risk0) : fmtPx(pos.stop)}`;
+        const fromNow = pos.stop != null && d.price ? pos.stop / d.price - 1 : null;
+        stopEl.title = `Стоп моделі ${fmtPx(pos.stop)}${be ? " — перенесено в беззбиток" : ""}.`
+          + (risk0 != null ? `\nПочатковий ризик угоди: ${fmtPct(risk0)} від входу ${fmtPx(pos.entry)} (${d.k} ATR). Це 1R.` : "")
+          + (fromNow != null ? `\nВід останньої закритої ціни ${fmtPx(d.price)} до стопу: ${fmtPct(fromNow)} — ризик, якщо входити зараз з цим самим стопом.` : "");
       }
       // Movers: монета зараз рухається незвично для себе відносно ринку альтів (movers.py, |z| ≥ 2.5)
       const mv = d.mover, mvEl = q(".tk-mover"); mvEl.hidden = !mv;
