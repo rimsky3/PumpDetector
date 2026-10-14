@@ -415,6 +415,10 @@ cut-off is in-sample: a high probability there means the model remembers the pum
 no extra dependencies. `#forecast/NMR` opens a ticker, `#journal` the journal. Every block has a **?** button
 with a short explanation.
 
+**List-only page (since 2026-10-15).** `#list` shows only the ticker list (with the Sound control and a link to the
+full dashboard) and loads no charts; clicking a ticker opens it in the full dashboard. It is the page behind the PD
+Watchlist window (`watch_app/`), and it also works in a narrow browser window.
+
 **Charts tab (since 2026-10-13).** `#charts` shows every ticker of the list's NOW and WOKE UP sections as a grid of
 mini charts: the last 96 closed 15m candles, Alert / Candidate zones, the model's entries and the stop of an open trade
 (main mode), with the same state chip and glyphs as the list row, P and the 24 h change. The data comes from

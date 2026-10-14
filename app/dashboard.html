@@ -263,6 +263,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .app { --side-w: 248px; grid-template-columns: var(--side-w) minmax(0, 1fr) 392px; }
 .app.journal { grid-template-columns: var(--side-w) minmax(0, 1fr); }
 .app.rail { --side-w: 56px; }
+/* вікно «лише список» (#list, 15.10): застосунок PD Watchlist (watch_app/pd_watch.py) або вузьке вікно браузера */
+.app.listonly, .app.listonly.journal, .app.listonly.rail { grid-template-columns: minmax(0, 1fr); }
+.app.listonly > .side, .app.listonly > main { display: none; }
+.app.listonly > .right { border-left: 0; }
+.listbar { display: none; }
+.app.listonly .listbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0; }
+.listbar .mk-btn { height: 28px; text-decoration: none; }
 .railbox { display: none; }
 .app.rail .side { padding: 12px 6px; align-items: center; overflow-x: hidden; }
 .app.rail .side > :not(.railbox) { display: none; }
@@ -741,6 +748,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
   <!-- ================= ПРОГНОЗ: ПРАВА ПАНЕЛЬ ================= -->
   <aside class="right" id="rightPanel" aria-label="Тікери">
+    <div class="listbar" id="listBar"><a class="mk-btn" id="listOpen" href="#forecast" target="_blank" rel="noopener" title="Відкрити повний дашборд">Dashboard ↗</a></div>
     <div class="rtop">
       <div class="search">
         <input id="search" placeholder="Search ticker" aria-label="Search ticker" autocomplete="off">
@@ -883,6 +891,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 <script>
 (() => {
   const $ = (id) => document.getElementById(id);
+  // застосунок PD Watchlist (pywebview / WebView2): сповіщення браузера там недоступні — передаємо їх у трей застосунку
+  window.addEventListener("pywebviewready", () => {
+    const api = window.pywebview && window.pywebview.api; if (!api || !api.notify) return;
+    const N = function (title, opts) { try { api.notify(String(title), String((opts && opts.body) || "")); } catch (e) {} };
+    N.permission = "granted"; N.requestPermission = async () => "granted";
+    window.Notification = N;
+  });
   const H = 3600;
   const LS = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
                set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
@@ -1021,11 +1036,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- навігація ----------
   const route = () => {
     const [view, tk] = location.hash.slice(1).split("/");
-    st.view = view === "journal" ? "journal" : view === "backtest" ? "backtest" : view === "charts" ? "charts" : "forecast";
+    st.view = view === "journal" ? "journal" : view === "backtest" ? "backtest" : view === "charts" ? "charts" : view === "list" ? "list" : "forecast";
     if (tk && st.active === 0 && st.meta?.tickers.includes(tk.toUpperCase())) selectTicker(tk.toUpperCase(), false);
-    const j = st.view === "journal", bt = st.view === "backtest", ch = st.view === "charts", fc = !j && !bt && !ch;
+    const j = st.view === "journal", bt = st.view === "backtest", ch = st.view === "charts", li = st.view === "list", fc = !j && !bt && !ch && !li;
+    $("app").classList.toggle("listonly", li);
+    if (li) { stopLive(); const nt = document.querySelector(".nt-wrap"); if (nt && nt.parentElement !== $("listBar")) $("listBar").prepend(nt); }
     $("app").classList.toggle("journal", !fc);
-    $("viewForecast").hidden = !fc; $("rightPanel").hidden = !fc; $("leftForecast").hidden = !fc;
+    $("viewForecast").hidden = !fc; $("rightPanel").hidden = !(fc || li); $("leftForecast").hidden = !fc;
     $("viewJournal").hidden = !j; $("leftJournal").hidden = !j;
     $("viewBacktest").hidden = !bt; $("leftBacktest").hidden = !bt;
     $("viewCharts").hidden = !ch;
@@ -1040,7 +1057,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     closePop();
   };
   // тікер — в АКТИВНЕ вікно; адреса (#forecast/TK) — лише для першого вікна
+  const openFull = (t) => {
+    if (window.pywebview?.api?.open_dashboard) { window.pywebview.api.open_dashboard(t); return; }
+    window.open(`${location.origin}${location.pathname}#forecast/${t}`, "_blank", "noopener");
+  };
   const selectTicker = (t, go = true) => {
+    if (st.view === "list") { openFull(t); return; }
     st.ticker = t; LS.set(st.active ? "pd-ticker2" : "pd-ticker", t);
     if (go) {
       if (st.view !== "forecast") location.hash = st.active ? "#forecast" : `#forecast/${t}`;
@@ -3558,7 +3580,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- старт і автооновлення ----------
   const refreshAll = () => {
     const lp = loadList(); if (!SC.dirty) loadScan(false);
-    if (st.view === "journal") loadJournal(); else if (st.view === "charts") lp.then(loadCharts); else loadTicker();
+    if (st.view === "journal") loadJournal(); else if (st.view === "charts") lp.then(loadCharts); else if (st.view !== "list") loadTicker();
     renderSystem();
   };
   const init = async () => {
@@ -3586,7 +3608,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         const p = await api("/api/pulse", { quiet: true }), k = `${p.sig}|${p.wake}|${p.woke}`;
         if (pulseKey !== null && k !== pulseKey) {
           await loadList();
-          if (st.view === "charts") loadCharts(); else if (st.view !== "journal") loadTicker({ quiet: true });
+          if (st.view === "charts") loadCharts(); else if (st.view !== "journal" && st.view !== "list") loadTicker({ quiet: true });
         }
         pulseKey = k;
       } catch (e) { /* сервер недоступний — спробуємо за 5 с */ }

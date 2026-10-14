@@ -497,6 +497,26 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 | `python experiments/l_shock.py` | "liquidation fade" event test on 5m and 1m with controls → `reports/l_shock.md`, `reports/l_shock_trades.csv` (`--no-oi` skips the database) |
 | `python experiments/profile_levels.py` | previous-day POC / VAH / VAL and impulse POC vs random levels → `reports/profile_levels.md` |
 
+### `watch_app/pd_watch.py` — PD Watchlist (Windows window with the ticker list)
+
+| Usage | Meaning |
+|---|---|
+| `watch_app\build.cmd` | builds `dist\PD Watchlist.exe` (PyInstaller, one file, ~20 MB); the first run creates `.venv-watch` from `watch_app\requirements.txt` (pywebview, pythonnet, pystray, Pillow, PyInstaller) |
+| `python watch_app/pd_watch.py [--url URL]` | runs the window without building (from `.venv-watch`) |
+| `python watch_app/pd_watch.py --make-icon` | only writes `watch_app/pd_watch.ico` (used by the build) |
+
+A pywebview (WebView2) window over the dashboard page `#list`: the list sections, chips, glyphs and sound of the
+dashboard, plus what a browser tab lacks — always-on-top, a tray icon (click shows / hides; closing the window hides it),
+system notifications through the tray, sound without a first click; clicking a ticker opens it in the full dashboard in
+the default browser. Settings: `%APPDATA%\PD Watchlist\config.json` (`url`, optional `user` / `password`, `on_top`,
+window position and size).
+
+### `experiments/p_deciles_delay.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/p_deciles_delay.py` | two checks of the working models on the six-month archive (honest coin list outside training, split and market modes): (1) does a higher 15m P at entry mean a better trade — trade result in R (result ÷ initial risk k·ATR) by P quintile and Spearman correlation with a bootstrap interval; (2) entry delayed by 1 / 3 / 5 minutes after the signal bar closes, priced from 1m candles (`data/klines1m`), with the first bar after entry checked only on the minutes after the fill. Criteria are in the docstring. `--limit N` — first N coins, `--k` — stop in ATR. Writes `reports/p_deciles_delay.md` and `_trades.csv` |
+
 ### `experiments/upbit_events.py`
 
 | Usage | Meaning |

@@ -35,3 +35,9 @@ reports/signals_stamp
 reports/*.pkl
 # пороги монітора розбіжності бірж (spread.py): файл створює дашборд, на сервері свій
 spread_config.json
+
+# застосунок PD Watchlist (watch_app/): середовище збирання і результат
+.venv-watch/
+build/
+dist/
+watch_app/pd_watch.ico

@@ -119,6 +119,7 @@ scanner.py, screener.py         market scanner and the scoring loop
 wake.py, footprint.py, market.py, movers.py, drivers.py  early warnings, footprint marks, market breadth, movers, TreeSHAP
 spread.py                       cross-exchange price spread monitor (in memory, inside the dashboard process)
 dashboard.py, app/              dashboard server and page
+watch_app/                      PD Watchlist: a small Windows window (pywebview, .exe) with only the ticker list
 journal.py, backtest.py, monitor.py  forward test, backtest on unseen coins, drift and calibration
 tg_bot.py                       Telegram alerts
 experiments/                    one script per experiment, each with its criterion and report
