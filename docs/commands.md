@@ -507,7 +507,8 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 
 A pywebview (WebView2) window over the dashboard page `#list`: the list sections, chips, glyphs and sound of the
 dashboard, plus what a browser tab lacks — always-on-top, a tray icon (click shows / hides; closing the window hides it),
-system notifications through the tray, sound without a first click; clicking a ticker opens it in the full dashboard in
+system notifications through the tray, sound without a first click, Ctrl + / Ctrl − / Ctrl 0 scaling the page and the
+window together (WebView2 zoom factor, remembered); clicking a ticker opens it in the full dashboard in
 the default browser. Settings: `%APPDATA%\PD Watchlist\config.json` (`url`, optional `user` / `password`, `on_top`,
 window position and size).
 

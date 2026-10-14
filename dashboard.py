@@ -333,7 +333,7 @@ def watch_list_15m(conn) -> dict:
     for r in rows:
         f = last_fp.get(r["ticker"])
         r["fp"] = {"kind": f["kind"], "at": pd.Timestamp(f["ts"]) + BAR_15M} if f else None
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts, "realerts": realerts, "cands": cands, "lates": lates, "wakes": wakes, "fps": fps,
+    return {"rows": rows, "recent": ep[:30], "alerts": alerts, "realerts": realerts, "cands": cands, "lates": lates, "wakes": wakes, "fps": fps,
             "minis": mini_charts(conn, t15, hmap, trades)}
 
 
@@ -726,7 +726,7 @@ def _watch_list(conn, model: str) -> dict:
     # для сповіщень: live-епізоди, що почались за останні 6 годин
     recent_cut = pd.Timestamp(datetime.now(timezone.utc) - timedelta(hours=6))
     alerts = [e for e in ep if e["kind"] == "live" and e["ts"] >= recent_cut]
-    return {"rows": rows, "recent": ep[:6], "alerts": alerts}
+    return {"rows": rows, "recent": ep[:30], "alerts": alerts}
 
 
 LIMIT_ATR, LIMIT_VALID = 0.5, pd.Timedelta(hours=1)      # experiments/limit_entry.py: стабільний ліміт −0.5 ATR, 1 год

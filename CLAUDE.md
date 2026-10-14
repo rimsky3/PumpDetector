@@ -107,7 +107,7 @@
   90 днів, оцінка Добрий / Поганий / Запізно ДО показу результату → reviews.csv; `review.day_view` / `day_bars`,
   `tools/debrief.html`; `?mode=market` — інший режим). Мета — ~200 оцінок власника для моделі-фільтра (meta-labeling).
 - `watch_app/pd_watch.py` + `build.cmd` — PD Watchlist (15.10): вікно Windows (pywebview / WebView2, .exe у `dist/`) над
-  сторінкою `#list` (лише список; клік — повний дашборд у браузері); трей, «поверх усіх», сповіщення через трей
+  сторінкою `#list` (лише список; клік — повний дашборд у браузері); трей, «поверх усіх», Ctrl + / − / 0 — масштаб WebView2 і розмір вікна (`Api.zoom`, config `zoom`), сповіщення через трей
   (сторінка підміняє `Notification` на `window.pywebview.api.notify`). Збирання — окреме середовище `.venv-watch`.
 - `backtest.py` — широкий бектест на монетах поза навчанням; `monitor.py` — калібрування і дрейф наживо.
 - `experiments/` — разові дослідження (кожне з argparse і звітом у `reports/`); `notes/` — нотатки власника (не в git).

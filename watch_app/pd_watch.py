@@ -7,7 +7,8 @@ WATCHLIST / QUIET, чіпи, значки, звук. Чого не вміє вк
   • іконка в треї: клік — показати / сховати; хрестик вікна ховає його в трей, а не закриває;
   • системні сповіщення (Alert, Spread…) — через трей, бо в WebView2 сповіщень браузера немає;
   • звук без першого кліку по сторінці;
-  • клік по тікеру відкриває його в повному дашборді у звичайному браузері.
+  • клік по тікеру відкриває його в повному дашборді у звичайному браузері;
+  • Ctrl + / Ctrl − / Ctrl 0 — масштаб сторінки і розмір вікна разом (запам'ятовується).
 
 Налаштування — %APPDATA%\\PD Watchlist\\config.json (створюється при першому запуску):
   url       — адреса дашборда (за замовчуванням https://45-76-90-13.sslip.io/; через тунель — http://localhost:8766/);
@@ -31,7 +32,8 @@ APP = "PD Watchlist"
 CFG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP)
 CFG_FILE = os.path.join(CFG_DIR, "config.json")
 DEFAULTS = {"url": "https://45-76-90-13.sslip.io/", "user": "", "password": "", "on_top": True,
-            "x": None, "y": None, "width": 420, "height": 900}
+            "x": None, "y": None, "width": 420, "height": 900, "zoom": 1.0}
+ZOOM_MIN, ZOOM_MAX, ZOOM_STEP = 0.5, 2.0, 0.1
 HERE = os.path.dirname(os.path.abspath(__file__))
 ICON_FILE = os.path.join(HERE, "pd_watch.ico")
 
@@ -107,6 +109,10 @@ class Api:
     def notify(self, title: str, body: str = "") -> None:
         self._app.notify(title, body)
 
+    def zoom(self, step: int) -> float:
+        """Ctrl + / Ctrl − / Ctrl 0 зі сторінки: +1 більше, −1 менше, 0 — 100%."""
+        return self._app.zoom(step)
+
 
 class WatchApp:
     def __init__(self, cfg: dict):
@@ -136,6 +142,39 @@ class WatchApp:
         self.cfg["on_top"] = not self.cfg["on_top"]
         self.window.on_top = self.cfg["on_top"]
         save_config(self.cfg)
+
+    # --- масштаб: WebView2.ZoomFactor (шрифт і все на сторінці) + розмір вікна в тій самій пропорції
+    def _webview2(self):
+        try:
+            return self.window.native.browser.webview
+        except AttributeError:
+            return None
+
+    def _set_factor(self, z: float) -> None:
+        wv = self._webview2()
+        if wv is None:
+            return
+        from System import Action
+        self.window.native.Invoke(Action(lambda: setattr(wv, "ZoomFactor", float(z))))
+
+    def zoom(self, step: int) -> float:
+        old = float(self.cfg.get("zoom") or 1.0)
+        new = 1.0 if step == 0 else min(ZOOM_MAX, max(ZOOM_MIN, round(old + step * ZOOM_STEP, 2)))
+        if new == old:
+            return new
+        self.cfg["zoom"] = new
+        self._set_factor(new)
+        k = new / old
+        w, h = int(self.cfg["width"] * k), int(self.cfg["height"] * k)
+        self.cfg["width"], self.cfg["height"] = w, h
+        self.window.resize(w, h)
+        save_config(self.cfg)
+        return new
+
+    def on_loaded(self):
+        z = float(self.cfg.get("zoom") or 1.0)
+        if abs(z - 1.0) > 1e-6:
+            self._set_factor(z)
 
     def quit(self, *_):
         self.quitting = True
@@ -182,6 +221,7 @@ class WatchApp:
         self.window.events.closing += self.on_closing
         self.window.events.moved += self.on_moved
         self.window.events.resized += self.on_resized
+        self.window.events.loaded += self.on_loaded
         self.start_tray()
         try:
             # private_mode=False + свій каталог: localStorage (звук, обрані, згорнуті секції) зберігається між запусками
