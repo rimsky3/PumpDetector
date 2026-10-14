@@ -267,6 +267,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .app.listonly, .app.listonly.journal, .app.listonly.rail { grid-template-columns: minmax(0, 1fr); }
 .app.listonly > .side, .app.listonly > main { display: none; }
 .app.listonly > .right { border-left: 0; }
+/* на всю висоту вікна: у вузькому вікні (≤ 1100 px) правило для телефона ставить список на 60% висоти під графіком,
+   і у вікні PD Watchlist «Останні сигнали» висіли посередині (15.10) */
+.app.listonly { height: 100vh; }
+.app.listonly > .right { height: auto; min-height: 0; grid-column: auto; border-top: 0; }
 .listbar { display: none; }
 .app.listonly .listbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0; }
 .listbar .mk-btn { height: 28px; text-decoration: none; }
