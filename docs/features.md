@@ -48,7 +48,7 @@ are accumulated. The raw OI sum is kept for reference but not used for change fe
 | Feature | Definition | Why |
 |---|---|---|
 | `oi_chg_1h`, `_4h`, `_24h` | log change of the OI index over 1 / 4 / 24 h | leverage building up |
-| `oi_z_24h`, `oi_z_7d` | z-score of log OI index vs the previous 24 h / 7 days | OI above its normal level |
+| `oi_z_24h`, `oi_z_7d` | z-score of log OI index vs the previous 24 h / 7 days; a gap in OI of up to 4 hours is filled with the last value (`OI_GAP_HOURS`, since 2026-10-15) — before that a single missing bar made `oi_z_7d` undefined for a week, and the screener skips rows without it | OI above its normal level |
 | `ret_1h`, `_4h`, `_24h` | log return of price | price move |
 | `volatility_24h` | std of hourly log returns over 24 h | regime change |
 | `range_1h` | (high − low) / close | intrabar violence |
@@ -119,6 +119,16 @@ Observations to test with the model, not conclusions:
   dominated by shorts. This is consistent with a short squeeze feeding the pump.
 - Medians are taken over whole intervals, including late stages. The hard part is recognising the
   *early* hours of a pump, and that is what validation must measure.
+
+## Impossible open-interest jumps
+
+Positions are opened and closed only by trades, so open interest cannot change by more than the volume traded in
+the bar. `features.impossible_oi` marks contract bars where |ΔOI| (in coins) is above `OI_JUMP_X` = 3 × the bar's
+volume and above 20% of OI; `aggregate` treats them as missing (since 2026-10-15). On AGT on 2026-10-15 Binance's own
+`openInterestHist` reported OI ×3.4 for 1.5 hours with a flat price and ~2M coins of volume per bar; without the filter
+the chained OI index keeps the jump in and `oi_z_7d` moves by up to 11 for days. On real data (4.7M 15m bars, 1.9M 5m,
+0.3M 1h, all exchanges) the largest legitimate ratio is ~2.3 (Bybit snapshots OI at a slightly different moment than
+the candle close); in a 10-ticker check the filter changed one hourly bar (NIGHT, Bybit) and nothing else.
 
 ## Open interest in coins
 

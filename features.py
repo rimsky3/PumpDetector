@@ -164,6 +164,23 @@ def chained_log_index(w: pd.DataFrame) -> pd.Series:
     return step.fillna(0).cumsum().where(w.notna().any(axis=1))
 
 
+OI_JUMP_X = 3             # зміна OI за бар > OI_JUMP_X × обсяг бару (обидва в монетах) — збій біржі, а не позиції
+OI_JUMP_MIN = 0.2         # ... і більше ніж на 20% OI (дрібні розбіжності часу знімка не чіпаємо)
+
+
+def impossible_oi(oi_w: pd.DataFrame, close_w: pd.DataFrame, vol_w: pd.DataFrame) -> pd.DataFrame:
+    """Маска барів (рядки — бари, колонки — контракти), де OI змінився більше, ніж могло наторгуватись за бар.
+    Позиції відкриваються й закриваються лише угодами, тож |ΔOI| ≤ обсягу; більше — збій статистики біржі.
+    AGT 15.10: Binance півтори години віддавала OI ×3.4 (286 → ~970 млн монет) при пласкій ціні й обсязі 2 млн за бар.
+    Справжні дані (4.7 млн 15m-барів, 1.9 млн 5m, 0.3 млн 1h, усі біржі) — максимум ~2.3 × обсяг (Bybit знімає OI
+    трохи в інший момент, ніж закривається свічка). Такий бар стає пропуском: зв'язаний індекс OI не бере кроку ні
+    на вході в збій, ні на виході, а compute_features заповнює пропуск попереднім значенням."""
+    coins = oi_w.where(oi_w > 0) / close_w
+    prev = coins.shift(1)
+    d = (coins - prev).abs()
+    return (d > OI_JUMP_X * vol_w.reindex(columns=oi_w.columns)) & (d > OI_JUMP_MIN * prev)
+
+
 def split_raw(raw: dict[str, pd.DataFrame]) -> dict[str, dict[str, pd.DataFrame]]:
     """Сирі ряди багатьох тікерів → {тікер: сирі ряди лише цього тікера} одним проходом (groupby).
     aggregate(raw, base) сам відбирає рядки тікера, але по ВСІХ рядках raw — у циклі по десятках тікерів це
@@ -214,7 +231,17 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h", light: b
     px_market = counts.sort_values("rank").iloc[0]["market"]
     px = ohlcv[ohlcv["market"] == px_market].set_index("ts").reindex(grid)
 
+    # OI, що змінився більше, ніж наторгували за бар, — пропуск (impossible_oi)
+    ohlcv["v_coins"] = np.where(in_coins, ohlcv["v"], ohlcv["v"] / ohlcv["c"])
     oi_w = wide(part["oi"], "c")
+    close_w = wide(ohlcv, "c").reindex(columns=oi_w.columns).ffill(limit=2)
+    bad = impossible_oi(oi_w, close_w, wide(ohlcv, "v_coins"))
+
+    def oi_wide(col: str) -> pd.DataFrame:
+        x = wide(part["oi"], col)
+        return x.mask(bad.reindex(index=x.index, columns=x.columns, fill_value=False).astype(bool))
+
+    oi_w = oi_wide("c")
     h = pd.DataFrame(index=grid)
     h.index.name = "ts"
     h["price"] = px["c"].ffill(limit=2)          # поодинокі пропуски заповнюємо попереднім значенням
@@ -230,8 +257,8 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h", light: b
     # Тому в USD OI «стрибає» між годинами разом із ціною, хоча позиції не змінювались.
     # Ділимо на close того самого контракту: отримуємо чисту кількість відкритих позицій у монетах
     # (розрив між годинами ≈ 0.01% замість 0.5–2.6%). Сума по біржах коректна: одиниця — монета.
-    close_w = wide(ohlcv, "c").reindex(columns=oi_w.columns).ffill(limit=2)
-    coins = {k: wide(part["oi"], k) / close_w for k in ("o", "h", "l", "c")}
+    oi_k = {k: oi_wide(k) for k in ("o", "h", "l", "c")}
+    coins = {k: oi_k[k] / close_w for k in ("o", "h", "l", "c")}
     h["buy_volume"] = wide(ohlcv, "bv_usd").sum(axis=1, min_count=1)
     # частка покупок — лише по ринках, де buy volume є (у 15m/5m-свічок Bybit його немає; на 1h є скрізь)
     h["volume_bv"] = wide(ohlcv.assign(v_bv=ohlcv["v_usd"].where(ohlcv["bv"].notna())), "v_bv").sum(axis=1, min_count=1)
@@ -239,7 +266,7 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h", light: b
     h["oi_log_idx"] = chained_log_index(oi_w)
     for k in ("o", "h", "l", "c"):           # свічки OI (у монетах і в USD) для графіків
         h[f"oi_coins_{k}"] = coins[k].sum(axis=1, min_count=1)
-        h[f"oi_usd_{k}"] = wide(part["oi"], k).sum(axis=1, min_count=1)
+        h[f"oi_usd_{k}"] = oi_k[k].sum(axis=1, min_count=1)
     h["oi_coins"] = h["oi_coins_c"]
     h["oi_coin_log_idx"] = chained_log_index(coins["c"])
 
@@ -261,6 +288,9 @@ def aggregate(raw: dict[str, pd.DataFrame], base: str, freq: str = "h", light: b
 
 # ---------------------------------------------------------------- ознаки
 
+OI_GAP_HOURS = 4          # до скількох годин пропуску OI вважаємо його незмінним (compute_features)
+
+
 def zscore(s: pd.Series, window: int) -> pd.Series:
     """Наскільки поточне значення відхиляється від попередніх `window` годин (у стандартних відхиленнях).
     Вікно не включає поточну годину, тож сплеск не «розмиває» сам себе."""
@@ -276,14 +306,17 @@ def compute_features(h: pd.DataFrame, bars_per_hour: int = 1) -> pd.DataFrame:
     short, base = SHORT_WINDOW * b, BASE_WINDOW * b
     f = pd.DataFrame(index=h.index)
     lp = np.log(h["price"])
-    oi = h["oi_log_idx"]
+    # Короткий пропуск OI (біржа не віддала кілька барів) — OI вважаємо незмінним до OI_GAP_HOURS. Інакше z-score за 7 днів
+    # (rolling з min_periods = вікно) ставав NaN на ТИЖДЕНЬ після будь-якої дірки, а рядки без oi_z_7d скринер не оцінює:
+    # 15.10 AGT (+95%), FET, TAKE після дірки 13:30–14:45 лишились без жодної 15m-оцінки й сповіщень.
+    oi = h["oi_log_idx"].ffill(limit=OI_GAP_HOURS * b)
 
     for k in (1, 4, 24):
         f[f"oi_chg_{k}h"] = oi.diff(k * b)           # лог-зміна OI за k годин
         f[f"ret_{k}h"] = lp.diff(k * b)              # лог-дохідність за k годин
     f["oi_z_24h"] = zscore(oi, short)
     f["oi_z_7d"] = zscore(oi, base)
-    oc = h["oi_coin_log_idx"]
+    oc = h["oi_coin_log_idx"].ffill(limit=OI_GAP_HOURS * b)
     for k in (1, 4, 24):
         f[f"oi_coin_chg_{k}h"] = oc.diff(k * b)
     f["oi_coin_z_24h"] = zscore(oc, short)
