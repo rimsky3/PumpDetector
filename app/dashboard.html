@@ -281,6 +281,23 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .app.chartonly .hint { display: none; }
 /* легке вікно: з панелі — лише таймфрейм і профіль обсягу; без чіпа «Δ бірж» (власник, 15.10) */
 .app.chartonly .head .r > :not(#tfSeg):not(#vpSeg), .app.chartonly .tk-xs { display: none !important; }
+/* без «USDT Perp · 5m · модель 15m» і «live» (власник, 15.10: зайве у вікні графіка) */
+.app.chartonly .pnhead .tk-tf, .app.chartonly .pnhead .live-dot { display: none !important; }
+/* варіант C (власник, 15.10): над графіком нічого — тікер і стан напівпрозорою легендою в лівому верхньому куті графіка,
+   ТФ і профіль — компактно в правому (лівіше шкали ціни); другий рядок даних (OI, обсяг) і «?» графіка — прибрано */
+.app.chartonly > .center { position: relative; gap: 0; }
+.app.chartonly .head { position: absolute; top: 14px; right: 86px; z-index: 6; }
+.app.chartonly .head .r { gap: 4px; }
+.app.chartonly .head .seg { padding: 2px; gap: 2px; background: color-mix(in srgb, var(--card) 80%, transparent); border: 1px solid var(--line); }
+.app.chartonly .head .seg > * { height: 20px; padding: 0 6px; font-size: 10.5px; }
+.app.chartonly .pane { position: relative; gap: 0; }
+.app.chartonly .pnhead { position: absolute; top: 6px; left: 8px; z-index: 6; max-width: calc(100% - 300px); gap: 3px 7px; align-items: center;
+  padding: 3px 8px; border-radius: 8px; background: color-mix(in srgb, var(--card) 80%, transparent); }
+.app.chartonly .pnhead .tk-name { font-size: 14px; }
+.app.chartonly .pnhead > * { font-size: 11px; }
+.app.chartonly .pnhead .tk-mover { padding: 1px 7px; }
+.app.chartonly .ohlc, .app.chartonly .chart-help { display: none !important; }
+.app.chartonly .chart-card, .app.chartonly .pane .chart-card, .app.chartonly .pane .chart { min-height: 0; }
 .railbox { display: none; }
 .app.rail .side { padding: 12px 6px; align-items: center; overflow-x: hidden; }
 .app.rail .side > :not(.railbox) { display: none; }
@@ -1788,7 +1805,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         stopEl.textContent = "live";
       } else if (showPos) {
         posEl.title = "";
-        posEl.textContent = `позиція ${fmtPct(pos.result_pct)}`; posEl.className = "tk-pos" + (pos.result_pct < 0 ? " neg" : "");
+        posEl.textContent = `${st.chartOnly ? "In" : "позиція"} ${fmtPct(pos.result_pct)}`; posEl.className = "tk-pos" + (pos.result_pct < 0 ? " neg" : "");
         // Стоп — у % (власник 13.10: «щоб розуміти, який ризик брати на угоду»): початковий ризик угоди від входу моделі
         // (k × ATR входу ÷ ціна входу = 1R). Після перенесення в беззбиток — «б/з» і той самий початковий ризик поруч.
         const risk0 = pos.entry && pos.atr_entry != null && d.k != null ? -(d.k * pos.atr_entry) / pos.entry
@@ -1803,7 +1820,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       // Movers: монета зараз рухається незвично для себе відносно ринку альтів (movers.py, |z| ≥ 2.5)
       const mv = d.mover, mvEl = q(".tk-mover"); mvEl.hidden = !mv;
       if (mv) {
-        mvEl.textContent = `MOVER ${mv.h}H · z ${mv.z >= 0 ? "+" : ""}${mv.z.toFixed(1)} · idio ${fmtPct(mv.idio)}`;
+        mvEl.textContent = st.chartOnly ? `Mover z ${mv.z.toFixed(1)} · idio ${fmtPct(mv.idio, 0)}`      // вікно графіка застосунку — коротко
+          : `MOVER ${mv.h}H · z ${mv.z >= 0 ? "+" : ""}${mv.z.toFixed(1)} · idio ${fmtPct(mv.idio)}`;
         mvEl.className = "tk-mover" + (mv.z < 0 ? " neg" : "");
         mvEl.title = moverTitle(mv);
       }

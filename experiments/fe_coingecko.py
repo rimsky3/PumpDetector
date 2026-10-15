@@ -31,6 +31,7 @@ import os
 import pickle
 import sys
 import time
+import warnings
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +51,7 @@ ALL = [f for fs in GROUPS.values() for f in fs]
 SEEDS = [42, 43, 44]
 BIG = "≥ 20 млн"
 B = 96
+MKT_MIN = 20                    # «ринок» для сектора — середня по монетах набору, якщо на барі є ціна ≥ MKT_MIN монет
 GENERIC = ("ecosystem", "portfolio", "index", "binance", "coinbase", "launch", "alpha", "made in", "proof of", "upbit", "bithumb",
            "exchange-based", "listing", "fdv", "market cap", "smart contract", "layer 1 (l1)", "alleged", "holdings", "x402")
 _s = requests.Session()
@@ -234,7 +236,7 @@ def sector_table(px: dict[str, pd.Series], mp: dict) -> dict[str, pd.DataFrame]:
     for w, name in ((16, "4h"), (B, "24h")):
         R = lp.diff(w).to_numpy()
         mkt_df = allp.diff(w)
-        mkt = mkt_df.mean(axis=1).where(mkt_df.notna().sum(axis=1) >= 20).to_numpy()
+        mkt = mkt_df.mean(axis=1).where(mkt_df.notna().sum(axis=1) >= MKT_MIN).to_numpy()
         have = ~np.isnan(R)
         S, N = np.nan_to_num(R) @ M, have.astype(float) @ M
         for i, c in enumerate(coins):
@@ -242,7 +244,8 @@ def sector_table(px: dict[str, pd.Series], mp: dict) -> dict[str, pd.DataFrame]:
             own, oh = np.nan_to_num(R[:, i])[:, None], have[:, i].astype(float)[:, None]
             n = N[:, ks] - oh
             m = np.where(n >= 3, (S[:, ks] - own) / np.where(n > 0, n, 1), np.nan)
-            with np.errstate(all="ignore"):
+            with np.errstate(all="ignore"), warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)       # порожні рядки (немає ≥ 3 інших монет) → NaN
                 out[c][f"sec_ret_{name}"] = np.nanmean(m, axis=1) - mkt
                 if name == "4h":
                     out[c]["sec_max_4h"] = np.nanmax(m, axis=1) - mkt
@@ -254,7 +257,7 @@ def oct_prices(coins: list[str]) -> dict[str, pd.Series]:
     """Ціна монет бектесту за 01.10 – позавчора (архів Binance, кеш binance_archive): щоб сектор на навчальних барах жовтня мав ті самі монети."""
     import binance_archive as BA
     from concurrent.futures import ThreadPoolExecutor
-    days = [d.strftime("%Y-%m-%d") for d in pd.date_range("2026-10-01", pd.Timestamp.now(tz="UTC").normalize() - pd.Timedelta(days=2))]
+    days = [d.strftime("%Y-%m-%d") for d in pd.date_range("2026-10-01", (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=2)).strftime("%Y-%m-%d"))]
 
     def one(c):
         parts = [BA._csv("klines", f"{c}USDT", d, "15m") for d in days]

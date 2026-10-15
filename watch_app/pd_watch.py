@@ -3,7 +3,7 @@ PD Watchlist — маленьке вікно Windows лише зі списко�
 
 Обгортка pywebview (WebView2 — той самий рушій, що в Edge) над сторінкою дашборда `#list`: ті самі секції NOW / WOKE UP /
 WATCHLIST / QUIET, чіпи, значки, звук. Чого не вміє вкладка браузера, а вміє застосунок:
-  • вікно «поверх усіх» (перемикач у треї, запам'ятовується);
+  • вікна «поверх усіх» — список і графіки разом (перемикач у треї, запам'ятовується);
   • іконка в треї: клік — показати / сховати; хрестик вікна ховає його в трей, а не закриває;
   • системні сповіщення (Alert, Spread…) — через трей, бо в WebView2 сповіщень браузера немає;
   • звук без першого кліку по сторінці;
@@ -142,7 +142,8 @@ class ExtraChart:
         y = c["chart_y"] + shift if c["chart_y"] is not None else None
         self.win = webview.create_window(
             f"{ticker} — PD Chart", page_url(c, f"chart/{ticker}"), js_api=Api(app, kind),
-            width=self.width, height=self.height, x=x, y=y, min_size=(480, 360), background_color="#141413", text_select=True)
+            width=self.width, height=self.height, x=x, y=y, on_top=bool(c["on_top"]), min_size=(480, 360),
+            background_color="#141413", text_select=True)
         self.win.events.resized += self.on_resized
         self.win.events.loaded += self.on_loaded
         self.win.events.closed += self.on_closed
@@ -186,8 +187,11 @@ class WatchApp:
         self.visible = not self.visible
 
     def set_on_top(self, *_):
+        """«Поверх усіх вікон» у треї — для списку і всіх вікон графіка разом (власник, 15.10)."""
         self.cfg["on_top"] = not self.cfg["on_top"]
-        self.window.on_top = self.cfg["on_top"]
+        for w in [self.window, self.chart, *(x.win for x in self.extra.values())]:
+            if w is not None:
+                w.on_top = self.cfg["on_top"]
         save_config(self.cfg)
 
     # --- масштаб: WebView2.ZoomFactor (шрифт і все на сторінці) + розмір вікна в тій самій пропорції
@@ -263,7 +267,7 @@ class WatchApp:
             self.chart = webview.create_window(
                 f"{t} — PD Chart", page_url(c, f"chart/{t}"), js_api=Api(self, "chart"),
                 width=int(c["chart_width"]), height=int(c["chart_height"]), x=c["chart_x"], y=c["chart_y"],
-                min_size=(480, 360), background_color="#141413", text_select=True)
+                on_top=bool(c["on_top"]), min_size=(480, 360), background_color="#141413", text_select=True)
             self.chart.events.closing += self.on_chart_closing
             self.chart.events.moved += self.on_chart_moved
             self.chart.events.resized += self.on_chart_resized

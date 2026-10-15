@@ -506,11 +506,11 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 | `python watch_app/pd_watch.py --make-icon` | only writes `watch_app/pd_watch.ico` (used by the build) |
 
 A pywebview (WebView2) window over the dashboard page `#list`: the list sections, chips, glyphs and sound of the
-dashboard, plus what a browser tab lacks — always-on-top, a tray icon (click shows / hides; closing the window hides it),
+dashboard, plus what a browser tab lacks — always-on-top (one tray toggle for the list and all chart windows), a tray icon (click shows / hides; closing the window hides it),
 system notifications through the tray, sound without a first click, Ctrl + / Ctrl − / Ctrl 0 scaling the page and the
 window together (WebView2 zoom factor, remembered per window); clicking a ticker opens it in a separate chart window
-(`#chart/TK`: a light forecast chart without the side panel and list — the toolbar keeps only the timeframe and the
-volume-profile period, one chart pane, no footprint, no Δ pane, no Market / Movers / Spread requests; one window reused for every click,
+(`#chart/TK`: a light forecast chart without the side panel and list — nothing above the chart: ticker, status, P,
+position, stop and Mover as a legend in its corner, and only the timeframe and volume-profile buttons in the other corner, one chart pane, no footprint, no Δ pane, no Market / Movers / Spread requests; one window reused for every click,
 the ticker is switched without reloading the page; resizable, own size / position / zoom; no sounds or notifications
 there, the list window keeps them). Shift + click opens the ticker in an additional chart window, so several charts can be
 open at once; closing an additional window really closes it, and its size and zoom are not saved. The browser is not touched: the app has its own storage. The tray item «Відкрити
