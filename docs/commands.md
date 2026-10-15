@@ -508,15 +508,28 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 A pywebview (WebView2) window over the dashboard page `#list`: the list sections, chips, glyphs and sound of the
 dashboard, plus what a browser tab lacks — always-on-top, a tray icon (click shows / hides; closing the window hides it),
 system notifications through the tray, sound without a first click, Ctrl + / Ctrl − / Ctrl 0 scaling the page and the
-window together (WebView2 zoom factor, remembered); clicking a ticker opens it in the full dashboard in
-the default browser. Settings: `%APPDATA%\PD Watchlist\config.json` (`url`, optional `user` / `password`, `on_top`,
-window position and size).
+window together (WebView2 zoom factor, remembered per window); clicking a ticker opens it in a separate chart window
+(`#chart/TK`: a light forecast chart without the side panel and list — the toolbar keeps only the timeframe and the
+volume-profile period, one chart pane, no footprint, no Δ pane, no Market / Movers / Spread requests; one window reused for every click,
+the ticker is switched without reloading the page; resizable, own size / position / zoom; no sounds or notifications
+there, the list window keeps them). Shift + click opens the ticker in an additional chart window, so several charts can be
+open at once; closing an additional window really closes it, and its size and zoom are not saved. The browser is not touched: the app has its own storage. The tray item «Відкрити
+дашборд» still opens the full dashboard in the default browser. Settings: `%APPDATA%\PD Watchlist\config.json` (`url`,
+optional `user` / `password`, `on_top`, list window position / size / `zoom`, `chart_x` / `chart_y` / `chart_width` /
+`chart_height` / `chart_zoom`).
 
 ### `experiments/p_deciles_delay.py`
 
 | Usage | Meaning |
 |---|---|
 | `python experiments/p_deciles_delay.py` | two checks of the working models on the six-month archive (honest coin list outside training, split and market modes): (1) does a higher 15m P at entry mean a better trade — trade result in R (result ÷ initial risk k·ATR) by P quintile and Spearman correlation with a bootstrap interval; (2) entry delayed by 1 / 3 / 5 minutes after the signal bar closes, priced from 1m candles (`data/klines1m`), with the first bar after entry checked only on the minutes after the fill. Criteria are in the docstring. `--limit N` — first N coins, `--k` — stop in ATR. Writes `reports/p_deciles_delay.md` and `_trades.csv` |
+
+### `experiments/fe_coingecko.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/fe_coingecko.py --stage cg` | maps every coin of the six-month backtest and training set to a CoinGecko id (symbol candidates, accepted only if the CoinGecko price matches our Binance price within 3% median) and caches daily price / market cap, categories and supply in `data/coingecko/`. Needs `COINGECKO_API_KEY` (free Demo key) in `.env`; ~1–1.5k requests, paced at ~27 per minute |
+| `python experiments/fe_coingecko.py --stage test` | two feature groups in the 15m model, criterion fixed before the run (as `fe_spot.py`): **cap** — OI ÷ market cap, 24 h futures turnover ÷ market cap, max (or total) supply ÷ circulating supply; **sector** — return of the other coins in the coin's CoinGecko categories minus the whole set, over 4 h / 24 h, and the hottest category over 4 h. Circulating supply is taken from the previous day; categories and max supply are current values (a mild look-ahead, stated in the report). Variants base / +cap / +sector / +both on seeds 42 / 43 / 44, leave-ticker-out plus the six-month archive backtest. Writes `reports/fe_coingecko.md` and `_trades.csv`. Data: CoinGecko |
 
 ### `experiments/upbit_events.py`
 

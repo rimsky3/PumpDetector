@@ -416,8 +416,11 @@ no extra dependencies. `#forecast/NMR` opens a ticker, `#journal` the journal. E
 with a short explanation.
 
 **List-only page (since 2026-10-15).** `#list` shows only the ticker list (with the Sound control and a link to the
-full dashboard) and loads no charts; clicking a ticker opens it in the full dashboard. It is the page behind the PD
-Watchlist window (`watch_app/`), and it also works in a narrow browser window.
+full dashboard) and loads no charts; clicking a ticker opens it in the full dashboard (in the PD Watchlist app — in the
+app's own chart window; Shift + click — a new additional chart window). It is the page behind the PD Watchlist window (`watch_app/`), and it also works in a narrow
+browser window. `#chart/TK` is a light forecast view without the side panel and the list (the app's chart windows): one chart pane,
+the toolbar keeps only the timeframe and the volume-profile period, footprint and the Δ pane are off, the Market / Movers /
+Spread requests are not made; ↑ / ↓ still step through the list's tickers; no sounds or notifications.
 
 **Charts tab (since 2026-10-13).** `#charts` shows every ticker of the list's NOW and WOKE UP sections as a grid of
 mini charts: the last 96 closed 15m candles, Alert / Candidate zones, the model's entries and the stop of an open trade

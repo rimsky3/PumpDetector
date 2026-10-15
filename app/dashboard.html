@@ -274,6 +274,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .listbar { display: none; }
 .app.listonly .listbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0; }
 .listbar .mk-btn { height: 28px; text-decoration: none; }
+/* вікно «лише графік» (#chart/TK, 15.10): друге вікно PD Watchlist — клік по тікеру в списку застосунку; браузер не чіпає */
+.app.chartonly, .app.chartonly.journal, .app.chartonly.rail { grid-template-columns: minmax(0, 1fr); height: 100vh; }
+.app.chartonly > .side, .app.chartonly > .right { display: none; }
+.app.chartonly > .center { padding: 8px 10px; }
+.app.chartonly .hint { display: none; }
+/* легке вікно: з панелі — лише таймфрейм і профіль обсягу; без чіпа «Δ бірж» (власник, 15.10) */
+.app.chartonly .head .r > :not(#tfSeg):not(#vpSeg), .app.chartonly .tk-xs { display: none !important; }
 .railbox { display: none; }
 .app.rail .side { padding: 12px 6px; align-items: center; overflow-x: hidden; }
 .app.rail .side > :not(.railbox) { display: none; }
@@ -920,6 +927,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
              backtest: LS.get("pd-mode-backtest", null) }, days: LS.get("pd-days", 3), link: LS.get("pd-link", true), oiUsd: LS.get("pd-oiusd", false),
     // вікна графіка: 1 або 2; «Повна інфо» (позиція, угоди, «прокидається», мітки сканера); активне вікно
     panes: LS.get("pd-panes", 1), full: LS.get("pd-full", true), active: 0,
+    // вікно графіка застосунку PD Watchlist (#chart/TK) — відомо з першого рядка, щоб фонові запити не стартували
+    chartOnly: location.hash.split("/")[0] === "#chart",
     meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
     secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(), liveStops: new Map(),
     notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), notifySpread: LS.get("pd-notify-spread", false), seen: new Set(LS.get("pd-seen", [])),
@@ -1048,7 +1057,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   const route = () => {
     const [view, tk] = location.hash.slice(1).split("/");
     st.view = view === "journal" ? "journal" : view === "backtest" ? "backtest" : view === "charts" ? "charts" : view === "list" ? "list" : "forecast";
+    st.chartOnly = view === "chart";             // «Прогноз» без лівої панелі й списку — вікно графіка застосунку
+    $("app").classList.toggle("chartonly", st.chartOnly);
+    if (st.chartOnly) {                          // легке вікно: одне вікно графіка, без футпрінту й панелі Δ
+      if (st.panes !== 1) { st.panes = 1; applyLayout(); }
+      const P0 = PANES[0]; if (P0.fp) P0.setFp(false); if (P0.xs) P0.setXs(false);
+    }
     if (tk && st.active === 0 && st.meta?.tickers.includes(tk.toUpperCase())) selectTicker(tk.toUpperCase(), false);
+    if (st.chartOnly && st.ticker) window.pywebview?.api?.chart_title?.(st.ticker);
     const j = st.view === "journal", bt = st.view === "backtest", ch = st.view === "charts", li = st.view === "list", fc = !j && !bt && !ch && !li;
     $("app").classList.toggle("listonly", li);
     if (li) { stopLive(); const nt = document.querySelector(".nt-wrap"); if (nt && nt.parentElement !== $("listBar")) $("listBar").prepend(nt); }
@@ -1068,16 +1084,20 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     closePop();
   };
   // тікер — в АКТИВНЕ вікно; адреса (#forecast/TK) — лише для першого вікна
-  const openFull = (t) => {
-    if (window.pywebview?.api?.open_dashboard) { window.pywebview.api.open_dashboard(t); return; }
+  const openFull = (t, extra = false) => {
+    const app = window.pywebview?.api;
+    // застосунок: окреме вікно графіка, браузер не чіпаємо; Shift + клік — ще одне, нове вікно
+    if (app?.open_chart) { app.open_chart(t, extra); return; }
+    if (app?.open_dashboard) { app.open_dashboard(t); return; }
     window.open(`${location.origin}${location.pathname}#forecast/${t}`, "_blank", "noopener");
   };
-  const selectTicker = (t, go = true) => {
-    if (st.view === "list") { openFull(t); return; }
+  const selectTicker = (t, go = true, extra = false) => {
+    if (st.view === "list") { openFull(t, extra); return; }
     st.ticker = t; LS.set(st.active ? "pd-ticker2" : "pd-ticker", t);
     if (go) {
-      if (st.view !== "forecast") location.hash = st.active ? "#forecast" : `#forecast/${t}`;
-      else if (st.active === 0 && location.hash !== `#forecast/${t}`) location.hash = `#forecast/${t}`;
+      const fc = st.chartOnly ? "#chart" : "#forecast";
+      if (st.view !== "forecast") location.hash = st.active ? fc : `${fc}/${t}`;
+      else if (st.active === 0 && location.hash !== `${fc}/${t}`) location.hash = `${fc}/${t}`;
       else activePane().load();
     }
     renderList();
@@ -2138,7 +2158,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       + (r.source === "auto" ? `\n${r.channel === "woke" ? "Woke" : "Auto"}: ${r.reason || ""}\nin the list until ${fmtTs(Date.parse(r.expires) / 1000)}${r.held ? " (" + r.held + ")" : ""}` : "")
       + (quiet ? `\nQuiet for ${r.quiet_h >= 71 ? "3+ days" : Math.round(r.quiet_h) + "h"}: no Candidate / Alert or 5m volume — you can remove it ×` : "")
       + (r.mover ? "\n" + moverTitle(r.mover) : "");
-    row.addEventListener("click", () => selectTicker(r.ticker));
+    row.addEventListener("click", (e) => selectTicker(r.ticker, true, e.shiftKey));
+    row.addEventListener("mousedown", (e) => { if (e.shiftKey) e.preventDefault(); });    // Shift + клік не виділяє текст
     box.appendChild(row);
   };
   const renderList = () => {
@@ -2178,7 +2199,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const rec = $("recent"); rec.replaceChildren();
     (st.list?.recent || []).forEach((e) => {
       const r = el("div", "e"); const a = el("span"); a.append(el("b", "", e.ticker), " ", el("span", "dim", `${fmtP(e.probability)} · ${e.kind}`));
-      r.append(a, el("span", "small", fmtTs(e.ts))); r.addEventListener("click", () => selectTicker(e.ticker)); rec.appendChild(r);
+      r.append(a, el("span", "small", fmtTs(e.ts))); r.addEventListener("click", (ev) => selectTicker(e.ticker, true, ev.shiftKey)); rec.appendChild(r);
     });
     if (!(st.list?.recent || []).length) rec.appendChild(el("span", "small", "Сигналів ще не було."));
   };
@@ -2621,6 +2642,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   addEventListener("resize", () => { if (NT.open) placeNotify(); });
   let firstAlertsCheck = true;
   const checkAlerts = () => {
+    if (st.chartOnly) return;                    // вікно графіка застосунку: звук і сповіщення — лише у вікні списку
     const alerts = st.list?.alerts || [], cands = st.list?.cands || [];
     const wakes = st.list?.wakes || [];
     const freshW = wakes.filter((w) => !st.seen.has(`w|${w.ticker}|${w.ts}`));
@@ -2792,6 +2814,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     p.append(head, big, g, mkSpark(d.history || { t: [] }), el("div", "small", "Біла лінія — за 7 днів, сіра — за 24 год. Оновлення щогодини."), note, rows, foot);
   };
   const loadMarket = async () => {
+    if (st.chartOnly) return;                    // легке вікно графіка: кнопки Market немає
     try { MK.data = await api("/api/market", { quiet: true }); }
     catch (e) { MK.data = { state: "unknown", error: e.message }; }
     renderMarketBtn(); if (MK.open) { renderMarketPop(); placeMarket(); }
@@ -2899,6 +2922,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (open) { renderMoversPop(); placeMovers(); }
   };
   const loadMovers = async () => {
+    if (st.chartOnly) return;
     try { MV.data = await api("/api/movers", { quiet: true }); } catch (e) { MV.data = { error: e.message }; }
     renderMoversBtn(); if (MV.open) { renderMoversPop(); placeMovers(); }
   };
@@ -3094,6 +3118,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // опитування монітора: кнопка, чіпи вікон, значок Δ у списку, звук на нову подію (Sound ▾ → Spread)
   let spKeys = "";
   const loadSpreads = async () => {
+    if (st.chartOnly) return;                    // і Spread теж; звук і сповіщення — у вікні списку
     let d; try { d = await api("/api/spreads", { quiet: true }); } catch (e) { return; }
     const first = st.spreads === null;
     st.spreads = { ...d, config: SP.open && st.spreads?.config ? st.spreads.config : d.config };
@@ -3101,6 +3126,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     PANES.forEach((p) => p.renderXs());
     const keys = (d.events || []).map((e) => e.ticker).sort().join(",");
     if (keys !== spKeys) { spKeys = keys; renderList(); }
+    if (st.chartOnly) return;
     const fresh = (d.events || []).filter((e) => !e.quiet && !st.seen.has(`s|${e.ticker}|${e.ts}`));
     if (!fresh.length) return;
     fresh.forEach((e) => st.seen.add(`s|${e.ticker}|${e.ts}`));
@@ -3593,7 +3619,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // Ctrl + / Ctrl − / Ctrl 0 у вікні PD Watchlist (#list у застосунку): масштаб сторінки і розмір вікна разом (15.10).
   // У звичайному браузері ці клавіші не чіпаємо — там працює масштаб самого браузера.
   addEventListener("keydown", (e) => {
-    if (st.view !== "list" || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if ((st.view !== "list" && !st.chartOnly) || !(e.ctrlKey || e.metaKey) || e.altKey) return;
     const api = window.pywebview && window.pywebview.api; if (!api || !api.zoom) return;
     const step = ["Equal", "NumpadAdd"].includes(e.code) || e.key === "+" || e.key === "=" ? 1
       : ["Minus", "NumpadSubtract"].includes(e.code) || e.key === "-" ? -1 : ["Digit0", "Numpad0"].includes(e.code) ? 0 : null;
@@ -3606,7 +3632,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "select" || tag === "textarea") return;
-    if (st.view === "forecast" && e.key === "PageDown") { e.preventDefault(); location.hash = "#charts"; return; }
+    if (st.view === "forecast" && !st.chartOnly && e.key === "PageDown") { e.preventDefault(); location.hash = "#charts"; return; }
     if (st.view !== "charts") return;
     if (e.key === "PageUp") { e.preventDefault(); location.hash = "#forecast"; return; }
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter"].includes(e.key)) return;
