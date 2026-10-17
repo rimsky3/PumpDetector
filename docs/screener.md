@@ -337,6 +337,14 @@ last trigger drops out) and TTL 48 h, which a model signal extends (`scanner.tou
 new event. A WOKE coin that passes the regular (liquid) filter moves to the liquid channel. × blocks either channel until a
 new trigger. Thresholds are constants (`scanner.WOKE`), not in the presets.
 
+**Implausible OI is skipped (since 2026-10-16).** The 4-hour OI change (both channels) is the sum of log steps between
+neighbouring 15m snapshots, without steps where OI in coins changed by more than the bar's traded volume allows
+(`features.impossible_oi`) or by more than ×2 / ÷2 in one bar (`OI_STEP_MAX`; real steps that large happen only right
+after a listing). With clean data it equals `oi[-1] / oi[-1 − 16] − 1` (checked on 20 coins and all 31 recorded WOKE
+triggers). On 2026-10-15, 11:20–18:07 UTC, Binance's OI feed returned wrong values for several hours: WOKE reported EPIC
++223%, GOAT +71%, ARC +202% while the exchange's own history shows +5%, −20% and +11%, so three coins entered WOKE by
+mistake.
+
 Presets on the 56 labeled pumps (`python scanner.py --recall`, hourly data from the database, same 4-hour windows; "on time" = the coin
 would have been in the list before the impulse started):
 

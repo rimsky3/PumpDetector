@@ -15,8 +15,8 @@ WATCHLIST / QUIET, чіпи, значки, звук. Чого не вміє вк
 Налаштування — %APPDATA%\\PD Watchlist\\config.json (створюється при першому запуску):
   url       — адреса дашборда (за замовчуванням https://45-76-90-13.sslip.io/; через тунель — http://localhost:8766/);
   user, password — логін дашборда, якщо не хочеш вводити його щоразу (інакше WebView2 спитає сам);
-  on_top, x, y, width, height, zoom — вікно списку; chart_x, chart_y, chart_width, chart_height, chart_zoom — вікно графіка
-  (запам'ятовуються).
+  on_top, x, y, width, height, zoom — вікно списку; chart_x, chart_y — основне вікно графіка; chart_width, chart_height,
+  chart_zoom — розмір і масштаб графіка, який змінювали останнім (з ними відкривається кожне нове вікно графіка).
 
     python watch_app/pd_watch.py                       # запуск без збирання
     python watch_app/pd_watch.py --url http://127.0.0.1:8799/
@@ -127,17 +127,19 @@ class Api:
         return self._app.zoom(step, self._kind)
 
 
-class ExtraChart:
-    """Додаткове вікно графіка (Shift + клік): хрестик закриває його насовсім; розмір і масштаб — лише на час життя вікна
-    (у config.json не пишуться, стартові — як у основного вікна графіка)."""
+class ChartWin:
+    """Вікно графіка: основне (звичайний клік; хрестик ховає, позиція запам'ятовується) або додаткове (Shift + клік; хрестик
+    закриває насовсім, стає драбинкою від основного). Нове вікно відкривається з розміром і масштабом графіка, який змінювали
+    ОСТАННІМ (будь-якого, мишею чи Ctrl + / −): config chart_width / chart_height / chart_zoom — «останні», їх пише кожне вікно.
+    У кожного вікна свій поточний масштаб — щоб Ctrl + в одному не рахувався від масштабу іншого."""
 
-    def __init__(self, app: "WatchApp", kind: str, ticker: str, n: int):
+    def __init__(self, app: "WatchApp", kind: str, ticker: str, main: bool, n: int = 0):
         import webview
         c = app.cfg
-        self.app, self.kind = app, kind
+        self.app, self.kind, self.main = app, kind, main
         self.zoom = float(c.get("chart_zoom") or 1.0)
         self.width, self.height = int(c["chart_width"]), int(c["chart_height"])
-        shift = 32 * n                                    # драбинкою від основного вікна графіка, щоб не лягали одне на одне
+        shift = 0 if main else 32 * n                     # додаткові — драбинкою від основного, щоб не лягали одне на одне
         x = c["chart_x"] + shift if c["chart_x"] is not None else None
         y = c["chart_y"] + shift if c["chart_y"] is not None else None
         self.win = webview.create_window(
@@ -146,25 +148,55 @@ class ExtraChart:
             background_color="#141413", text_select=True)
         self.win.events.resized += self.on_resized
         self.win.events.loaded += self.on_loaded
-        self.win.events.closed += self.on_closed
+        if main:
+            self.win.events.moved += self.on_moved
+            self.win.events.closing += self.on_closing
+        else:
+            self.win.events.closed += self.on_closed
+
+    def remember(self) -> None:
+        """Цей графік змінили останнім — його розмір і масштаб стають стартовими для нових вікон."""
+        self.app.cfg.update(chart_width=self.width, chart_height=self.height, chart_zoom=self.zoom)
 
     def on_resized(self, width, height):
         self.width, self.height = width, height
+        self.remember()
+
+    def on_moved(self, x, y):
+        self.app.cfg["chart_x"], self.app.cfg["chart_y"] = x, y
 
     def on_loaded(self):
         if abs(self.zoom - 1.0) > 1e-6:
             self.app.set_factor(self.win, self.zoom)
 
+    def on_closing(self):
+        if self.app.quitting:
+            return True
+        self.win.hide()                            # хрестик ховає; наступний клік по тікеру покаже те саме вікно
+        return False
+
     def on_closed(self):
         self.app.extra.pop(self.kind, None)
+
+    def set_zoom(self, step: int) -> float:
+        new = 1.0 if step == 0 else min(ZOOM_MAX, max(ZOOM_MIN, round(self.zoom + step * ZOOM_STEP, 2)))
+        if new != self.zoom:
+            k = new / self.zoom
+            self.zoom = new
+            self.app.set_factor(self.win, new)
+            self.width, self.height = int(self.width * k), int(self.height * k)
+            self.win.resize(self.width, self.height)
+            self.remember()
+            save_config(self.app.cfg)
+        return new
 
 
 class WatchApp:
     def __init__(self, cfg: dict):
         self.cfg = cfg
         self.window = None                        # список
-        self.chart = None                         # вікно графіка (створюється при першому кліку по тікеру)
-        self.extra: dict[str, ExtraChart] = {}    # додаткові вікна графіка (Shift + клік)
+        self.chart: ChartWin | None = None        # основне вікно графіка (створюється при першому кліку по тікеру)
+        self.extra: dict[str, ChartWin] = {}      # додаткові вікна графіка (Shift + клік)
         self._n_extra = 0
         self.tray = None
         self.visible = True
@@ -189,23 +221,17 @@ class WatchApp:
     def set_on_top(self, *_):
         """«Поверх усіх вікон» у треї — для списку і всіх вікон графіка разом (власник, 15.10)."""
         self.cfg["on_top"] = not self.cfg["on_top"]
-        for w in [self.window, self.chart, *(x.win for x in self.extra.values())]:
+        for w in [self.window, *(x.win for x in self._charts())]:
             if w is not None:
                 w.on_top = self.cfg["on_top"]
         save_config(self.cfg)
 
     # --- масштаб: WebView2.ZoomFactor (шрифт і все на сторінці) + розмір вікна в тій самій пропорції
-    def _win(self, kind: str):
-        if kind in self.extra:
-            return self.extra[kind].win
-        return self.chart if kind == "chart" else self.window
+    def _charts(self) -> list:
+        return [x for x in [self.chart, *self.extra.values()] if x is not None]
 
-    @staticmethod
-    def _key(kind: str, name: str) -> str:
-        return f"chart_{name}" if kind == "chart" else name
-
-    def _set_factor(self, kind: str, z: float) -> None:
-        self.set_factor(self._win(kind), z)
+    def _chart(self, kind: str):
+        return self.chart if kind == "chart" else self.extra.get(kind)
 
     @staticmethod
     def set_factor(win, z: float) -> None:
@@ -217,100 +243,65 @@ class WatchApp:
         win.native.Invoke(Action(lambda: setattr(wv, "ZoomFactor", float(z))))
 
     def zoom(self, step: int, kind: str = "list") -> float:
-        x = self.extra.get(kind)
-        if x is not None:                             # додаткове вікно графіка: масштаб лише в пам'яті
-            new = 1.0 if step == 0 else min(ZOOM_MAX, max(ZOOM_MIN, round(x.zoom + step * ZOOM_STEP, 2)))
-            if new != x.zoom:
-                k = new / x.zoom
-                x.zoom = new
-                self.set_factor(x.win, new)
-                x.win.resize(int(x.width * k), int(x.height * k))
-            return new
-        k_zoom, k_w, k_h = (self._key(kind, n) for n in ("zoom", "width", "height"))
-        old = float(self.cfg.get(k_zoom) or 1.0)
+        ch = self._chart(kind)
+        if ch is not None:                            # вікно графіка — свій масштаб, «останній» пишеться в config
+            return ch.set_zoom(step)
+        old = float(self.cfg.get("zoom") or 1.0)
         new = 1.0 if step == 0 else min(ZOOM_MAX, max(ZOOM_MIN, round(old + step * ZOOM_STEP, 2)))
         if new == old:
             return new
-        self.cfg[k_zoom] = new
-        self._set_factor(kind, new)
+        self.cfg["zoom"] = new
+        self.set_factor(self.window, new)
         k = new / old
-        w, h = int(self.cfg[k_w] * k), int(self.cfg[k_h] * k)
-        self.cfg[k_w], self.cfg[k_h] = w, h
-        self._win(kind).resize(w, h)
+        w, h = int(self.cfg["width"] * k), int(self.cfg["height"] * k)
+        self.cfg["width"], self.cfg["height"] = w, h
+        self.window.resize(w, h)
         save_config(self.cfg)
         return new
 
-    def on_loaded(self, kind: str = "list"):
-        z = float(self.cfg.get(self._key(kind, "zoom")) or 1.0)
+    def on_list_loaded(self):
+        z = float(self.cfg.get("zoom") or 1.0)
         if abs(z - 1.0) > 1e-6:
-            self._set_factor(kind, z)
+            self.set_factor(self.window, z)
 
     # --- вікно графіка
     def chart_title(self, ticker: str, kind: str = "chart") -> None:
         t = re.sub(r"[^A-Z0-9]", "", str(ticker).upper())
-        win = self._win(kind) if kind != "list" else None
-        if win is not None and t:
-            win.set_title(f"{t} — PD Chart")
+        ch = self._chart(kind)
+        if ch is not None and t:
+            ch.win.set_title(f"{t} — PD Chart")
 
     def open_chart(self, ticker: str, new: bool = False) -> None:
-        import webview
         t = re.sub(r"[^A-Z0-9]", "", str(ticker).upper())
         if not t:
             return
         if new:                                       # Shift + клік: ще одне вікно, основне не чіпаємо
             self._n_extra += 1
             kind = f"x{self._n_extra}"
-            self.extra[kind] = ExtraChart(self, kind, t, len(self.extra) + 1)
+            self.extra[kind] = ChartWin(self, kind, t, main=False, n=len(self.extra) + 1)
             return
         if self.chart is None:
-            c = self.cfg
-            self.chart = webview.create_window(
-                f"{t} — PD Chart", page_url(c, f"chart/{t}"), js_api=Api(self, "chart"),
-                width=int(c["chart_width"]), height=int(c["chart_height"]), x=c["chart_x"], y=c["chart_y"],
-                on_top=bool(c["on_top"]), min_size=(480, 360), background_color="#141413", text_select=True)
-            self.chart.events.closing += self.on_chart_closing
-            self.chart.events.moved += self.on_chart_moved
-            self.chart.events.resized += self.on_chart_resized
-            self.chart.events.loaded += self.on_chart_loaded
+            self.chart = ChartWin(self, "chart", t, main=True)
             return
         # вікно вже є: сторінка лишається завантаженою, міняємо лише тікер — без перезавантаження
-        self.chart.evaluate_js(f"location.hash = '#chart/{t}'")
+        w = self.chart.win
+        w.evaluate_js(f"location.hash = '#chart/{t}'")
         self.chart_title(t)
-        self.chart.show()
-        self.chart.restore()
+        w.show()
+        w.restore()
         try:
             from System import Action
-            self.chart.native.Invoke(Action(self.chart.native.Activate))      # на передній план
+            w.native.Invoke(Action(w.native.Activate))      # на передній план
         except Exception:
             pass
-
-    def on_chart_closing(self):
-        if self.quitting:
-            return True
-        self.chart.hide()                          # хрестик ховає; наступний клік по тікеру покаже те саме вікно
-        return False
-
-    def on_chart_moved(self, x, y):
-        self.cfg["chart_x"], self.cfg["chart_y"] = x, y
-
-    def on_chart_resized(self, width, height):
-        self.cfg["chart_width"], self.cfg["chart_height"] = width, height
-
-    def on_chart_loaded(self):
-        self.on_loaded("chart")
-
-    def on_list_loaded(self):
-        self.on_loaded("list")
 
     def quit(self, *_):
         self.quitting = True
         save_config(self.cfg)
         if self.tray is not None:
             self.tray.stop()
-        for x in list(self.extra.values()):
+        for x in self._charts():
             x.win.destroy()
-        if self.chart is not None:
-            self.chart.destroy()
         self.window.destroy()
 
     def start_tray(self) -> None:

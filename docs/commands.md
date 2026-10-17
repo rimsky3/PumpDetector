@@ -513,10 +513,11 @@ window together (WebView2 zoom factor, remembered per window); clicking a ticker
 position, stop and Mover as a legend in its corner, and only the timeframe and volume-profile buttons in the other corner, one chart pane, no footprint, no Δ pane, no Market / Movers / Spread requests; one window reused for every click,
 the ticker is switched without reloading the page; resizable, own size / position / zoom; no sounds or notifications
 there, the list window keeps them). Shift + click opens the ticker in an additional chart window, so several charts can be
-open at once; closing an additional window really closes it, and its size and zoom are not saved. The browser is not touched: the app has its own storage. The tray item «Відкрити
+open at once; closing an additional window really closes it. Every new chart window opens with the size and zoom of the
+chart window changed last (by mouse or Ctrl + / −), also after a restart; each window keeps its own zoom while open. The browser is not touched: the app has its own storage. The tray item «Відкрити
 дашборд» still opens the full dashboard in the default browser. Settings: `%APPDATA%\PD Watchlist\config.json` (`url`,
-optional `user` / `password`, `on_top`, list window position / size / `zoom`, `chart_x` / `chart_y` / `chart_width` /
-`chart_height` / `chart_zoom`).
+optional `user` / `password`, `on_top`, list window position / size / `zoom`, `chart_x` / `chart_y` — main chart
+window position, `chart_width` / `chart_height` / `chart_zoom` — size and zoom of the chart window changed last).
 
 ### `experiments/p_deciles_delay.py`
 
@@ -530,6 +531,11 @@ optional `user` / `password`, `on_top`, list window position / size / `zoom`, `c
 |---|---|
 | `python experiments/fe_coingecko.py --stage cg` | maps every coin of the six-month backtest and training set to a CoinGecko id (symbol candidates, accepted only if the CoinGecko price matches our Binance price within 3% median) and caches daily price / market cap, categories and supply in `data/coingecko/`. Needs `COINGECKO_API_KEY` (free Demo key) in `.env`; ~1–1.5k requests, paced at ~27 per minute |
 | `python experiments/fe_coingecko.py --stage test` | two feature groups in the 15m model, criterion fixed before the run (as `fe_spot.py`): **cap** — OI ÷ market cap, 24 h futures turnover ÷ market cap, max (or total) supply ÷ circulating supply; **sector** — return of the other coins in the coin's CoinGecko categories minus the whole set, over 4 h / 24 h, and the hottest category over 4 h. Circulating supply is taken from the previous day; categories and max supply are current values (a mild look-ahead, stated in the report). Variants base / +cap / +sector / +both on seeds 42 / 43 / 44, leave-ticker-out plus the six-month archive backtest. Writes `reports/fe_coingecko.md` and `_trades.csv`. Data: CoinGecko |
+
+Result (2026-10-15, 416 coins, six months): no variant met the criterion. Coins ≥ $20M, profit factor vs base 0.873: +cap 0.854
+(worse on all three seeds although the model uses the group — 9.6% of gain), +sector 0.864 (barely used, 2.6%), +both 0.864.
+Market cap and supply barely change within a coin, so for 32 training tickers they act as a ticker label: the model learns which
+coins pumped rather than how a pump starts.
 
 ### `experiments/upbit_events.py`
 

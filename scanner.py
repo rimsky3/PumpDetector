@@ -62,6 +62,7 @@ DEFAULT_CONFIG = {"enabled": True, "preset": "balance", "custom": dict(PRESETS["
                   "max_oi": 500e6, "max_auto": 30, "ttl_hours": 48}
 # канал «Прокинулась» (WOKE): пороги — варіант A з experiments/wake_channel.py, у налаштування не винесено
 WOKE = {"pace": 20e6, "vol_x": 10.0, "price_pct": 5.0, "oi_pct": 20.0}
+OI_STEP_MAX = 2.0                  # OI у монетах за один бар скану (15m) змінився більше ніж ×2 / ÷2 — збій біржі, крок не рахуємо
 WOKE_CAP = 15                      # стеля каналу: найстаріший за останнім спрацюванням витісняється
 WOKE_TTL_HOURS = 48                # подія живе 48 год після останнього спрацювання (сигнал моделі продовжує — touch)
 WOKE_FILE = os.path.join(ROOT, "reports", "woke_events.json")   # {base: {first, last, reason, ...}} — і ручні тікери
@@ -213,6 +214,23 @@ def metrics_from_bars(h: pd.DataFrame, bph: int = 1) -> dict | None:
     # норма — медіана 4-годинного обсягу за 7 днів ДО останніх 4 год (щоб сплеск не рахував сам себе)
     norm = v4.iloc[:-w].tail(7 * 24 * bph).median()
     oi = h["oi"].dropna() if "oi" in h else pd.Series(dtype=float)
+    oi_pct = None
+    if len(oi) > w and (oi > 0).all():
+        # Зміна OI за 4 год — сума лог-кроків між сусідніми знімками, без неправдоподібних кроків: OI за бар змінився
+        # більше, ніж наторгували (features.impossible_oi), або більше ніж у OI_STEP_MAX раза (справжнє — лише в перші
+        # години після лістингу, а сканер бере монети з ≥ 3 днями історії). 15.10 Binance кілька годин віддавала хибний OI:
+        # WOKE показав EPIC +223%, GOAT +71%, ARC +202% при справжніх +5%, −20%, +11% — три монети потрапили у WOKE даремно.
+        # Коли всі кроки правдоподібні — те саме, що oi[-1] / oi[-1 − w] − 1.
+        from features import impossible_oi
+        one = lambda s: s.to_frame("m")                                          # noqa: E731
+        p = px.reindex(oi.index)
+        bad = impossible_oi(one(oi), one(p), one(vol.reindex(oi.index) / p.where(p > 0)))["m"]
+        step = np.log(oi).diff()
+        # стрибок за бар — у МОНЕТАХ (OI $ ÷ ціна): STBL 16.10 00:15 OI у монетах ×1.74 при обсязі 422 млн монет за бар —
+        # справжній, а в доларах ×2.8, бо ціна теж ×1.6; без ціни (NaN) крок не відкидаємо
+        coin_step = np.log(oi / p.where(p > 0)).diff()
+        ok = ~bad & ~(coin_step.abs() > np.log(OI_STEP_MAX))
+        oi_pct = float(np.expm1(step.where(ok, 0.0).iloc[-w:].sum()) * 100)
     tail = vol.tail(AVG_DAYS * 24 * bph)
     return {
         "turnover": float(vol.tail(24 * bph).sum()),
@@ -221,7 +239,7 @@ def metrics_from_bars(h: pd.DataFrame, bph: int = 1) -> dict | None:
         "turnover_avg": float(tail.sum() / (len(tail) / (24 * bph))),
         "vol_x": float(v4.iloc[-1] / norm) if norm and norm > 0 else None,
         "price_pct": float((px.iloc[-1] / px.iloc[-1 - w] - 1) * 100),
-        "oi_pct": float((oi.iloc[-1] / oi.iloc[-1 - w] - 1) * 100) if len(oi) > w and oi.iloc[-1 - w] > 0 else None,
+        "oi_pct": oi_pct,
         "oi": float(oi.iloc[-1]) if len(oi) else None,
     }
 
