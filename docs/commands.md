@@ -68,6 +68,25 @@ list, and once a day after 03:00 UTC for yesterday.
 
 On the server: `docker compose -f docker-compose.server.yml exec -T traderec python trade_recorder.py --stats`. See docs/trades.md.
 
+### `hl_twap.py` — active Hyperliquid TWAP orders (server container `hltwap`)
+
+| Option | What it does |
+|---|---|
+| (none) | find every active TWAP on Hyperliquid perpetuals and serve them at `http://<host>:8790/twaps` (runs forever, reconnects); nothing is written to the database |
+| `--port N` | port of that internal API (default 8790) |
+| `--probe SEC` | no API: listen for SEC seconds and print the TWAPs found, with slice size, share of the order book and of Hyperliquid volume |
+
+Hyperliquid's public API has no "all active TWAPs" request — TWAP state is available only per address. The public trade
+stream does carry buyer and seller addresses, and a TWAP fills in slices every 30 seconds, so the watcher listens to the
+trades of all main-dex perpetuals (one WebSocket, ~100–150 trades/s), flags an address that trades one coin in one direction
+in ≥ 4 slices with 26–34 s gaps, and confirms it with `info twapHistory` for that address (active = `activated` with no
+final record; size, minutes, reduce-only, start). Progress after detection is summed from the address's fills in the stream;
+before detection it is taken from the TWAP's even schedule. A TWAP ends when filled, when its time is up or when slices stop
+for 3 minutes. For coins with an active TWAP it also subscribes to the Hyperliquid order book (`l2Book`) to report the depth
+within ±0.3% on the side the TWAP hits. State lives in memory only (owner's decision, 2026-10-18): after a restart the
+active TWAPs are found again within 2–3 minutes; there is no history. The dashboard reads it through `/api/twaps`
+(`HLTWAP_URL`, default `http://hltwap:8790/twaps`) and adds the coin's Binance turnover from `trade_bars` to compute % Vol.
+
 ### `tools/pull_db.sh` — server database → laptop (Git Bash)
 
 Dumps the server database, restores it into the **local** database (replacing its contents) and reloads `pumps.csv`
@@ -524,6 +543,16 @@ window position, `chart_width` / `chart_height` / `chart_zoom` — size and zoom
 | Usage | Meaning |
 |---|---|
 | `python experiments/p_deciles_delay.py` | two checks of the working models on the six-month archive (honest coin list outside training, split and market modes): (1) does a higher 15m P at entry mean a better trade — trade result in R (result ÷ initial risk k·ATR) by P quintile and Spearman correlation with a bootstrap interval; (2) entry delayed by 1 / 3 / 5 minutes after the signal bar closes, priced from 1m candles (`data/klines1m`), with the first bar after entry checked only on the minutes after the fill. Criteria are in the docstring. `--limit N` — first N coins, `--k` — stop in ATR. Writes `reports/p_deciles_delay.md` and `_trades.csv` |
+
+### `experiments/coin_persistence.py`
+
+| Usage | Meaning |
+|---|---|
+| `python experiments/coin_persistence.py [--no-profile]` | does the model's success on a coin persist? Six months of working-model trades (`reports/p_deciles_delay_trades.csv`, split and market): each month, coins are split into thirds by their mean R in the previous months and the month's trades are compared (criterion in the docstring); Spearman of a coin's mean R between the two halves of the period; coins with a strong month (≥ 6 split trades, mean ≥ +2%) in the following month. Then a profile of the best and worst quarter of coins by traits known in advance (turnover, volatility, futures age, OI ÷ turnover, market cap, FDV ratio and meme category from the CoinGecko cache). Writes `reports/coin_persistence.md` |
+
+Result (2026-10-18): no persistence. Coins with the best past R were not better the next month (split PF 0.88 vs 0.92 for
+the worst third), and coins with a strong month were worse than average the next month in three of three months
+(regression to the mean). The profile (turnover, OI ÷ turnover, meme coins; Spearman ±0.14–0.20) is in-sample only.
 
 ### `experiments/fe_coingecko.py`
 

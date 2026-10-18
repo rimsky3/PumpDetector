@@ -260,7 +260,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .trow.other { box-shadow: inset 2px 0 0 var(--line3); }
 .trow .roll { font-size: 9.5px; line-height: 1; font-weight: 400; white-space: nowrap; }
 /* ліва панель згортається у смугу (кнопка ‹ або клавіша [) */
-.app { --side-w: 248px; grid-template-columns: var(--side-w) minmax(0, 1fr) 392px; }
+.app { --side-w: 248px; grid-template-columns: var(--side-w) minmax(0, 1fr) var(--list-w, 392px); }
 .app.journal { grid-template-columns: var(--side-w) minmax(0, 1fr); }
 .app.rail { --side-w: 56px; }
 /* вікно «лише список» (#list, 15.10): застосунок PD Watchlist (watch_app/pd_watch.py) або вузьке вікно браузера */
@@ -401,6 +401,34 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .sec.woke { color: var(--mover); } .sec.woke .cnt { background: #2a1f33; color: var(--mover); }
 .sec.list { color: var(--pop); } .sec.list .cnt { background: var(--line); color: var(--fg2); }
 .sec.quiet { color: var(--fg3); } .sec.quiet .cnt { background: var(--card); color: var(--fg3); }
+/* порядок секцій — перетягуванням заголовка (19.10, власник: «щоб ці списки можна було міняти місцями») */
+.sec { position: relative; }
+.sec .grip { position: absolute; left: 1px; top: 9px; font-size: 10px; color: var(--fg3); opacity: 0; cursor: grab; letter-spacing: -1px; }
+.sec:hover .grip, .sec:focus-visible .grip { opacity: .8; }
+.sec.dragging { opacity: .4; }
+.sec.drop-before { box-shadow: inset 0 2px 0 var(--accent); } .sec.drop-after { box-shadow: inset 0 -2px 0 var(--accent); }
+/* TWAP · HL (18.10, варіант B макета https://claude.ai/artifact/DzVCRPCaM6xa4pJqgyPuyn): картки активних TWAP Hyperliquid */
+.sec.twap { color: var(--link); } .sec.twap .cnt { background: var(--live-bg); color: var(--link); }
+.twbar { display: flex; align-items: center; gap: 8px; padding: 0 14px 6px; font-size: 11px; color: var(--fg3); flex-wrap: wrap; }
+.twbar input { width: 38px; height: 20px; background: var(--card); color: var(--fg); border: 1px solid var(--line2); border-radius: 5px;
+  font: inherit; font-variant-numeric: tabular-nums; text-align: right; padding: 0 4px; }
+.twbar button { height: 20px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--line2); background: none; color: var(--fg3); font: inherit; }
+.twbar button[aria-pressed="true"] { background: var(--line2); color: var(--fg); }
+.twbar .err { color: var(--amber); }
+.twc { display: flex; flex-direction: column; gap: 4px; padding: 7px 14px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--fg2); }
+.twc.inl { box-shadow: inset 2px 0 0 var(--accent); cursor: pointer; } .twc.inl:hover { background: var(--row); }
+.twc .l1 { display: flex; align-items: center; gap: 7px; }
+.twc .tk { font-weight: 600; font-size: 13px; color: var(--fg); }
+.twc .sd { font-size: 10px; font-weight: 600; letter-spacing: .03em; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+.twc .sd.b { color: var(--ok); background: var(--ok-bg); } .twc .sd.s { color: var(--hot-soft); background: var(--alert-bg); }
+.twc .sd.close { background: none; box-shadow: inset 0 0 0 1px currentColor; opacity: .75; font-weight: 500; }
+.twc .share { margin-left: auto; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg); }
+.twc .share.b { color: var(--ok); } .twc .share.s { color: var(--hot-soft); } .twc .share small { font-size: 10px; font-weight: 400; color: var(--fg3); }
+.twc .l2, .twc .l3 { display: flex; gap: 10px; flex-wrap: wrap; }
+.twc b { color: var(--fg); font-weight: 500; font-variant-numeric: tabular-nums; }
+.twc .bar { height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.twc .bar i { display: block; height: 100%; } .twc .bar.b i { background: var(--ok); } .twc .bar.s i { background: var(--hot-soft); }
+.gl.twb { background: var(--ok-bg); color: var(--ok); } .gl.tws { background: var(--alert-bg); color: var(--hot-soft); }
 .trow.two { height: auto; min-height: 36px; padding-block: 5px; row-gap: 1px; }
 .trow .why { grid-column: 2 / -1; font-size: 11px; color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .trow .chip { font-size: 10px; font-weight: 600; padding: 0 6px; border-radius: 10px; line-height: 16px; flex: none; }
@@ -493,6 +521,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .recent-grip { height: 7px; margin-bottom: -4px; position: relative; z-index: 2; cursor: ns-resize; flex: none; }
 .recent-grip::after { content: ""; position: absolute; left: 50%; top: 2px; width: 36px; height: 3px; margin-left: -18px; border-radius: 2px; background: var(--line2); opacity: 0; transition: opacity .15s; }
 .recent-grip:hover::after, .recent-grip.drag::after, .recent-grip:focus-visible::after { opacity: 1; }
+/* межа між графіком і списком (19.10, власник): тягнеш — список ширшає / вужчає (LS pd-list-w), подвійний клік — 392 px */
+.right { position: relative; }
+.list-grip { position: absolute; left: -4px; top: 0; bottom: 0; width: 8px; cursor: col-resize; z-index: 5; }
+.list-grip::after { content: ""; position: absolute; left: 3px; top: 0; bottom: 0; width: 2px; background: var(--accent); opacity: 0; transition: opacity .15s; }
+.list-grip:hover::after, .list-grip.drag::after, .list-grip:focus-visible::after { opacity: .7; }
+.app.listonly .list-grip, .app.chartonly .list-grip { display: none; }
+@media (max-width: 1100px) { .list-grip { display: none; } }
 #recent { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; max-height: 92px; scrollbar-width: thin; }
 .recent .t { font-size: 11px; color: var(--fg2); display: flex; align-items: center; gap: 6px; }
 .recent .e { display: flex; justify-content: space-between; font-size: 12px; cursor: pointer; }
@@ -781,6 +816,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 
   <!-- ================= ПРОГНОЗ: ПРАВА ПАНЕЛЬ ================= -->
   <aside class="right" id="rightPanel" aria-label="Тікери">
+    <div class="list-grip" id="listGrip" role="separator" aria-orientation="vertical" tabindex="0"
+         title="Drag to resize the list · double-click — default width (392 px) · ← / → when focused"></div>
     <div class="listbar" id="listBar"><a class="mk-btn" id="listOpen" href="#forecast" target="_blank" rel="noopener" title="Відкрити повний дашборд">Dashboard ↗</a></div>
     <div class="rtop">
       <div class="search">
@@ -947,7 +984,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // вікно графіка застосунку PD Watchlist (#chart/TK) — відомо з першого рядка, щоб фонові запити не стартували
     chartOnly: location.hash.split("/")[0] === "#chart",
     meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
-    secOpen: { now: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(), liveStops: new Map(),
+    secOpen: { now: true, twap: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(), liveStops: new Map(),
     notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), notifySpread: LS.get("pd-notify-spread", false), seen: new Set(LS.get("pd-seen", [])),
     spreads: null,                      // /api/spreads: події розбіжності цін між біржами, тікери списку, налаштування (spread.py)
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
@@ -2034,6 +2071,49 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     { key: "list", name: "WATCHLIST", hint: "Liquid · scanner + manual" },
     { key: "quiet", name: "QUIET", hint: "No signals for 24h+" },
   ];
+  // порядок секцій списку — свій для кожного браузера / PD Watchlist (LS pd-sec-order); twap — секція «TWAP · HL»
+  const SEC_DEFAULT = ["now", "twap", "woke", "list", "quiet"];
+  const secOrder = () => {
+    const saved = (LS.get("pd-sec-order", null) || []).filter((k) => SEC_DEFAULT.includes(k));
+    return [...new Set([...saved, ...SEC_DEFAULT.filter((k) => !saved.includes(k))])];   // нова секція — у кінець збереженого порядку
+  };
+  const moveSec = (key, target, after) => {
+    if (key === target) return;
+    const o = secOrder().filter((k) => k !== key);
+    o.splice(o.indexOf(target) + (after ? 1 : 0), 0, key);
+    LS.set("pd-sec-order", o); renderList();
+  };
+  // заголовок секції: клік — згорнути / розгорнути; перетягнути — змінити порядок; Alt + ↑ / ↓ — те саме з клавіатури;
+  // подвійний клік по ручці ⋮⋮ — порядок за замовчуванням
+  const secHeader = (key, cls, h) => {
+    h.dataset.sec = key; h.draggable = true;
+    h.title = "Click to collapse · drag to reorder (Alt + ↑ / ↓)";
+    const g = el("span", "grip", "⋮⋮"); g.title = "Drag to reorder · double-click to reset the order";
+    g.addEventListener("dblclick", (e) => { e.stopPropagation(); LS.set("pd-sec-order", null); renderList(); });
+    h.prepend(g);
+    h.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/plain", key); e.dataTransfer.effectAllowed = "move"; h.classList.add("dragging"); });
+    h.addEventListener("dragend", () => h.classList.remove("dragging"));
+    const side = (e) => e.offsetY > h.offsetHeight / 2;
+    h.addEventListener("dragover", (e) => {
+      e.preventDefault(); e.dataTransfer.dropEffect = "move";
+      h.classList.toggle("drop-after", side(e)); h.classList.toggle("drop-before", !side(e));
+    });
+    h.addEventListener("dragleave", () => h.classList.remove("drop-before", "drop-after"));
+    h.addEventListener("drop", (e) => {
+      e.preventDefault(); h.classList.remove("drop-before", "drop-after");
+      const from = e.dataTransfer.getData("text/plain");
+      if (SEC_DEFAULT.includes(from)) moveSec(from, key, side(e));
+    });
+    h.addEventListener("keydown", (e) => {
+      if (!e.altKey || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
+      e.preventDefault(); e.stopPropagation();
+      const o = secOrder(), i = o.indexOf(key), j = i + (e.key === "ArrowUp" ? -1 : 1);
+      if (j < 0 || j >= o.length) return;
+      moveSec(key, o[j], e.key === "ArrowDown");
+      document.querySelector(`.sec[data-sec="${key}"]`)?.focus();
+    });
+    return h;
+  };
   const HOUR = 3600e3;
   const msSince = (t) => t == null ? Infinity : Date.now() - (typeof t === "number" ? t * 1000 : Date.parse(t));
   const agoShort = (ms) => ms < 5 * 60e3 ? "just now" : ms < HOUR ? `${Math.round(ms / 60e3)}m` : `${Math.floor(ms / HOUR)}h`;
@@ -2071,7 +2151,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // порядок для ↑/↓ і Enter у пошуку: лише відкриті секції (під час пошуку — усі)
   const visibleRows = () => {
     const sec = sectionRows();
-    return SECS.flatMap((x) => st.search || st.secOpen[x.key] ? sec[x.key].map((o) => o.r) : []);
+    return secOrder().filter((k) => k !== "twap").flatMap((k) => st.search || st.secOpen[k] ? sec[k].map((o) => o.r) : []);
   };
   const sparkSvg = (vals, thr, color) => {
     const ns = "http://www.w3.org/2000/svg", svg = document.createElementNS(ns, "svg");
@@ -2152,6 +2232,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // Δ — ціни тікера аномально розійшлись між біржами (spread.py); колонку State не займає
     const sp = spEvent(r.ticker);
     if (sp) { const x = el("span", "gl sp", "Δ"); x.title = `Exchange spread: ${sp.hi} ${fmtPct(sp.pct, 2)} above ${sp.lo} (bid vs ask) · ${agoShort(sp.held * 1000)}\nNormal for this coin: ±${(sp.norm * 100).toFixed(2)}%. Open the chart → chip Δ for prices and funding.`; name.appendChild(x); }
+    // T — активний TWAP Hyperliquid на цій монеті (≥ Min % vol); колонку State не займає
+    const tw = twapOf(r.ticker);
+    if (tw) {
+      const x = el("span", "gl " + (tw.side === "B" ? "twb" : "tws"), "T");
+      x.title = `Hyperliquid TWAP ${tw.side === "B" ? "BUY" : "SELL"} · ${tw.open ? "open" : "close"} · ${Math.round(tw.pct_vol * 100)}% vol · `
+        + `${twUsd(tw.usd)} / ${twDur(tw.minutes)} · filled ${Math.round((tw.filled || 0) * 100)}%`;
+      name.appendChild(x);
+    }
     if (r.source === "auto" && r.channel !== "woke") { const x = el("span", "gl auto", "A"); x.title = "Added by the market scanner"; name.appendChild(x); }
     const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
     // ковзна 5-хв оцінка, новіша за офіційний бар, — дрібно під P: сірим, кольоровим — якщо вона вже Кандидат / Alert
@@ -2180,6 +2268,73 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     row.addEventListener("mousedown", (e) => { if (e.shiftKey) e.preventDefault(); });    // Shift + клік не виділяє текст
     box.appendChild(row);
   };
+  // ---------- TWAP · HL (18.10, варіант B): активні TWAP Hyperliquid з /api/twaps (hl_twap.py, лише в пам'яті) ----------
+  // % Vol — швидкість TWAP ÷ оборот монети за хвилину за останню годину (Binance + Hyperliquid); фільтр Min % vol і Binance only
+  const TW = { min: LS.get("pd-twap-min", 3), bin: LS.get("pd-twap-bin", true) };
+  const twUsd = (v) => v == null ? "—" : v >= 1e6 ? `$${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)}K` : `$${Math.round(v)}`;
+  const twDur = (min) => min >= 120 ? `${Math.round(min / 60)}h` : `${Math.max(0, Math.ceil(min))}m`;
+  const twLeft = (st0, min) => Math.max(0, st0 + min * 60 - Date.now() / 1000);
+  const twNext = (st0) => Math.round(30 - ((Date.now() / 1000 - st0) % 30)) % 30;
+  const twapsShown = () => (st.twaps?.twaps || []).filter((t) => (!TW.bin || t.binance) && t.pct_vol != null && t.pct_vol * 100 >= TW.min)
+    .sort((a, b) => b.pct_vol - a.pct_vol);
+  const twapOf = (tk) => twapsShown().find((t) => t.base === tk);       // найбільший за % Vol — список уже відсортовано
+  const twapCard = (t) => {
+    const b = t.side === "B", c = el("div", "twc" + (t.in_list ? " inl" : ""));
+    c.dataset.st = t.started; c.dataset.min = t.minutes;
+    const sd = el("span", `sd ${b ? "b" : "s"}${t.open ? "" : " close"}`, `${b ? "BUY" : "SELL"} · ${t.open ? "open" : "close"}`);
+    sd.title = t.open ? "Opens a new position" : "Reduce-only: closes an existing position";
+    const sh = el("span", "share" + (t.pct_vol >= 0.1 ? (b ? " b" : " s") : ""), `${Math.round(t.pct_vol * 100)}%`);
+    sh.append(el("small", "", " vol"));
+    sh.title = `Share of the coin's volume: TWAP ${twUsd(t.usd / t.minutes)}/min vs market ${twUsd((t.hl_min || 0) + (t.binance_min || 0))}/min`
+      + ` over the last hour (Hyperliquid ${twUsd(t.hl_min)}/min, Binance ${twUsd(t.binance_min)}/min)`;
+    const l1 = el("div", "l1"); l1.append(el("span", "tk", t.base), sd, sh);
+    const s1 = el("span"); s1.append(el("b", "", twUsd(t.usd)), ` / ${twDur(t.minutes)}`);
+    const s2 = el("span"); s2.append("Slice ", el("b", "", twUsd(t.slice_usd)), "/30s");
+    if (t.depth_pct != null) s2.append(" · ", el("b", "", `${Math.round(t.depth_pct * 100)}%`), " of depth");
+    s2.title = `One slice every 30 s vs the Hyperliquid order book within ±0.3% on the side the TWAP hits` + (t.depth_usd != null ? ` (${twUsd(t.depth_usd)})` : "");
+    const l2 = el("div", "l2"); l2.append(s1, s2);
+    const bar = el("div", "bar " + (b ? "b" : "s")), fill = el("i"); fill.style.width = `${Math.round((t.filled || 0) * 100)}%`; bar.appendChild(fill);
+    const f = el("span"); f.append("Filled ", el("b", "", `${Math.round((t.filled || 0) * 100)}%`));
+    const lf = el("span"); lf.append(el("b", "tw-left", twDur(twLeft(t.started, t.minutes) / 60)), " left");
+    const nx = el("span"); nx.append("Next ", el("b", "tw-next", `${twNext(t.started)}s`));
+    const dv = el("b", t.dpx != null ? pctCls(t.dpx) : "", t.dpx != null ? fmtPct(t.dpx) : "—");
+    const dp = el("span"); dp.append("Δ Px ", dv); dp.title = "Price change since the TWAP started (Hyperliquid)";
+    const l3 = el("div", "l3"); l3.append(f, lf, nx, dp);
+    c.append(l1, l2, bar, l3);
+    c.title = `${t.coin} on Hyperliquid · started ${fmtTs(t.started)} UTC · wallet ${t.user.slice(0, 6)}…${t.user.slice(-4)}${t.randomize ? " · randomized" : ""}`
+      + (t.in_list ? "\nClick to open the chart" : "\nNot in your list");
+    if (t.in_list) c.addEventListener("click", (e) => selectTicker(t.base, true, e.shiftKey));
+    return c;
+  };
+  const renderTwaps = (box) => {
+    if (st.chartOnly || st.search || st.favOnly || !st.twaps) return;
+    const shown = twapsShown(), open = !!st.secOpen.twap;
+    const h = el("button", "sec twap"); h.setAttribute("aria-expanded", String(open));
+    h.append(el("span", "arr", open ? "▾" : "▸"), el("span", "nm", "TWAP · HL"), el("span", "cnt", String(shown.length)),
+      el("span", "hint", `Hyperliquid TWAP orders · ${(st.twaps.twaps || []).length} active`));
+    secHeader("twap", "twap", h);
+    h.addEventListener("click", () => { st.secOpen.twap = !open; LS.set("pd-sec", st.secOpen); renderList(); });
+    box.appendChild(h);
+    if (!open) return;
+    const bar = el("div", "twbar"), inp = el("input");
+    inp.type = "number"; inp.min = "0"; inp.step = "0.5"; inp.value = TW.min; inp.id = "twMin"; inp.setAttribute("aria-label", "Minimum share of the coin's volume, %");
+    inp.addEventListener("change", () => { TW.min = Math.max(0, +inp.value || 0); LS.set("pd-twap-min", TW.min); renderList(); });
+    const bb = el("button", "", "Binance only"); bb.setAttribute("aria-pressed", String(TW.bin)); bb.title = "Hide coins without a Binance perpetual";
+    bb.addEventListener("click", () => { TW.bin = !TW.bin; LS.set("pd-twap-bin", TW.bin); renderList(); });
+    bar.append("Min", inp, "% vol", bb);
+    if (!st.twaps.ok) bar.append(el("span", "err", st.twaps.error || "TWAP feed unavailable"));
+    else if (!st.twaps.connected) bar.append(el("span", "err", "reconnecting…"));
+    box.appendChild(bar);
+    shown.forEach((t) => box.appendChild(twapCard(t)));
+    if (st.twaps.ok && !shown.length) box.appendChild(el("div", "empty", `No TWAP at ${TW.min}% of volume or more right now.`));
+  };
+  // таймери карток (лишилось, наступна порція) — щосекунди без перемальовування списку
+  setInterval(() => document.querySelectorAll(".twc[data-st]").forEach((c) => {
+    const s0 = +c.dataset.st, m = +c.dataset.min, l = c.querySelector(".tw-left"), n = c.querySelector(".tw-next");
+    if (l) l.textContent = twDur(twLeft(s0, m) / 60);
+    if (n) n.textContent = `${twNext(s0)}s`;
+  }), 1000);
+
   const renderList = () => {
     const box = $("tlist"); box.replaceChildren();
     const sec = sectionRows();
@@ -2195,13 +2350,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       }
       box.appendChild(em);
     }
-    SECS.forEach((x) => {
+    secOrder().forEach((key) => {
+      if (key === "twap") { renderTwaps(box); return; }                        // TWAP · HL — своє відмалювання
+      const x = SECS.find((q) => q.key === key);
       const rows = sec[x.key], pk = pend.filter((q) => (q.channel === "woke" ? "woke" : "list") === x.key);
       if (!rows.length && !pk.length && (st.search || st.favOnly)) return;      // пошук — без порожніх секцій
       const open = !!(st.search || st.secOpen[x.key]);
       const h = el("button", "sec " + x.key); h.setAttribute("aria-expanded", String(open));
       h.append(el("span", "arr", open ? "▾" : "▸"), el("span", "nm", x.name), el("span", "cnt", String(rows.length + pk.length)), el("span", "hint", x.hint));
       h.addEventListener("click", () => { st.secOpen[x.key] = !st.secOpen[x.key]; LS.set("pd-sec", st.secOpen); renderList(); });
+      secHeader(x.key, x.key, h);
       box.appendChild(h);
       if (!open) return;
       rows.forEach((o) => renderRow(box, o.r, o.ev));
@@ -2221,6 +2379,35 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     });
     if (!(st.list?.recent || []).length) rec.appendChild(el("span", "small", "Сигналів ще не було."));
   };
+  // межа між графіком і списком: тягнеш — змінюється ширина списку (запам'ятовується, LS pd-list-w); подвійний клік — 392 px.
+  // Графіки Lightweight Charts підлаштовуються самі (autoSize)
+  (() => {
+    const grip = $("listGrip"), app = $("app");
+    const limit = (w) => Math.round(Math.max(300, Math.min(w, Math.max(300, innerWidth - (app.classList.contains("rail") ? 56 : 248) - 420))));
+    const apply = (w) => { if (w == null) app.style.removeProperty("--list-w"); else app.style.setProperty("--list-w", `${limit(w)}px`); };
+    apply(LS.get("pd-list-w", null));
+    let drag = false;
+    grip.addEventListener("pointerdown", (e) => {
+      drag = true; grip.classList.add("drag"); document.body.style.userSelect = "none";
+      try { grip.setPointerCapture(e.pointerId); } catch (err) { /* без захоплення теж працює, поки курсор над сторінкою */ }
+      e.preventDefault();
+    });
+    grip.addEventListener("pointermove", (e) => { if (drag) apply(app.getBoundingClientRect().right - e.clientX); });
+    const done = () => {
+      if (!drag) return;
+      drag = false; grip.classList.remove("drag"); document.body.style.userSelect = "";
+      LS.set("pd-list-w", Math.round($("rightPanel").getBoundingClientRect().width));
+    };
+    grip.addEventListener("pointerup", done); grip.addEventListener("pointercancel", done);
+    grip.addEventListener("dblclick", () => { LS.set("pd-list-w", null); apply(null); });
+    grip.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      const w = limit($("rightPanel").getBoundingClientRect().width + (e.key === "ArrowLeft" ? 20 : -20));
+      apply(w); LS.set("pd-list-w", w);
+    });
+    addEventListener("resize", () => { const w = LS.get("pd-list-w", null); if (w != null) apply(w); });   // вікно звузилось — тримаємо межі
+  })();
   // межа «Останніх сигналів»: тягнеш — змінюється висота блоку (запам'ятовується, LS pd-recent-h); подвійний клік — як було
   (() => {
     const grip = $("recentGrip"), box = $("recent");
@@ -3159,6 +3346,18 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     }
   };
   loadSpreads(); setInterval(loadSpreads, 10000);
+  // TWAP · HL: раз на 5 с; список перемальовуємо лише коли змінились самі TWAP (а не таймери) і не під час введення фільтра
+  let twKey = null;
+  const loadTwaps = async () => {
+    if (st.chartOnly) return;
+    let d; try { d = await api("/api/twaps", { quiet: true }); } catch (e) { d = { ok: false, error: "TWAP feed unavailable", twaps: [] }; }
+    st.twaps = d;
+    const key = JSON.stringify([d.ok, d.connected, (d.twaps || []).map((t) => [t.id, Math.round((t.pct_vol || 0) * 100),
+      Math.round((t.filled || 0) * 100), t.dpx != null ? Math.round(t.dpx * 1000) : null, t.depth_pct != null ? Math.round(t.depth_pct * 100) : null])]);
+    if (key === twKey || document.activeElement?.id === "twMin") return;
+    twKey = key; renderList();
+  };
+  loadTwaps(); setInterval(loadTwaps, 5000);
 
   document.querySelectorAll("#oiSeg [data-oi]").forEach((b) => b.addEventListener("click", () => { st.oiUsd = b.dataset.oi === "usd"; LS.set("pd-oiusd", st.oiUsd); pressIn("oiSeg", "oi", b.dataset.oi); renderAllCharts(); }));
   $("favBtn").setAttribute("aria-pressed", String(st.favOnly));

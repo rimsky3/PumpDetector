@@ -423,6 +423,18 @@ cut-off is in-sample: a high probability there means the model remembers the pum
 no extra dependencies. `#forecast/NMR` opens a ticker, `#journal` the journal. Every block has a **?** button
 with a short explanation.
 
+**List width (since 2026-10-19).** In the full dashboard the border between the chart and the ticker list is a handle: drag it to make the list wider or narrower (300 px up to what leaves the chart ~420 px), ← / → when it is focused; the width is remembered per browser (`localStorage` `pd-list-w`), and a double-click restores 392 px. Charts resize themselves. Not shown on the list-only page, in the app's chart window or on narrow screens.
+
+**Section order (since 2026-10-19).** The list sections (NOW, TWAP · HL, WOKE UP, WATCHLIST, QUIET) can be reordered by dragging a section header (the ⋮⋮ grip shows on hover) or with Alt + ↑ / ↓ on a focused header; double-clicking the grip restores the default order. The order is remembered per browser and per PD Watchlist app (`localStorage` `pd-sec-order`), and ↑ / ↓ through tickers follows it.
+
+**TWAP · HL section (since 2026-10-18).** Between NOW and WOKE UP the list shows active Hyperliquid TWAP orders as cards
+(`/api/twaps` ← `hl_twap.py`): coin, side and type (`BUY · open`, `SELL · close` = reduce-only), **% Vol** — the TWAP's
+dollars per minute divided by the coin's volume per minute over the last hour on Binance (`trade_bars`) and Hyperliquid
+together, size and duration, `Slice $X/30s · N% of depth` (one slice vs the Hyperliquid book within ±0.3% on the side it
+hits), a progress bar, `Filled`, time left, seconds to the next slice and `Δ Px` since the TWAP started. Filters `Min N% vol`
+(default 3) and `Binance only` (default on) are remembered in the browser. A coin of the list with a TWAP above the filter
+gets a `T` glyph after the ticker (green buy, red sell); clicking a card opens the coin if it is in the list.
+
 **List-only page (since 2026-10-15).** `#list` shows only the ticker list (with the Sound control and a link to the
 full dashboard) and loads no charts; clicking a ticker opens it in the full dashboard (in the PD Watchlist app — in the
 app's own chart window; Shift + click — a new additional chart window). It is the page behind the PD Watchlist window (`watch_app/`), and it also works in a narrow

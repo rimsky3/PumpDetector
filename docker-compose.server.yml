@@ -97,6 +97,18 @@ services:
         condition: service_healthy
     mem_limit: 300m
 
+  # активні TWAP Hyperliquid по всьому ринку (потік угод → адреси з порціями кожні 30 с → twapHistory), лише в пам'яті;
+  # дашборд питає http://hltwap:8790/twaps (порт лише всередині мережі compose); hl_twap.py; ~2–4% ядра
+  hltwap:
+    build: .
+    image: pump-detector
+    restart: unless-stopped
+    command: python hl_twap.py
+    working_dir: /app
+    volumes:
+      - ./:/app
+    mem_limit: 200m
+
   # HTTPS + логін/пароль перед дашбордом: https://<PD_HOST> з будь-якого пристрою (Caddyfile; значення — у .env)
   caddy:
     image: caddy:2

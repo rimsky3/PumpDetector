@@ -1275,6 +1275,45 @@ def list_tickers() -> set[str]:
     return _list_tickers["set"]
 
 
+# ---------- TWAP Hyperliquid (hl_twap.py, контейнер hltwap, лише в пам'яті; 18.10) ----------
+HLTWAP_URL = os.getenv("HLTWAP_URL", "http://hltwap:8790/twaps")
+TWAP_CACHE_SEC = 3
+_twaps: dict = {"at": 0.0, "data": None}
+
+
+def twaps_view(conn) -> dict:
+    """Активні TWAP Hyperliquid з контейнера hltwap + % Vol: швидкість TWAP ($ за хвилину) ÷ оборот монети за хвилину за
+    останню годину на Binance (закриті 5-хв бари trade_bars від traderec) і Hyperliquid разом. in_list — монета у списку."""
+    if _twaps["data"] is not None and time.time() - _twaps["at"] < TWAP_CACHE_SEC:
+        return _twaps["data"]
+    import requests
+    try:
+        d = requests.get(HLTWAP_URL, timeout=3).json()
+    except Exception as e:
+        return {"ok": False, "error": f"TWAP feed unavailable ({type(e).__name__})", "twaps": []}
+    syms = sorted({t["binance"] for t in d.get("twaps", []) if t.get("binance")})
+    bmin = {}
+    if syms:
+        rows = conn.execute("""SELECT symbol, sum(v_buy + v_sell), count(*) FROM trade_bars
+                               WHERE exchange = 'Binance' AND symbol = ANY(%s)
+                                 AND ts >= now() - interval '65 minutes' AND ts < now() - interval '5 minutes'
+                               GROUP BY 1""", (syms,)).fetchall()
+        bmin = {s: float(v) / (n * 5) for s, v, n in rows if n}        # $ за хвилину по наявних закритих барах
+    lst = list_tickers()
+    for t in d.get("twaps", []):
+        b = bmin.get(t["binance"]) if t.get("binance") else None
+        flow = (t.get("hl_min") or 0) + (b or 0)
+        t["binance_min"] = b
+        t["pct_vol"] = (t["usd"] / t["minutes"]) / flow if flow > 0 and t.get("minutes") else None
+        t["base"] = t["binance"][:-4] if t.get("binance") else t["coin"]
+        t["in_list"] = t["base"] in lst
+        t["depth_pct"] = t["slice_usd"] / t["depth_usd"] if t.get("depth_usd") else None
+        t["dpx"] = t["px"] / t["px_start"] - 1 if t.get("px") and t.get("px_start") else None
+    d["ok"] = True
+    _twaps.update(at=time.time(), data=d)
+    return d
+
+
 def scan_view(q: dict) -> dict:
     """Картка «Сканер»: налаштування, скільки пройшло б зараз, результат набору на розмічених пампах, авто-список.
     Параметри запиту (preset або пороги «Свій») — попередній перегляд ДО збереження."""
@@ -1706,6 +1745,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._route(lambda c: market.api(c, int(q.get("days", 7))))
         if url.path == "/api/book":            # біди / аски ±2% наживо (Binance + Bybit), кеш кілька секунд
             return self._route(lambda c: orderbook.live(c, q.get("symbol", "").upper()) or {"ratio": None})
+        if url.path == "/api/twaps":            # активні TWAP Hyperliquid (hl_twap.py) + % Vol з обороту Binance
+            return self._route(twaps_view)
         if url.path == "/api/spreads":          # розбіжність цін між біржами (spread.py): події, тікери списку, налаштування
             return self._send(200, spread.api(State.spread))
         if url.path == "/api/spread":           # картка тікера: бід / аск, розмір на кращій ціні, funding, 3 години
