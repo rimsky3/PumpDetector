@@ -410,7 +410,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 /* TWAP · HL (18.10, варіант B макета https://claude.ai/artifact/DzVCRPCaM6xa4pJqgyPuyn): картки активних TWAP Hyperliquid */
 .sec.twap { color: var(--link); } .sec.twap .cnt { background: var(--live-bg); color: var(--link); }
 .twbar { display: flex; align-items: center; gap: 8px; padding: 0 14px 6px; font-size: 11px; color: var(--fg3); flex-wrap: wrap; }
-.twbar input { width: 38px; height: 20px; background: var(--card); color: var(--fg); border: 1px solid var(--line2); border-radius: 5px;
+.twbar input { width: 44px; height: 20px; background: var(--card); color: var(--fg); border: 1px solid var(--line2); border-radius: 5px;
   font: inherit; font-variant-numeric: tabular-nums; text-align: right; padding: 0 4px; }
 .twbar button { height: 20px; padding: 0 8px; border-radius: 5px; border: 1px solid var(--line2); background: none; color: var(--fg3); font: inherit; }
 .twbar button[aria-pressed="true"] { background: var(--line2); color: var(--fg); }
@@ -2270,12 +2270,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   // ---------- TWAP · HL (18.10, варіант B): активні TWAP Hyperliquid з /api/twaps (hl_twap.py, лише в пам'яті) ----------
   // % Vol — швидкість TWAP ÷ оборот монети за хвилину за останню годину (Binance + Hyperliquid); фільтр Min % vol і Binance only
-  const TW = { min: LS.get("pd-twap-min", 3), bin: LS.get("pd-twap-bin", true) };
+  const TW = { min: LS.get("pd-twap-min", 3), bin: LS.get("pd-twap-bin", true), usdK: LS.get("pd-twap-usd", 0) };   // usdK — Min size, тис. $
   const twUsd = (v) => v == null ? "—" : v >= 1e6 ? `$${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)}K` : `$${Math.round(v)}`;
   const twDur = (min) => min >= 120 ? `${Math.round(min / 60)}h` : `${Math.max(0, Math.ceil(min))}m`;
   const twLeft = (st0, min) => Math.max(0, st0 + min * 60 - Date.now() / 1000);
   const twNext = (st0) => Math.round(30 - ((Date.now() / 1000 - st0) % 30)) % 30;
-  const twapsShown = () => (st.twaps?.twaps || []).filter((t) => (!TW.bin || t.binance) && t.pct_vol != null && t.pct_vol * 100 >= TW.min)
+  const twapsShown = () => (st.twaps?.twaps || []).filter((t) => (!TW.bin || t.binance) && t.pct_vol != null && t.pct_vol * 100 >= TW.min
+      && t.usd >= TW.usdK * 1000)
     .sort((a, b) => b.pct_vol - a.pct_vol);
   const twapOf = (tk) => twapsShown().find((t) => t.base === tk);       // найбільший за % Vol — список уже відсортовано
   const twapCard = (t) => {
@@ -2289,10 +2290,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       + ` over the last hour (Hyperliquid ${twUsd(t.hl_min)}/min, Binance ${twUsd(t.binance_min)}/min)`;
     const l1 = el("div", "l1"); l1.append(el("span", "tk", t.base), sd, sh);
     const s1 = el("span"); s1.append(el("b", "", twUsd(t.usd)), ` / ${twDur(t.minutes)}`);
+    const ago = Math.max(0, Math.round((Date.now() / 1000 - t.started) / 60)), ts = fmtTs(t.started);
+    const s0 = el("span"); s0.append("since ", el("b", "", Date.now() / 1000 - t.started < 20 * 3600 ? ts.slice(-5) : ts), " UTC");
+    s0.title = `Started ${ts} UTC · ${ago >= 120 ? `${Math.round(ago / 60)} h` : `${ago} min`} ago`;
     const s2 = el("span"); s2.append("Slice ", el("b", "", twUsd(t.slice_usd)), "/30s");
     if (t.depth_pct != null) s2.append(" · ", el("b", "", `${Math.round(t.depth_pct * 100)}%`), " of depth");
     s2.title = `One slice every 30 s vs the Hyperliquid order book within ±0.3% on the side the TWAP hits` + (t.depth_usd != null ? ` (${twUsd(t.depth_usd)})` : "");
-    const l2 = el("div", "l2"); l2.append(s1, s2);
+    const l2 = el("div", "l2"); l2.append(s1, s0, s2);
     const bar = el("div", "bar " + (b ? "b" : "s")), fill = el("i"); fill.style.width = `${Math.round((t.filled || 0) * 100)}%`; bar.appendChild(fill);
     const f = el("span"); f.append("Filled ", el("b", "", `${Math.round((t.filled || 0) * 100)}%`));
     const lf = el("span"); lf.append(el("b", "tw-left", twDur(twLeft(t.started, t.minutes) / 60)), " left");
@@ -2321,12 +2325,16 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     inp.addEventListener("change", () => { TW.min = Math.max(0, +inp.value || 0); LS.set("pd-twap-min", TW.min); renderList(); });
     const bb = el("button", "", "Binance only"); bb.setAttribute("aria-pressed", String(TW.bin)); bb.title = "Hide coins without a Binance perpetual";
     bb.addEventListener("click", () => { TW.bin = !TW.bin; LS.set("pd-twap-bin", TW.bin); renderList(); });
-    bar.append("Min", inp, "% vol", bb);
+    const usd = el("input"); usd.type = "number"; usd.min = "0"; usd.step = "10"; usd.value = TW.usdK; usd.id = "twMinUsd";
+    usd.setAttribute("aria-label", "Minimum TWAP size, thousand $"); usd.title = "Hide TWAPs smaller than this total size, thousand $ (0 — off)";
+    usd.addEventListener("change", () => { TW.usdK = Math.max(0, +usd.value || 0); LS.set("pd-twap-usd", TW.usdK); renderList(); });
+    bar.append("Min", inp, el("span", "", "% vol"), el("span", "", "·"), el("span", "", "$"), usd, el("span", "", "K"), bb);
     if (!st.twaps.ok) bar.append(el("span", "err", st.twaps.error || "TWAP feed unavailable"));
     else if (!st.twaps.connected) bar.append(el("span", "err", "reconnecting…"));
     box.appendChild(bar);
     shown.forEach((t) => box.appendChild(twapCard(t)));
-    if (st.twaps.ok && !shown.length) box.appendChild(el("div", "empty", `No TWAP at ${TW.min}% of volume or more right now.`));
+    if (st.twaps.ok && !shown.length) box.appendChild(el("div", "empty",
+      `No TWAP at ${TW.min}% of volume${TW.usdK ? ` and $${TW.usdK}K` : ""} or more right now.`));
   };
   // таймери карток (лишилось, наступна порція) — щосекунди без перемальовування списку
   setInterval(() => document.querySelectorAll(".twc[data-st]").forEach((c) => {
@@ -3354,7 +3362,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     st.twaps = d;
     const key = JSON.stringify([d.ok, d.connected, (d.twaps || []).map((t) => [t.id, Math.round((t.pct_vol || 0) * 100),
       Math.round((t.filled || 0) * 100), t.dpx != null ? Math.round(t.dpx * 1000) : null, t.depth_pct != null ? Math.round(t.depth_pct * 100) : null])]);
-    if (key === twKey || document.activeElement?.id === "twMin") return;
+    if (key === twKey || ["twMin", "twMinUsd"].includes(document.activeElement?.id)) return;
     twKey = key; renderList();
   };
   loadTwaps(); setInterval(loadTwaps, 5000);

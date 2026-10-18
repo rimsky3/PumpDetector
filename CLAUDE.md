@@ -115,7 +115,7 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
 - `hl_twap.py` — активні TWAP Hyperliquid (18.10, контейнер hltwap): потік угод усіх перпів (адреси є в угодах) → адреса з
   порціями кожні ~30 с → підтвердження `info twapHistory`; стакан l2Book для монет з TWAP. ЛИШЕ В ПАМ'ЯТІ (рішення власника:
   «просто бачити») → `http://hltwap:8790/twaps` → `dashboard.twaps_view` (`/api/twaps`, + оборот Binance з trade_bars → % Vol)
-  → секція «TWAP · HL» у списку (картки, варіант B макета, між NOW і WOKE UP; Min % vol, Binance only) і значок `T` на монеті.
+  → секція «TWAP · HL» у списку (картки, варіант B макета, між NOW і WOKE UP; фільтри Min % vol, Min $ K — загальний розмір, Binance only; час старту since HH:MM UTC) і значок `T` на монеті.
   «Роботи» Binance (детектор у traderec) — ще не почато.
 - `backtest.py` — широкий бектест на монетах поза навчанням; `monitor.py` — калібрування і дрейф наживо.
 - `experiments/` — разові дослідження (кожне з argparse і звітом у `reports/`); `notes/` — нотатки власника (не в git).

@@ -430,9 +430,10 @@ with a short explanation.
 **TWAP · HL section (since 2026-10-18).** Between NOW and WOKE UP the list shows active Hyperliquid TWAP orders as cards
 (`/api/twaps` ← `hl_twap.py`): coin, side and type (`BUY · open`, `SELL · close` = reduce-only), **% Vol** — the TWAP's
 dollars per minute divided by the coin's volume per minute over the last hour on Binance (`trade_bars`) and Hyperliquid
-together, size and duration, `Slice $X/30s · N% of depth` (one slice vs the Hyperliquid book within ±0.3% on the side it
+together, size and duration, start time (`since HH:MM UTC`; full date and minutes ago in the tooltip), `Slice $X/30s · N% of depth` (one slice vs the Hyperliquid book within ±0.3% on the side it
 hits), a progress bar, `Filled`, time left, seconds to the next slice and `Δ Px` since the TWAP started. Filters `Min N% vol`
-(default 3) and `Binance only` (default on) are remembered in the browser. A coin of the list with a TWAP above the filter
+(default 3), `$ N K` — minimum total TWAP size in thousand dollars (default 0, off; since 2026-10-19) and
+`Binance only` (default on) are remembered in the browser; a TWAP is shown only if it passes all of them. A coin of the list with a TWAP above the filter
 gets a `T` glyph after the ticker (green buy, red sell); clicking a card opens the coin if it is in the list.
 
 **List-only page (since 2026-10-15).** `#list` shows only the ticker list (with the Sound control and a link to the
