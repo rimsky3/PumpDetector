@@ -6,7 +6,8 @@ tg_bot.py — Telegram-бот Pump Detector (2026-10-06): сповіщення �
 дашборді. Скринер і дашборд не змінюються.
 
 Що надсилає (вмикається кнопками в /settings): 🔴 Alert (вхід моделі), ⚪ Late (Alert без входу моделі, з 12.10),
-🟠 Кандидат (за замовчуванням вимкнено), 🟣 «прокидається», 🔷 Spread (ціни тікера розійшлись між біржами, з 13.10).
+🟠 Кандидат (за замовчуванням вимкнено), 🟣 «прокидається», 🔷 Spread (ціни тікера розійшлись між біржами, з 13.10),
+⏳ TWAP (новий TWAP Hyperliquid пройшов фільтри секції «TWAP · HL» дашборда, з 19.10; за замовчуванням вимкнено).
 Одне повідомлення на епізод; під ним — 📈 Графік (посилання на дашборд), 🔕 заглушити тікер на 2 год, 📌 у watchlist
 (для авто-тікерів сканера). Кнопки внизу чату: 📋 Статус, 📊 Результати (сьогодні / вчора / тиждень / місяць),
 ⚙️ Налаштування.
@@ -51,12 +52,14 @@ MUTE_HOURS = 2
 POLL_SEC = 5
 JOURNAL_TIMEOUT = 360                     # с: скільки чекати журнал (холодний розрахунок на сервері — 240 с, замір 13.10)
 SPREAD_BURST = 5                          # більше подій розбіжності за один прохід — одне зведене повідомлення
+TWAP_BURST = 5                            # більше нових TWAP за один прохід — одне зведене повідомлення
 # alert — лише ВХІД моделі (угода, як мітка «Вхід» на графіку); realert — новий спалах Alert, поки угода моделі відкрита
 # (до 2026-10-08 такі приходили як звичайний Alert; власник: «заходжу з моделлю», тож за замовчуванням вимкнено)
 # spread — ціни тікера аномально розійшлись між біржами (spread.py, 13.10): події монітора дашборда, /api/spreads
-DEFAULTS = {"alert": True, "realert": False, "late": True, "cand": False, "wake": True, "fp": True, "woke": True, "spread": True}
+DEFAULTS = {"alert": True, "realert": False, "late": True, "cand": False, "wake": True, "fp": True, "woke": True, "spread": True,
+            "twap": False}     # TWAP · HL (19.10) — вмикає власник у /settings
 TITLES = {"alert": "🔴 Alert", "realert": "🔁 Re-alert", "late": "⚪ Late", "cand": "🟠 Candidate", "wake": "🟣 Volume 5m", "fp": "🟢 b / p",
-          "woke": "🟪 WOKE", "spread": "🔷 Spread"}
+          "woke": "🟪 WOKE", "spread": "🔷 Spread", "twap": "⏳ TWAP"}
 MENU = [["📋 Статус", "📊 Результати", "⚙️ Налаштування"]]
 
 
@@ -263,6 +266,55 @@ class Bot:
         if new:
             self.st.save()
 
+    def notify_twaps(self, first: bool):
+        """Нові TWAP Hyperliquid, що пройшли фільтри секції «TWAP · HL» (/api/twaps → events; фільтри — у дашборді, одні для всіх).
+        first — після старту бота лише запам'ятати, що вже було."""
+        s, new, fresh = self.st.d, False, []
+        for e in self.get("/api/twaps", timeout=20).get("events", []):
+            key = f"twap|{e['id']}"
+            if key in s["sent"]:
+                continue
+            with self.st.lock:
+                s["sent"][key] = time.time()
+            new = True
+            if first or not s["settings"].get("twap", DEFAULTS["twap"]) or s["muted"].get(e["base"], 0) > time.time():
+                continue
+            fresh.append(e)
+        if len(fresh) > TWAP_BURST:
+            try:
+                top = sorted(fresh, key=lambda e: -(e.get("pct_vol") or 0))
+                self.send(f"⏳ <b>TWAP</b> · одразу {len(fresh)} нових на Hyperliquid\n"
+                          + ", ".join(f"{html.escape(e['base'])} {'BUY' if e['side'] == 'B' else 'SELL'} {(e.get('pct_vol') or 0):.0%}"
+                                      for e in top[:10]) + ("…" if len(top) > 10 else ""))
+            except Exception as ex:
+                print(f"! надсилання twap (зведення): {ex}", flush=True)
+            fresh = []
+        for e in fresh:
+            tk = e["base"]
+            try:
+                mute = {"text": f"🔕 {tk} на {MUTE_HOURS} год", "callback_data": f"mute:{tk}"}
+                buttons = self.signal_buttons(tk, False) if e.get("in_list") else (
+                    [[mute], [{"text": "📌 У watchlist (з'явиться графік)", "callback_data": f"watch:{tk}"}]] if e.get("binance") else [[mute]])
+                self.send(self.twap_text(e), buttons)
+                print(f"[{now():%H:%M:%S}] надіслано twap {tk}", flush=True)
+            except Exception as ex:
+                print(f"! надсилання twap {tk}: {ex}", flush=True)
+        if new:
+            self.st.save()
+
+    @staticmethod
+    def twap_text(e: dict) -> str:
+        side = "BUY" if e["side"] == "B" else "SELL"
+        dur = f"{e['minutes'] / 60:.0f}h" if e["minutes"] >= 120 else f"{e['minutes']}m"
+        usd = lambda v: "—" if v is None else f"${v / 1e6:.1f}M" if v >= 1e6 else f"${v / 1e3:.0f}K" if v >= 1e3 else f"${v:.0f}"   # noqa: E731
+        lines = [f"⏳ <b>TWAP {side} · {'open' if e['open'] else 'close'}</b> — <b>{html.escape(e['base'])}</b>",
+                 f"<b>{(e.get('pct_vol') or 0):.0%} vol</b> · {usd(e['usd'])} / {dur} · since {datetime.fromtimestamp(e['started'], timezone.utc):%H:%M} UTC",
+                 f"Slice {usd(e.get('slice_usd'))}/30s" + (f" · {e['depth_pct']:.0%} of depth" if e.get("depth_pct") is not None else "")
+                 + (f" · Δ Px {e['dpx'] * 100:+.1f}%" if e.get("dpx") is not None else "")]
+        if not e.get("binance"):
+            lines.append("<i>Монети немає на Binance</i>")
+        return "\n".join(lines)
+
     def spread_text(self, e: dict) -> str:
         tk, held = e["ticker"], e.get("held") or 0
         lines = [f"🔷 <b>Spread</b> · <b>{html.escape(tk)}</b>",
@@ -347,7 +399,7 @@ class Bot:
                 f"Контекст: {ctx} за 6 год · покупців на хаях поглинули — обережно з входом, подумай про вихід\n{bar}")
 
     def notifier(self):
-        last_pulse, first, last_full, first_sp = None, True, 0.0, True
+        last_pulse, first, last_full, first_sp, first_tw = None, True, 0.0, True, True
         while True:
             try:
                 if self.st.d["owner"]:
@@ -355,6 +407,12 @@ class Bot:
                     first_sp = False
             except Exception as ex:
                 print(f"! сповіщення spread: {type(ex).__name__}: {ex}", flush=True)
+            try:
+                if self.st.d["owner"]:
+                    self.notify_twaps(first_tw)
+                    first_tw = False
+            except Exception as ex:
+                print(f"! сповіщення twap: {type(ex).__name__}: {ex}", flush=True)
             try:
                 if self.st.d["owner"]:
                     p = self.get("/api/pulse", timeout=20)

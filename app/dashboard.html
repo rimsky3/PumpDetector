@@ -163,6 +163,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .nt-row.cand[aria-pressed="true"] .sw { background: var(--amber); } .nt-row.cand .nt-k { background: var(--amber); }
 .nt-row.wake[aria-pressed="true"] .sw { background: var(--wake); } .nt-row.wake .nt-k { background: var(--wake); }
 .nt-row.woke[aria-pressed="true"] .sw { background: var(--mover); } .nt-row.woke .nt-k { background: var(--mover); }
+.nt-row.twap[aria-pressed="true"] .sw { background: var(--link); } .nt-row.twap .nt-k { background: var(--link); }
 .mv-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .mv-ttl { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--mover); }
 .mv-seg { display: inline-flex; gap: 3px; padding: 2px; background: var(--side); border-radius: 7px; }
@@ -985,7 +986,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     chartOnly: location.hash.split("/")[0] === "#chart",
     meta: null, list: null, favOnly: LS.get("pd-fav-only", false), sort: "p",
     secOpen: { now: true, twap: true, woke: true, list: true, quiet: false, ...LS.get("pd-sec", {}) }, search: "", fav: new Set(LS.get("pd-fav", [])), gone: new Set(), liveStops: new Map(),
-    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), notifySpread: LS.get("pd-notify-spread", false), seen: new Set(LS.get("pd-seen", [])),
+    notify: LS.get("pd-notify", false), notifyCand: LS.get("pd-notify-cand", false), notifyWake: LS.get("pd-notify-wake", false), notifyWoke: LS.get("pd-notify-woke", false), notifyRe: LS.get("pd-notify-re", false), notifySpread: LS.get("pd-notify-spread", false), notifyTwap: LS.get("pd-notify-twap", false), seen: new Set(LS.get("pd-seen", [])),
     spreads: null,                      // /api/spreads: події розбіжності цін між біржами, тікери списку, налаштування (spread.py)
     jDays: "30", jFrom: null, jTo: null, jKind: LS.get("pd-jkind", "hist"), jOut: "all", rule: LS.get("pd-rule", { horizon: 24, price: 15, oi: 20 }), journal: null,
   };
@@ -2270,14 +2271,18 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   // ---------- TWAP · HL (18.10, варіант B): активні TWAP Hyperliquid з /api/twaps (hl_twap.py, лише в пам'яті) ----------
   // % Vol — швидкість TWAP ÷ оборот монети за хвилину за останню годину (Binance + Hyperliquid); фільтр Min % vol і Binance only
-  const TW = { min: LS.get("pd-twap-min", 3), bin: LS.get("pd-twap-bin", true), usdK: LS.get("pd-twap-usd", 0) };   // usdK — Min size, тис. $
+  // фільтри — на сервері (twap_config.json, 19.10): одні для секції, звуку й Telegram
+  const twCfg = () => ({ min_vol_pct: 3, min_usd_k: 0, binance_only: true, alert_open_only: true, ...(st.twaps?.config || {}) });
+  const saveTwCfg = async (patch) => {
+    try { const r = await api("/api/twaps/config", { method: "POST", body: JSON.stringify(patch) }); if (st.twaps) st.twaps.config = r.config; }
+    catch (e) { /* api() сам покаже помилку */ }
+    twKey = null; loadTwaps();
+  };
   const twUsd = (v) => v == null ? "—" : v >= 1e6 ? `$${(v / 1e6).toFixed(v >= 1e7 ? 0 : 1)}M` : v >= 1e3 ? `$${(v / 1e3).toFixed(v >= 1e4 ? 0 : 1)}K` : `$${Math.round(v)}`;
   const twDur = (min) => min >= 120 ? `${Math.round(min / 60)}h` : `${Math.max(0, Math.ceil(min))}m`;
   const twLeft = (st0, min) => Math.max(0, st0 + min * 60 - Date.now() / 1000);
   const twNext = (st0) => Math.round(30 - ((Date.now() / 1000 - st0) % 30)) % 30;
-  const twapsShown = () => (st.twaps?.twaps || []).filter((t) => (!TW.bin || t.binance) && t.pct_vol != null && t.pct_vol * 100 >= TW.min
-      && t.usd >= TW.usdK * 1000)
-    .sort((a, b) => b.pct_vol - a.pct_vol);
+  const twapsShown = () => (st.twaps?.twaps || []).filter((t) => t.shown).sort((a, b) => b.pct_vol - a.pct_vol);
   const twapOf = (tk) => twapsShown().find((t) => t.base === tk);       // найбільший за % Vol — список уже відсортовано
   const twapCard = (t) => {
     const b = t.side === "B", c = el("div", "twc" + (t.in_list ? " inl" : ""));
@@ -2320,21 +2325,25 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     h.addEventListener("click", () => { st.secOpen.twap = !open; LS.set("pd-sec", st.secOpen); renderList(); });
     box.appendChild(h);
     if (!open) return;
-    const bar = el("div", "twbar"), inp = el("input");
-    inp.type = "number"; inp.min = "0"; inp.step = "0.5"; inp.value = TW.min; inp.id = "twMin"; inp.setAttribute("aria-label", "Minimum share of the coin's volume, %");
-    inp.addEventListener("change", () => { TW.min = Math.max(0, +inp.value || 0); LS.set("pd-twap-min", TW.min); renderList(); });
-    const bb = el("button", "", "Binance only"); bb.setAttribute("aria-pressed", String(TW.bin)); bb.title = "Hide coins without a Binance perpetual";
-    bb.addEventListener("click", () => { TW.bin = !TW.bin; LS.set("pd-twap-bin", TW.bin); renderList(); });
-    const usd = el("input"); usd.type = "number"; usd.min = "0"; usd.step = "10"; usd.value = TW.usdK; usd.id = "twMinUsd";
+    const cfg = twCfg(), bar = el("div", "twbar"), inp = el("input");
+    bar.title = "Filters are shared: this section, the TWAP sound and Telegram";
+    inp.type = "number"; inp.min = "0"; inp.step = "0.5"; inp.value = cfg.min_vol_pct; inp.id = "twMin"; inp.setAttribute("aria-label", "Minimum share of the coin's volume, %");
+    inp.addEventListener("change", () => saveTwCfg({ min_vol_pct: Math.max(0, +inp.value || 0) }));
+    const bb = el("button", "", "Binance only"); bb.setAttribute("aria-pressed", String(cfg.binance_only)); bb.title = "Hide coins without a Binance perpetual";
+    bb.addEventListener("click", () => saveTwCfg({ binance_only: !cfg.binance_only }));
+    const usd = el("input"); usd.type = "number"; usd.min = "0"; usd.step = "10"; usd.value = cfg.min_usd_k; usd.id = "twMinUsd";
     usd.setAttribute("aria-label", "Minimum TWAP size, thousand $"); usd.title = "Hide TWAPs smaller than this total size, thousand $ (0 — off)";
-    usd.addEventListener("change", () => { TW.usdK = Math.max(0, +usd.value || 0); LS.set("pd-twap-usd", TW.usdK); renderList(); });
-    bar.append("Min", inp, el("span", "", "% vol"), el("span", "", "·"), el("span", "", "$"), usd, el("span", "", "K"), bb);
+    usd.addEventListener("change", () => saveTwCfg({ min_usd_k: Math.max(0, +usd.value || 0) }));
+    const ob = el("button", "", "🔔 open only"); ob.setAttribute("aria-pressed", String(cfg.alert_open_only));
+    ob.title = "Sound and Telegram only for TWAPs that open a position (reduce-only closes are shown but stay silent)";
+    ob.addEventListener("click", () => saveTwCfg({ alert_open_only: !cfg.alert_open_only }));
+    bar.append("Min", inp, el("span", "", "% vol"), el("span", "", "·"), el("span", "", "$"), usd, el("span", "", "K"), bb, ob);
     if (!st.twaps.ok) bar.append(el("span", "err", st.twaps.error || "TWAP feed unavailable"));
     else if (!st.twaps.connected) bar.append(el("span", "err", "reconnecting…"));
     box.appendChild(bar);
     shown.forEach((t) => box.appendChild(twapCard(t)));
     if (st.twaps.ok && !shown.length) box.appendChild(el("div", "empty",
-      `No TWAP at ${TW.min}% of volume${TW.usdK ? ` and $${TW.usdK}K` : ""} or more right now.`));
+      `No TWAP at ${twCfg().min_vol_pct}% of volume${twCfg().min_usd_k ? ` and $${twCfg().min_usd_k}K` : ""} or more right now.`));
   };
   // таймери карток (лишилось, наступна порція) — щосекунди без перемальовування списку
   setInterval(() => document.querySelectorAll(".twc[data-st]").forEach((c) => {
@@ -2784,6 +2793,18 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     } catch (e) {}
   };
   // Spread — два низхідні тони: ціни тікера аномально розійшлись між біржами (spread.py)
+  // TWAP: три короткі однакові тони (рівні порції — як сам TWAP)
+  const twapTone = () => {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.13, 0.26].forEach((dt) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.frequency.value = 620; o.connect(g); g.connect(audioCtx.destination);
+        const t = audioCtx.currentTime + dt; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.14, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+        o.start(t); o.stop(t + 0.1);
+      });
+    } catch (e) {}
+  };
   const spreadTone = () => {
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -2805,6 +2826,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     { key: "notifyWake", ls: "pd-notify-wake", cls: "wake", name: "Volume 5m", desc: "Voice: “Volume” + ticker · not an entry signal" },
     { key: "notifyWoke", ls: "pd-notify-woke", cls: "woke", name: "Woke", desc: "Two rising tones · dormant coin came alive (first trigger)" },
     { key: "notifySpread", ls: "pd-notify-spread", cls: "spread", name: "Spread", desc: "Two falling tones · prices diverged between exchanges (thresholds — Spread ▾)" },
+    { key: "notifyTwap", ls: "pd-notify-twap", cls: "twap", name: "TWAP", desc: "Three short tones · a new Hyperliquid TWAP passed the TWAP · HL filters" },
   ];
   const askPermission = async () => {
     if ("Notification" in window && Notification.permission === "default") { try { await Notification.requestPermission(); } catch (e) {} }
@@ -2830,7 +2852,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         if (!st[r.key]) return;
         // звук дозволено лише після дії користувача — «розігріваємо» цим кліком
         if (r.key === "notifyWake") { say("Volume test"); return; }
-        ({ notify: beep, notifyRe: reTone, notifyCand: chime, notifyWoke: wokeTone, notifySpread: spreadTone })[r.key]();
+        ({ notify: beep, notifyRe: reTone, notifyCand: chime, notifyWoke: wokeTone, notifySpread: spreadTone, notifyTwap: twapTone })[r.key]();
         await askPermission();
       });
       p.appendChild(b);
@@ -3355,12 +3377,30 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   };
   loadSpreads(); setInterval(loadSpreads, 10000);
   // TWAP · HL: раз на 5 с; список перемальовуємо лише коли змінились самі TWAP (а не таймери) і не під час введення фільтра
-  let twKey = null;
+  let twKey = null, twFirst = true;
   const loadTwaps = async () => {
     if (st.chartOnly) return;
-    let d; try { d = await api("/api/twaps", { quiet: true }); } catch (e) { d = { ok: false, error: "TWAP feed unavailable", twaps: [] }; }
+    let d; try { d = await api("/api/twaps", { quiet: true }); } catch (e) { d = { ok: false, error: "TWAP feed unavailable", twaps: [], events: [] }; }
     st.twaps = d;
-    const key = JSON.stringify([d.ok, d.connected, (d.twaps || []).map((t) => [t.id, Math.round((t.pct_vol || 0) * 100),
+    // нові TWAP, що пройшли фільтри (сервер дає кожен раз; після завантаження сторінки старі не озвучуємо)
+    const fresh = (d.events || []).filter((e) => !st.seen.has(`tw|${e.id}`));
+    fresh.forEach((e) => st.seen.add(`tw|${e.id}`));
+    if (fresh.length) LS.set("pd-seen", [...st.seen].slice(-300));
+    if (!twFirst && fresh.length && st.notifyTwap) {
+      twapTone();
+      if ("Notification" in window && Notification.permission === "granted") {
+        fresh.slice(0, 3).forEach((e) => {
+          try {
+            const n = new Notification(`Pump Detector: TWAP ${e.side === "B" ? "BUY" : "SELL"} · ${e.open ? "open" : "close"} ${e.base}`, {
+              body: `${Math.round((e.pct_vol || 0) * 100)}% vol · ${twUsd(e.usd)} / ${twDur(e.minutes)} · since ${fmtTs(e.started).slice(-5)} UTC`,
+              tag: `pd-tw-${e.id}` });
+            n.onclick = () => { window.focus(); if (e.in_list) selectTicker(e.base); };
+          } catch (err) {}
+        });
+      }
+    }
+    twFirst = false;
+    const key = JSON.stringify([d.ok, d.connected, d.config, (d.twaps || []).map((t) => [t.id, t.shown, Math.round((t.pct_vol || 0) * 100),
       Math.round((t.filled || 0) * 100), t.dpx != null ? Math.round(t.dpx * 1000) : null, t.depth_pct != null ? Math.round(t.depth_pct * 100) : null])]);
     if (key === twKey || ["twMin", "twMinUsd"].includes(document.activeElement?.id)) return;
     twKey = key; renderList();

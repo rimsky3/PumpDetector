@@ -41,3 +41,4 @@ spread_config.json
 build/
 dist/
 watch_app/pd_watch.ico
+twap_config.json

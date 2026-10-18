@@ -101,7 +101,7 @@
 - `spread.py` — розбіжність цін тікера між Binance / Bybit / OKX (13.10): потік у процесі дашборда, 3 запити на весь ринок
   кожні 15 с, у пам'яті (у базу НЕ пише — рішення власника). Подія: розбіжність по біду й аску ≥ min_pct, ≥ norm_x × медіана
   монети, тримається hold_sec. Пороги — `spread_config.json` (змінює дашборд, deploy не чіпає; у git немає).
-  `/api/spreads`, `/api/spread?symbol=`, `SPREAD_MONITOR=0` — вимкнути.
+  `/api/spreads`, `/api/spread?symbol=`, `SPREAD_MONITOR=0` — вимкнути. Так само `twap_config.json` (фільтри TWAP) — у git немає, deploy не чіпає.
 - `label.py` + `tools/label.html` — розмітка, чернетки, черга, «Перенавчити / Прийняти», /compare, /review (сліпий перегляд),
   /debrief («Розбір дня», 12.10: угоди основного режиму за день з журналу, графік з широким контекстом до входу — до 4h /
   90 днів, оцінка Добрий / Поганий / Запізно ДО показу результату → reviews.csv; `review.day_view` / `day_bars`,
@@ -115,7 +115,9 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
 - `hl_twap.py` — активні TWAP Hyperliquid (18.10, контейнер hltwap): потік угод усіх перпів (адреси є в угодах) → адреса з
   порціями кожні ~30 с → підтвердження `info twapHistory`; стакан l2Book для монет з TWAP. ЛИШЕ В ПАМ'ЯТІ (рішення власника:
   «просто бачити») → `http://hltwap:8790/twaps` → `dashboard.twaps_view` (`/api/twaps`, + оборот Binance з trade_bars → % Vol)
-  → секція «TWAP · HL» у списку (картки, варіант B макета, між NOW і WOKE UP; фільтри Min % vol, Min $ K — загальний розмір, Binance only; час старту since HH:MM UTC) і значок `T` на монеті.
+  → секція «TWAP · HL» у списку (картки, варіант B макета, між NOW і WOKE UP; фільтри Min % vol, Min $ K — загальний розмір, Binance only, 🔔 open only — НА СЕРВЕРІ
+  `twap_config.json`, одні для секції, звуку й Telegram; час старту since HH:MM UTC). Сповіщення: «TWAP» у Sound ▾ і Telegram ⏳ TWAP
+  (за замовчуванням вимкнено) — `twaps_view` дає `events`: TWAP уперше пройшов фільтри; після старту дашборда / зміни фільтрів — без подій і значок `T` на монеті.
   «Роботи» Binance (детектор у traderec) — ще не почато.
 - `backtest.py` — широкий бектест на монетах поза навчанням; `monitor.py` — калібрування і дрейф наживо.
 - `experiments/` — разові дослідження (кожне з argparse і звітом у `reports/`); `notes/` — нотатки власника (не в git).
@@ -136,7 +138,7 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
   `Late` (Alert, у якому входу моделі не було); решта — значки після тікера. Стан угоди — `dashboard.trade_state` за
   основним режимом; епізод Alert — `dashboard.alert_since` (бари Alert з проміжками ≤ 1 год).
 - Сповіщення = входи моделі основного режиму (`dashboard.split_by_trades` → alerts / realerts / cands / lates). Telegram:
-  типи з `tg_bot.DEFAULTS` (Alert, Re-alert, Late, Candidate, Volume 5m, b / p, WOKE, Spread); режим читає зі strategies.json.
+  типи з `tg_bot.DEFAULTS` (Alert, Re-alert, Late, Candidate, Volume 5m, b / p, WOKE, Spread, TWAP); режим читає зі strategies.json.
 - Два вікна графіків; ТФ / FP / профіль — налаштування вікна. `load()` у dashboard.html пропускає повторне завантаження
   за ключем тікер | ТФ | повна інфо | модель | режим — нове, що впливає на вигляд графіка, додавати в цей ключ.
 - Стоп показується, не чекаючи закриття 15m-бару: на відкритому графіку — миттєво в браузері (жива свічка проти стопу,
