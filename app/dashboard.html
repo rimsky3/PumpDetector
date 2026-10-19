@@ -296,7 +296,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .app.chartonly > .center { padding: 8px 10px; }
 .app.chartonly .hint { display: none; }
 /* легке вікно: з панелі — лише таймфрейм і профіль обсягу; без чіпа «Δ бірж» (власник, 15.10) */
-.app.chartonly .head .r > :not(#tfSeg):not(#vpSeg), .app.chartonly .tk-xs { display: none !important; }
+.app.chartonly .head .r > :not(#tfSeg):not(#vpSeg):not(#coneBtn), .app.chartonly .tk-xs { display: none !important; }
+.app.chartonly #coneBtn { height: 24px; padding: 0 7px; font-size: 10.5px; }
 /* без «USDT Perp · 5m · модель 15m» і «live» (власник, 15.10: зайве у вікні графіка) */
 .app.chartonly .pnhead .tk-tf, .app.chartonly .pnhead .live-dot { display: none !important; }
 /* варіант C (власник, 15.10): над графіком нічого — тікер і стан напівпрозорою легендою в лівому верхньому куті графіка,
@@ -601,6 +602,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 <script src="/js/ruler.js"></script>
 <script src="/js/profile.js"></script>
 <script src="/js/footprint.js"></script>
+<script src="/js/cone.js"></script>
 </head>
 <body>
 <div id="topbar" aria-hidden="true"><i></i></div>
@@ -782,6 +784,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
         </div>
         <button class="tool fptool" id="logBtn" aria-pressed="false" title="Логарифмічна шкала ціни: однакова відстань на графіку = однакова зміна у %. Пояснення — у «?» ліворуч" aria-label="Логарифмічна шкала ціни">log</button>
+        <button class="tool fptool" id="coneBtn" aria-pressed="false" title="Конус очікуваного руху на 4 год від останньої ціни (volfc.py, HAR): яскраво ±1σ — ціна там приблизно у 2 з 3 випадків, бліде ±2σ — вихід рідко. Опис розмаху, не рівні" aria-label="Конус очікуваного руху">Cone</button>
         <div class="mk-wrap">
           <button class="mk-btn" id="mkBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mkPop"
                   title="Стан ринку альтів: частка альтів, дорожчих ніж тиждень тому"><span class="mk-dot" aria-hidden="true"></span>Market: <span class="mk-st" id="mkState">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
@@ -1452,11 +1455,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // налаштування вікна (лінковка вимкнена — кожне своє): ТФ графіка (null — ТФ моделі), FP, профіль обсягу за період
     const cfg0 = LS.get(`pd-pane-cfg-${n}`, null) || { tf: null, fp: LS.get("pd-fp", false), vp: LS.get("pd-vp-period", "off") };
     // xs — панель «Δ бірж» під графіком (за замовчуванням увімкнена; з'являється, коли тікер є щонайменше на двох біржах)
-    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off", xs: cfg0.xs !== false, log: !!cfg0.log };
-    const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP, xs: P.xs, log: P.log });
+    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off", xs: cfg0.xs !== false, log: !!cfg0.log, cone: !!cfg0.cone };
+    const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP, xs: P.xs, log: P.log, cone: P.cone });
     let chart = null, S = {}, priceLines = [], markersApi = null, probMarkers = null, idx = new Map(), rangeKey = null;
     let xsSer = {}, xsZone = null, xsKey = "";          // панель «Δ бірж»: лінія на біржу + підсвітка барів з розбіжністю ≥ порогу
-    let ruler = null, vp = null, fpv = null, wakeAt = new Map(), fpAt = new Map(), candleCol = null;
+    let ruler = null, vp = null, fpv = null, cone = null, wakeAt = new Map(), fpAt = new Map(), candleCol = null;
     // з футпрінтом тіла свічок порожні (лише контур), як у кластерах ATAS — інакше заливка зливається з рівнями
     const hollow = (on) => {
       if (!S.candles || !candleCol) return;
@@ -1535,6 +1538,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         fpv = PDFootprint.create({ chart, el: chartEl, series: S.candles, times: () => P.data?.series.t || [], bar: () => P.data?.bar || 900,
           symbol: () => P.ticker || "", tf: () => P.data?.tf || "15m", onInfo: (t) => { if (isActive()) $("fpBtn").title = t || FP_TITLE; } });
         fpv.setOn(P.fp); hollow(P.fp);
+      }
+      // конус очікуваного руху (app/js/cone.js, кнопка Cone, 20.10): прогноз volfc.py з /api/ticker → vol
+      if (window.PDCone) {
+        cone = PDCone.create({ chart, el: chartEl, series: S.candles, bar: () => P.data?.bar || 900, vol: () => P.data?.vol });
+        cone.setOn(P.cone);
       }
       applyLog();
     };
@@ -1679,6 +1687,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       if (ruler) ruler.redraw();
       if (vp) vp.reload();
       if (fpv) fpv.reload();
+      if (cone) cone.reload();
       renderOhlc(null);
       live.redraw();               // setData прибирає бари, яких ще немає в базі, і незакриту свічку — повертаємо їх
     };
@@ -2020,6 +2029,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       load, renderHead, renderChart, setRange, live, renderXs,
       setXs: (v) => { P.xs = !!v; saveCfg(); renderChart(); },
       setLog: (v) => { P.log = !!v; saveCfg(); applyLog(); },
+      setCone: (v) => { P.cone = !!v; saveCfg(); if (cone) cone.setOn(P.cone); },
       toggleRuler: () => { if (ruler) ruler.toggle(); }, toggleVp: () => { if (vp) vp.toggle(); },
       setVpPeriod: (p) => { P.vpP = p; saveCfg(); if (vp) vp.setPeriod(p); },
       setFp: (v) => { P.fp = !!v; saveCfg(); if (fpv) fpv.setOn(P.fp); hollow(P.fp); },
@@ -2036,6 +2046,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("fpBtn").setAttribute("aria-pressed", String(!!P.fp)); pressIn("vpSeg", "vp", P.vpP || "off");
     $("xsBtn").setAttribute("aria-pressed", String(!!P.xs));
     $("logBtn").setAttribute("aria-pressed", String(!!P.log));
+    $("coneBtn").setAttribute("aria-pressed", String(!!P.cone));
     $("linkBtn").setAttribute("aria-pressed", String(st.link));
   };
   // лінковка вікон (кнопка біля FP): увімкнена — ТФ, FP і профіль обсягу міняються в обох вікнах, вимкнена — лише в активному
@@ -2098,13 +2109,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   });
   $("xsBtn").addEventListener("click", () => { const v = !activePane().xs; targetPanes().forEach((p) => p.setXs(v)); renderToolbar(); });
   $("logBtn").addEventListener("click", () => { const v = !activePane().log; targetPanes().forEach((p) => p.setLog(v)); renderToolbar(); });
+  $("coneBtn").addEventListener("click", () => { const v = !activePane().cone; targetPanes().forEach((p) => p.setCone(v)); renderToolbar(); });
   // лінковка: при вмиканні інші вікна беруть налаштування активного (ТФ, FP, профіль)
   const syncFromActive = () => {
     const a = activePane();
     shownPanes().forEach((p) => {
       if (p === a) return;
       const tfChanged = p.tf !== a.tf;
-      p.setTf(a.tf); p.setFp(a.fp); p.setVpPeriod(a.vpP); p.setXs(a.xs); p.setLog(a.log);
+      p.setTf(a.tf); p.setFp(a.fp); p.setVpPeriod(a.vpP); p.setXs(a.xs); p.setLog(a.log); p.setCone(a.cone);
       if (tfChanged) p.load();
     });
   };

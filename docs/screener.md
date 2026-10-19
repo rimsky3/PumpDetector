@@ -150,6 +150,12 @@ window; PD Watchlist windows follow each other). In the watchlist rows a small
 **Volatility ▾** button next to Dashboard ↗. The button is not called "Vol" because the list already uses `Vol ×5` for
 the 5-minute volume burst. Coins with an average turnover below $5M that are not in the screener list get no chip. It describes the market, not a model signal.
 
+**Cone** (button next to log; also in the PD Watchlist chart window; per chart window, `app/js/cone.js`): a fan from the
+last price 4 hours to the right — bright ±1σ (about 2 of 3 times the price stays inside), faint ±2σ, dotted +1H / +4H
+marks with the expected move. Between the 1 h and 4 h forecasts the variance grows linearly with time; bounds are
+price · e^(±kσ). Turning it on makes room on the right (4 hours of bars: 48 on 5m, 16 on 15m, 4 on 1h). It shows the
+range, not levels — the price does not bounce off the cone's edge.
+
 ## Drivers card (since 2026-10-08)
 
 Under the probability card the dashboard shows **DRIVERS** for the last scored 15m bar (`drivers.py`): a stacked bar of
