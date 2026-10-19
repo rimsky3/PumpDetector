@@ -1267,6 +1267,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     `${mv.illiq_x ? " ×" + mv.illiq_x.toFixed(1) : ""} · оборот 24 год ${mv.turnover_24h ? "$" + (mv.turnover_24h / 1e6).toFixed(1) + "M" : "—"}`;
 
   // ---------- Vol: очікувана волатильність (volfc.py) — чіп на графіку і таблиця «Vol ▾» ----------
+  // горизонт чіпа на графіку й позначки в списку — той самий перемикач 1H / 4H, що в таблиці Volatility ▾ (LS pd-vl-h)
+  const volH = () => (String(LS.get("pd-vl-h", "4")) === "1" ? "1" : "4");
   const volMove = (v) => v == null ? "—" : "±" + (v * 100).toFixed(v >= 0.1 ? 0 : 1) + "%";
   const volTitle = (v) => `Очікувана волатильність (HAR, volfc.py, оновлення щогодини${v.ts ? ", " + fmtTs(v.ts).slice(-5) + " UTC" : ""}):\n` +
     `4 год: типовий рух ${volMove(v.exp_4)} — ×${v.vs_4 == null ? "—" : v.vs_4.toFixed(1)} від звичного (${volMove(v.usual_4)}), ${v.regime_4 || "—"}\n` +
@@ -1897,11 +1899,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         mvEl.title = moverTitle(mv);
       }
       // Vol: очікуваний рух за 4 год і у скільки разів це більше звичного для монети (volfc.py, HAR; варіант B макета 20.10)
-      const vl = d.vol, vlEl = q(".tk-vol"); vlEl.hidden = !(vl && vl.exp_4 != null);
+      const vl = d.vol, vh = volH(), vlEl = q(".tk-vol"); vlEl.hidden = !(vl && vl["exp_" + vh] != null);
       if (!vlEl.hidden) {
-        const tag = vl.regime_4 === "Active" || vl.regime_4 === "Hot" ? " " + vl.regime_4 : "";
-        vlEl.textContent = (st.chartOnly ? "" : "Exp 4H ") + volMove(vl.exp_4) + (vl.vs_4 != null ? " ×" + vl.vs_4.toFixed(1) : "") + tag;
-        vlEl.className = "tk-vol " + (vl.regime_4 || "normal").toLowerCase();
+        const rg = vl["regime_" + vh], vs = vl["vs_" + vh];
+        const tag = rg === "Active" || rg === "Hot" ? " " + rg : "";
+        vlEl.textContent = (st.chartOnly ? vh + "H " : "Exp " + vh + "H ") + volMove(vl["exp_" + vh]) + (vs != null ? " ×" + vs.toFixed(1) : "") + tag;
+        vlEl.className = "tk-vol " + (rg || "normal").toLowerCase();
         vlEl.title = volTitle(vl);
       }
       // Drivers: дві найбільші групи, що штовхають P вгору (drivers.py) — лише коли є Candidate / Alert і НЕМАЄ чипа MOVER
@@ -2284,12 +2287,12 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     }
     if (r.source === "auto" && r.channel !== "woke") { const x = el("span", "gl auto", "A"); x.title = "Added by the market scanner"; name.appendChild(x); }
     // ×2.5 — очікуваний рух за 4 год у разах від звичного (volfc.py); лише Active / Hot, щоб не засмічувати список
-    const vm = r.vol;
-    if (vm && (vm.regime_4 === "Active" || vm.regime_4 === "Hot")) {
-      const x = el("span", "vgl " + vm.regime_4.toLowerCase(), "×" + vm.vs_4.toFixed(1));
-      x.title = `Expected volatility ${vm.regime_4}: next 4H ${volMove(vm.exp_4)} — ×${vm.vs_4.toFixed(1)} the coin's usual`
-        + (vm.vs_1 != null ? `\nnext 1H ${volMove(vm.exp_1)} — ×${vm.vs_1.toFixed(1)} (${vm.regime_1})` : "")
-        + `\nlast 1H actual ${volMove(vm.last_1h)}. Market description, not a model signal (Volatility ▾ for the table).`;
+    const vm = r.vol, vh = volH(), oh = vh === "1" ? "4" : "1", vrg = vm && vm["regime_" + vh];
+    if (vrg === "Active" || vrg === "Hot") {
+      const x = el("span", "vgl " + vrg.toLowerCase(), "×" + vm["vs_" + vh].toFixed(1));
+      x.title = `Expected volatility ${vrg}: next ${vh}H ${volMove(vm["exp_" + vh])} — ×${vm["vs_" + vh].toFixed(1)} the coin's usual`
+        + (vm["vs_" + oh] != null ? `\nnext ${oh}H ${volMove(vm["exp_" + oh])} — ×${vm["vs_" + oh].toFixed(1)} (${vm["regime_" + oh]})` : "")
+        + `\nlast 1H actual ${volMove(vm.last_1h)}. Market description, not a model signal (Volatility ▾: 1H / 4H switch and the table).`;
       name.appendChild(x);
     }
     const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
@@ -3246,7 +3249,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     head.appendChild(el("span", "mv-ttl vl-ttl", "Expected volatility"));
     const seg = el("div", "mv-seg");
     ["1", "4"].forEach((x) => { const b = el("button", "", x + "H"); b.setAttribute("aria-pressed", String(x === h));
-      b.addEventListener("click", (e) => { e.stopPropagation(); VL.h = x; LS.set("pd-vl-h", x); renderVolBtn(); renderVolPop(); }); seg.appendChild(b); });
+      b.addEventListener("click", (e) => { e.stopPropagation(); VL.h = x; LS.set("pd-vl-h", x); renderVolBtn(); renderVolPop(); volHorizonChanged(); }); seg.appendChild(b); });
     head.appendChild(seg);
     const m = d.model?.[h], ix = el("div", "mv-idx");
     ix.appendChild(document.createTextNode("HAR + hour of day · 5m bars · " + d.n + " coins"));
@@ -3301,6 +3304,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     catch (e) { VL.err = e.message; }
     await loadVol();
   };
+  // перемикач 1H / 4H — і для чіпа на графіку, і для позначок у списку; інші вікна (PD Watchlist) — через подію storage
+  const volHorizonChanged = () => { renderList(); PANES.forEach((p) => p.renderHead()); };
+  addEventListener("storage", (e) => { if (e.key === "pd-vl-h") { VL.h = volH(); renderVolBtn(); if (VL.open) renderVolPop(); volHorizonChanged(); } });
   const placeVol = () => {
     const p = $("vlPop"), r = $("vlBtn").getBoundingClientRect(), w = p.offsetWidth, hgt = p.offsetHeight;
     let left = r.right - w; if (left < 8) left = Math.min(r.left, innerWidth - w - 8);

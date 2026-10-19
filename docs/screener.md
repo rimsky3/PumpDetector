@@ -135,8 +135,9 @@ hours the plain "last 4 hours" forecast is better, so the table shows the realiz
 Dashboard: the **Volatility N ▾** table (N = coins in the Hot regime; 1H / 4H switch; sortable; IN LIST / add to watchlist;
 `/api/vol`; a **24H turnover $ min – max M** filter, empty max = no cap, list tickers always shown — saved on the server
 in `vol_config.json` via `POST /api/vol/config`, one for the browser and PD Watchlist; not in git, deploy keeps it) and a chip in the pane header from `volfc.info(base)` via `/api/ticker` → `vol` — `Exp 4H ±6.2% ×2.5 Active`
-(compact `±6.2% ×2.5 Active` in the PD Watchlist chart window), coloured by regime, details on hover. In the watchlist rows a small
-`×2.5` mark (amber Active, red Hot; Calm / Normal get none) shows the 4 h ratio; the PD Watchlist window also has the
+(compact `±6.2% ×2.5 Active` in the PD Watchlist chart window), coloured by regime, details on hover. The chip and the row marks follow the table's 1H / 4H switch (kept per browser /
+window; PD Watchlist windows follow each other). In the watchlist rows a small
+`×2.5` mark (amber Active, red Hot; Calm / Normal get none) shows the ratio; the PD Watchlist window also has the
 **Volatility ▾** button next to Dashboard ↗. The button is not called "Vol" because the list already uses `Vol ×5` for
 the 5-minute volume burst. Coins with an average turnover below $5M that are not in the screener list get no chip. It describes the market, not a model signal.
 
