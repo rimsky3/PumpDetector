@@ -46,6 +46,7 @@ Full numbers, the validation scheme and the list of what did not work: [docs/cas
 | Look-ahead | Feature audit, embargo for forward-looking labels, delisted coins kept in the long backtest |
 | Chance | Randomization test against random entries on the same coins and days |
 | Regressions | A retrained model goes live only if it is not worse than the current one on two backtests |
+| Code | `python -m pytest tests` — unit tests of the core logic on synthetic data; each test was checked to fail when its safeguard is removed |
 
 Every experiment, including the failed ones, is logged with its question, result and decision (135 entries so far).
 
@@ -123,6 +124,7 @@ watch_app/                      PD Watchlist: a small Windows window (pywebview,
 journal.py, backtest.py, monitor.py  forward test, backtest on unseen coins, drift and calibration
 tg_bot.py                       Telegram alerts
 experiments/                    one script per experiment, each with its criterion and report
+tests/                          pytest: features (OI index, exchange glitches, gaps), trades, signal tiers, scanner, TWAP
 schema.sql, docker-compose*.yml database schema, local and server stacks
 docs/                           documentation
 ```

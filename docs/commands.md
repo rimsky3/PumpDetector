@@ -19,6 +19,20 @@ options straight from the code. Run everything from the project folder with the 
 
 Before retraining, label fresh signals on training tickers if they were pumps (see `--fresh-hours`).
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt     # once: pytest (laptop only, not needed on the server)
+python -m pytest tests -q               # ~0.5 s, no database or network
+```
+
+Unit tests of the core logic on synthetic data: the chained OI index and impossible-OI filter, short OI gaps in
+`compute_features`, trade rules (`risk.position_state`: entry at the close, stop, exit by the model, partial exit and
+breakeven, intrabar stop), signal tiers (`tiers.tier_frame`, `split_scores`), the scanner's 4-hour OI change with exchange
+glitches, the 5m wake rule and Hyperliquid TWAP detection. Every test was checked to fail when the safeguard it covers is
+switched off. Rule: a bug found → first a test that catches it, then the fix. Plan of the remaining refactoring steps — in
+the owner's notes (`notes/architecture_plan.md`).
+
 ## Server
 
 ### `tools/deploy.sh` — laptop → server (Git Bash)

@@ -1,0 +1,3 @@
+# Лише для розробки на ноутбуці (на сервер не потрібно): автоматичні тести — python -m pytest tests
+-r requirements.txt
+pytest==9.1.1
