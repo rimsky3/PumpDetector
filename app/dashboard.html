@@ -2399,8 +2399,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // межа між графіком і списком: тягнеш — змінюється ширина списку (запам'ятовується, LS pd-list-w); подвійний клік — 392 px.
   // Графіки Lightweight Charts підлаштовуються самі (autoSize)
   (() => {
-    const grip = $("listGrip"), app = $("app");
-    const limit = (w) => Math.round(Math.max(300, Math.min(w, Math.max(300, innerWidth - (app.classList.contains("rail") ? 56 : 248) - 420))));
+    // мінімум 360 px: при 300 px колонки State / графік / P / ΔOI / 24h забирали все місце і назва тікера зникала (19.10)
+    const grip = $("listGrip"), app = $("app"), LIST_MIN = 360;
+    const limit = (w) => Math.round(Math.max(LIST_MIN, Math.min(w, Math.max(LIST_MIN, innerWidth - (app.classList.contains("rail") ? 56 : 248) - 420))));
     const apply = (w) => { if (w == null) app.style.removeProperty("--list-w"); else app.style.setProperty("--list-w", `${limit(w)}px`); };
     apply(LS.get("pd-list-w", null));
     let drag = false;

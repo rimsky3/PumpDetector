@@ -96,7 +96,9 @@
   потік Coinalyze, сканер ринку, wake, footprint, запис стакану; `--backfill-15m DAYS` — історія оцінок.
 - `scanner.py` — авто-список з усіх USDT-перпів Binance (ліквідність = сер. оборот 30 дн) + канал WOKE; `wake.py` —
   «прокидається» на 5m; `footprint.py` — мітки b / p; `market.py` — ширина ринку; `movers.py`; `drivers.py` — TreeSHAP.
-- `dashboard.py` + `app/dashboard.html` — дашборд (stdlib http.server, Lightweight Charts): Прогноз, Журнал, Бектест;
+- `dashboard.py` (HTTP-маршрути, запуск) + пакет `dashboard_app/` (19.10, розбиття за відповідальністю: common, trades,
+  watchlist_ops, listview, tickerview, twaps, backtests, journal_view) + `app/dashboard.html` — дашборд (stdlib http.server,
+  Lightweight Charts): Прогноз, Журнал, Бектест;
   `journal.py` — угоди всіх режимів на барах поза навчанням; `tg_bot.py` — Telegram (клієнт дашборда).
 - `spread.py` — розбіжність цін тікера між Binance / Bybit / OKX (13.10): потік у процесі дашборда, 3 запити на весь ринок
   кожні 15 с, у пам'яті (у базу НЕ пише — рішення власника). Подія: розбіжність по біду й аску ≥ min_pct, ≥ norm_x × медіана
@@ -114,7 +116,7 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
   (сторінка підміняє `Notification` на `window.pywebview.api.notify`). Збирання — окреме середовище `.venv-watch`.
 - `hl_twap.py` — активні TWAP Hyperliquid (18.10, контейнер hltwap): потік угод усіх перпів (адреси є в угодах) → адреса з
   порціями кожні ~30 с → підтвердження `info twapHistory`; стакан l2Book для монет з TWAP. ЛИШЕ В ПАМ'ЯТІ (рішення власника:
-  «просто бачити») → `http://hltwap:8790/twaps` → `dashboard.twaps_view` (`/api/twaps`, + оборот Binance з trade_bars → % Vol)
+  «просто бачити») → `http://hltwap:8790/twaps` → `dashboard_app.twaps.twaps_view` (`/api/twaps`, + оборот Binance з trade_bars → % Vol)
   → секція «TWAP · HL» у списку (картки, варіант B макета, між NOW і WOKE UP; фільтри Min % vol, Min $ K — загальний розмір, Binance only, 🔔 open only — НА СЕРВЕРІ
   `twap_config.json`, одні для секції, звуку й Telegram; час старту since HH:MM UTC). Сповіщення: «TWAP» у Sound ▾ і Telegram ⏳ TWAP
   (за замовчуванням вимкнено) — `twaps_view` дає `events`: TWAP уперше пройшов фільтри; після старту дашборда / зміни фільтрів — без подій і значок `T` на монеті.
@@ -138,14 +140,14 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
 ## Дашборд і сповіщення — що важливо пам'ятати
 - Список секціями NOW / TWAP · HL / WOKE UP / WATCHLIST / QUIET; порядок секцій — перетягуванням заголовка або Alt + ↑ / ↓ (19.10, `secOrder()`, LS `pd-sec-order`; ↑/↓ по тікерах іде за ним; подвійний клік по ⋮⋮ — скинути). Ширина списку в повному дашборді — межа `#listGrip` між графіком і списком (19.10, CSS `--list-w`, LS `pd-list-w`, подвійний клік — 392 px). Колонка State — один головний чіп (угода › сигнал › b / p › Vol 5m ›
   Woke): `Entry 45m`, `In +x%`, `Stop −x%` / `Exit +x%` (модель у цьому епізоді Alert уже відторгувала й вийшла),
-  `Late` (Alert, у якому входу моделі не було); решта — значки після тікера. Стан угоди — `dashboard.trade_state` за
-  основним режимом; епізод Alert — `dashboard.alert_since` (бари Alert з проміжками ≤ 1 год).
-- Сповіщення = входи моделі основного режиму (`dashboard.split_by_trades` → alerts / realerts / cands / lates). Telegram:
+  `Late` (Alert, у якому входу моделі не було); решта — значки після тікера. Стан угоди — `dashboard_app.trades.trade_state` за
+  основним режимом; епізод Alert — `dashboard_app.trades.alert_since` (бари Alert з проміжками ≤ 1 год).
+- Сповіщення = входи моделі основного режиму (`dashboard_app.trades.split_by_trades` → alerts / realerts / cands / lates). Telegram:
   типи з `tg_bot.DEFAULTS` (Alert, Re-alert, Late, Candidate, Volume 5m, b / p, WOKE, Spread, TWAP); режим читає зі strategies.json.
 - Два вікна графіків; ТФ / FP / профіль — налаштування вікна. `load()` у dashboard.html пропускає повторне завантаження
   за ключем тікер | ТФ | повна інфо | модель | режим — нове, що впливає на вигляд графіка, додавати в цей ключ.
 - Стоп показується, не чекаючи закриття 15m-бару: на відкритому графіку — миттєво в браузері (жива свічка проти стопу,
-  `P.stopLive` / `st.liveStops`), для всіх тікерів — на 5m-барах (`dashboard.live_stop` → `risk.intrabar_stop`, до ~5 хв).
+  `P.stopLive` / `st.liveStops`), для всіх тікерів — на 5m-барах (`dashboard_app.trades.live_stop` → `risk.intrabar_stop`, до ~5 хв).
   Результат угоди той самий (вихід за ціною стопу). Ціль ½ усередині бару НЕ перевіряється; журнал і бектест — без змін.
   Чіп стопу в заголовку — у % (13.10): початковий ризик угоди від входу моделі (`d.k × pos.atr_entry ÷ pos.entry`, це 1R);
   після беззбитку — «стоп б/з · −x%»; ціна стопу і ризик «якщо входити зараз» — у підказці.
@@ -158,7 +160,7 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
   ввімкнено і в `/api/ticker` є `xs`), чіп `.tk-xs` з карткою — у другому рядку заголовка (`.ohlc`, після «P 5m»; рядок перебудовується, елемент тримає `xsBtn`), значок `gl sp` у списку (НЕ в колонці State),
   «Spread ▾» — події й пороги, звук — Sound ▾, Telegram — тип `spread` (понад 5 подій за прохід — одне зведення).
 - Вкладка Charts (`#charts`, 13.10): міні-графіки тікерів NOW і WOKE UP — SVG, не Lightweight Charts; дані —
-  `/api/minicharts?tf=5m|15m|1h` (15m і 1h — з кешу списку: `dashboard.mini_charts`, ключ `minis`, у `/api/list` НЕ йде;
+  `/api/minicharts?tf=5m|15m|1h` (15m і 1h — з кешу списку: `dashboard_app.listview.mini_charts`, ключ `minis`, у `/api/list` НЕ йде;
   5m — один запит свічок на всі тікери сітки), жива свічка — один WebSocket Binance на сітку. Чіп і значки — `rowMarks()` (спільна зі списком). Клавіші: PageDown / PageUp між «Прогнозом»
   і Charts (↑/↓ на «Прогнозі» — тікери списку, не чіпати), стрілки + Enter у Charts. `st.view === "charts"` живе за
   режимом «Прогнозу» (`modeView()`).

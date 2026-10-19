@@ -261,7 +261,9 @@ def journal(conn, bundles: dict, model: str, days: int | None, kind: str, rule: 
     t = trades_sel[(trades_sel["entry_ts"] >= since) & trades_sel["kind"].isin(kinds)]
     if until is not None:
         t = t[t["entry_ts"] < until]
-    closed = t[~t["open"]] if "open" in t else t
+    # astype(bool): на ПОРОЖНІЙ таблиці колонка open має тип object, і t[~t["open"]] pandas читає як вибір КОЛОНОК, а не
+    # рядків — виходить таблиця без колонок і KeyError 'result_pct' (19.10: журнал режиму / періоду без угод — помилка 500)
+    closed = t[~t["open"].astype(bool)] if "open" in t else t
     res = closed["result_pct"].dropna()
     by_ticker = []
     for tk, g in t[t["outcome"].isin(["pump", "fp"])].groupby("ticker"):

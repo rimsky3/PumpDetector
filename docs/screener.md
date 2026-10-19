@@ -423,7 +423,7 @@ cut-off is in-sample: a high probability there means the model remembers the pum
 no extra dependencies. `#forecast/NMR` opens a ticker, `#journal` the journal. Every block has a **?** button
 with a short explanation.
 
-**List width (since 2026-10-19).** In the full dashboard the border between the chart and the ticker list is a handle: drag it to make the list wider or narrower (300 px up to what leaves the chart ~420 px), ← / → when it is focused; the width is remembered per browser (`localStorage` `pd-list-w`), and a double-click restores 392 px. Charts resize themselves. Not shown on the list-only page, in the app's chart window or on narrow screens.
+**List width (since 2026-10-19).** In the full dashboard the border between the chart and the ticker list is a handle: drag it to make the list wider or narrower (360 px — narrower hides the ticker names — up to what leaves the chart ~420 px), ← / → when it is focused; the width is remembered per browser (`localStorage` `pd-list-w`), and a double-click restores 392 px. Charts resize themselves. Not shown on the list-only page, in the app's chart window or on narrow screens.
 
 **Section order (since 2026-10-19).** The list sections (NOW, TWAP · HL, WOKE UP, WATCHLIST, QUIET) can be reordered by dragging a section header (the ⋮⋮ grip shows on hover) or with Alt + ↑ / ↓ on a focused header; double-clicking the grip restores the default order. The order is remembered per browser and per PD Watchlist app (`localStorage` `pd-sec-order`), and ↑ / ↓ through tickers follows it.
 
@@ -452,7 +452,7 @@ Spread requests are not made; ↑ / ↓ still step through the list's tickers; n
 **Charts tab (since 2026-10-13).** `#charts` shows every ticker of the list's NOW and WOKE UP sections as a grid of
 mini charts: the last 96 closed 15m candles, Alert / Candidate zones, the model's entries and the stop of an open trade
 (main mode), with the same state chip and glyphs as the list row, P and the 24 h change. The data comes from
-`/api/minicharts?symbols=…`, which reads the list cache (`dashboard.mini_charts` builds it together with the list from
+`/api/minicharts?symbols=…`, which reads the list cache (`dashboard_app.listview.mini_charts` builds it together with the list from
 bars that are already loaded, so the tab adds almost no database work; `/api/list` does not carry it). The last candle
 is live through one combined Binance WebSocket for the whole grid; charts are plain SVG. A switch selects the
 timeframe: 15m (24 h) and 1h (2 days, aggregated from the cached 15m bars; a bar shows the highest signal level of its
@@ -505,7 +505,7 @@ Movers in the top bar (since 2026-10-08; the three buttons in the right panel we
 independent switches — Alert (model entry: two high tones + browser notification), Re-alert (Alert again inside an open model
 trade: one short high tone, off by default), Candidate (one low tone, only while the model has no open trade), Volume 5m
 (voice) and Woke (the first WOKE trigger: two rising tones + a notification with the reason). The button shows how many are
-on ("2/5", "off"). `/api/list` splits the live Alert episodes with `dashboard.split_by_trades`: `alerts` = model entries
+on ("2/5", "off"). `/api/list` splits the live Alert episodes with `dashboard_app.trades.split_by_trades`: `alerts` = model entries
 (`model_trades` runs the same `risk.position_state` as the chart; a re-entry after a stop inside a continuous Alert is added
 with `reentry: true`), `realerts` = episodes inside an open trade (with `trade`: entry time and price, current result).
 
@@ -554,7 +554,7 @@ forward; the trade result is unchanged because the exit price is the stop level 
 | Where | How | Delay |
 |---|---|---|
 | Open chart | the browser compares the live candle (exchange WebSocket) with the open position's stop: header "стоп спрацював −x%", the stop line turns red, the list row shows `Stop −x%` (`P.stopLive`, `st.liveStops`) | seconds |
-| List, header and chart for every ticker | `dashboard.live_stop` → `risk.intrabar_stop`: 5m bars closed after the last 15m bar; a low at or below the stop closes the trade (`intrabar: true`, exit bar = the 15m bar it happened in) | up to ~5 min |
+| List, header and chart for every ticker | `dashboard_app.trades.live_stop` → `risk.intrabar_stop`: 5m bars closed after the last 15m bar; a low at or below the stop closes the trade (`intrabar: true`, exit bar = the 15m bar it happened in) | up to ~5 min |
 
 The half-exit target is not checked intrabar: inside one bar `position_state` checks the stop before the target, and
 5m bars could give a different order than the closed bar will. Journal and backtest are untouched.
