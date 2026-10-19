@@ -16,6 +16,7 @@ import movers
 import orderbook
 import scanner
 import tiers as T
+import volfc
 import wake
 from features import INTERVAL_15M, INTRADAY_EXCHANGES, aggregate, load_raw, split_raw
 from screener import SIGNALS_STAMP, last_closed_15m, load_model_15m, load_models
@@ -23,6 +24,14 @@ from screener import SIGNALS_STAMP, last_closed_15m, load_model_15m, load_models
 from dashboard_app.common import BAR_15M, QUIET_HOURS, SPARK_HOURS, State, episodes, latest_signals, list_sources, list_tickers, share, status_of, tier_rows
 from dashboard_app.trades import alert_since, fp_rows, limit_hint, model_trades, ob_at_signal, split_by_trades, trade_state
 from dashboard_app.watchlist_ops import add_status
+
+
+def vol_mark(base: str) -> dict | None:
+    """Очікувана волатильність для рядка списку (volfc.info): прогноз 4H, у скільки разів більше звичного, режим."""
+    v = volfc.info(base)
+    if not v or v.get("vs_4") is None:
+        return None
+    return {k: v.get(k) for k in ("exp_4", "vs_4", "regime_4", "exp_1", "vs_1", "regime_1", "last_1h", "ts")}
 
 
 def watch_list_15m(conn) -> dict:
@@ -336,8 +345,10 @@ def watch_list(conn, model: str) -> dict:
         return {"source": "auto" if b in auto else "manual", "channel": scanner.channel(a) if a else None,
                 "reason": a.get("reason"), "expires": a.get("expires"), "held": a.get("held"),
                 "wokeup": {"first": w["first"], "last": w["last"], "reason": w.get("first_reason") or w["reason"]} if w else None}
-    # Movers (movers.info): рамка в списку — ріст понад ринок, z ≥ 2.5 за 1H / 4H; з файлу щогодини
-    res["rows"] = [r | src(r["ticker"]) | {"mover": movers.info(r["ticker"])} for r in res["rows"] if r["ticker"] in keep]
+    # Movers (movers.info): рамка в списку — ріст понад ринок, z ≥ 2.5 за 1H / 4H; з файлу щогодини.
+    # Vol (volfc.info, 20.10): позначка ×2.5 у рядку для Active / Hot — лише потрібні поля
+    res["rows"] = [r | src(r["ticker"]) | {"mover": movers.info(r["ticker"]), "vol": vol_mark(r["ticker"])}
+                   for r in res["rows"] if r["ticker"] in keep]
     have = {r["ticker"] for r in res["rows"]}
     res["wakes"] = [w for w in res.get("wakes", []) if w["ticker"] in keep]
     res["fps"] = [f for f in res.get("fps", []) if f["ticker"] in keep]

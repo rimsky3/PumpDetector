@@ -118,6 +118,28 @@ frame (`--mover`) around the watchlist row when the coin rises on its own, z ≥
 chip, so the frame does not stay on all day). The threshold is the one behind the Movers button, so the button count and
 the frames agree. Over two weeks (Sep–Oct) 5–7 of ~253 coins were above it at any moment.
 
+## Expected volatility (since 2026-10-20)
+
+`volfc.py` runs in its own screener thread every hour at HH:08 (between the 15m cycles and after `market.py`; niced).
+It keeps 31 days of Binance 5m candles for every crypto USDT perp whose 30-day average OR 24 h turnover is at least $5M
+(or the table's minimum, if lower) — no upper cap, BTC and ETH included (owner, 20.10: Q was very active with > $1B a night) — plus every ticker in the screener
+list (`reports/volfc_5m.pkl`; the first run downloads them in ~25 min, then one short request per coin per hour) and fits a pooled **HAR model with hour-of-day
+dummies** on log realized variance of 5m returns — last 1 h, 4 h, 24 h and 7 d → next 1 h and 4 h — refitted every hour
+on the whole cache. For each coin it writes the expected move (±1σ) over 1 h and 4 h, the coin's usual move (median of
+the realized move over 30 days), their ratio and a regime (Calm < 0.8×, Normal < 1.5×, Active < 2.5×, Hot ≥ 2.5× — the
+cut-offs are a proposal, not tested), the realized last hour, ATR(14) on 15m and 24 h turnover → `reports/volfc.json`.
+Why HAR: `experiments/har_vol.py` (476 coins, six months, monthly walk-forward) — it beats ATR(15m) as a forecast of the
+next 4 hours in 6 of 6 months and both coin halves, but only by ~4% in QLIKE (~7% with hour of day), and in the hottest
+hours the plain "last 4 hours" forecast is better, so the table shows the realized last hour next to it.
+
+Dashboard: the **Volatility N ▾** table (N = coins in the Hot regime; 1H / 4H switch; sortable; IN LIST / add to watchlist;
+`/api/vol`; a **24H turnover $ min – max M** filter, empty max = no cap, list tickers always shown — saved on the server
+in `vol_config.json` via `POST /api/vol/config`, one for the browser and PD Watchlist; not in git, deploy keeps it) and a chip in the pane header from `volfc.info(base)` via `/api/ticker` → `vol` — `Exp 4H ±6.2% ×2.5 Active`
+(compact `±6.2% ×2.5 Active` in the PD Watchlist chart window), coloured by regime, details on hover. In the watchlist rows a small
+`×2.5` mark (amber Active, red Hot; Calm / Normal get none) shows the 4 h ratio; the PD Watchlist window also has the
+**Volatility ▾** button next to Dashboard ↗. The button is not called "Vol" because the list already uses `Vol ×5` for
+the 5-minute volume burst. Coins with an average turnover below $5M that are not in the screener list get no chip. It describes the market, not a model signal.
+
 ## Drivers card (since 2026-10-08)
 
 Under the probability card the dashboard shows **DRIVERS** for the last scored 15m bar (`drivers.py`): a stacked bar of

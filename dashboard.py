@@ -34,6 +34,7 @@ import orderbook
 import scanner
 import spread
 import tiers as T
+import volfc
 import volume_profile
 import wake
 from screener import SIGNALS_STAMP, load_model_15m, load_models
@@ -126,6 +127,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, scan_view(q))
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
+        if url.path == "/api/vol":             # очікувана волатильність (кнопка «Volatility»): reports/volfc.json від volfc.py
+            return self._send(200, volfc.view(volfc.load(), volfc.load_config(), list_tickers()))
         if url.path == "/api/movers":          # монети з власним рухом (кнопка «Movers»): reports/movers.json від market.py
             return self._send(200, {k: v for k, v in movers.load().items() if k != "all"})   # «all» — для чіпа / рамки, не таблиці
         if url.path == "/api/market":          # стан ринку альтів (кнопка «Market» над графіком): market_breadth
@@ -147,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
             sym = q.get("symbol", "").upper()
             # чіп «MOVER» у заголовку вікна — поза кешем ticker(): movers оновлюються щогодини, незалежно від оцінок
             return self._route(lambda c: {**ticker(c, sym, model, days, q.get("tf"), q.get("strategy"), q.get("light") == "1"),
-                                          "mover": movers.info(sym)})
+                                          "mover": movers.info(sym), "vol": volfc.info(sym)})
         return self._send(404, {"error": "не знайдено"})
 
     def do_POST(self):
@@ -166,6 +169,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True, "config": cfg})
             if url.path == "/api/scan/config":
                 return self._send(200, {"ok": True, "config": scanner.save_config(body)})
+            if url.path == "/api/vol/config":         # межі обороту таблиці «Volatility ▾» (vol_config.json)
+                return self._send(200, {"ok": True, "config": volfc.save_config(body)})
             if url.path == "/api/twaps/config":       # фільтри TWAP · HL — одні для секції, звуку й Telegram
                 return self._send(200, {"ok": True, "config": save_twap_config(body)})
             if url.path == "/api/watchlist/add":

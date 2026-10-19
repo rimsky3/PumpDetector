@@ -42,4 +42,5 @@ build/
 dist/
 watch_app/pd_watch.ico
 twap_config.json
+vol_config.json
 .pytest_cache/

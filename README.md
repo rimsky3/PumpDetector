@@ -118,6 +118,7 @@ train.py                        rule vs logistic regression vs LightGBM, three m
 tiers.py, risk.py, strategies.py  signal tiers, simulated position (entry, partial exit, stop), trading modes
 scanner.py, screener.py         market scanner and the scoring loop
 wake.py, footprint.py, market.py, movers.py, drivers.py  early warnings, footprint marks, market breadth, movers, TreeSHAP
+volfc.py                        expected volatility (HAR on 5m candles): the Vol table and the chart chip
 spread.py                       cross-exchange price spread monitor (in memory, inside the dashboard process)
 dashboard.py, dashboard_app/, app/  dashboard: HTTP routes, screen logic by responsibility (list, ticker chart, trades,
                                 journal, backtests, TWAP), page

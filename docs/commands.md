@@ -442,6 +442,17 @@ The screener's market thread runs it every hour after `market.update` (which now
 `reports/market_qvol.pkl`). Dashboard: the **Movers N ▾** button (`/api/movers`); N = coins with |z| ≥ 2.5. Owner's
 guide to every column: `notes/movers.md`.
 
+### `volfc.py` — expected volatility (HAR)
+
+| Usage | Meaning |
+|---|---|
+| `python volfc.py` | update the 5m candle cache (crypto USDT perps with 30-day average turnover ≥ $5M, no upper cap, plus the screener list; `reports/volfc_5m.pkl`, 31 days; first run ~25 min) and write `reports/volfc.json`: HAR + hour-of-day forecast of the move over the next 1 h / 4 h, the coin's usual move, ratio, regime, last hour, ATR 15m, turnover; prints the top by ratio |
+| `python volfc.py --limit 20` | first 20 coins only (check) |
+| `python volfc.py --show` | print the last result without updating |
+
+The screener runs it every hour at HH:08 (`volfc.watcher`). Dashboard: **Volatility N ▾** (`/api/vol`) and the `vol` chip in
+`/api/ticker`. See `docs/screener.md`, "Expected volatility".
+
 ### `drivers.py` — why the model gave this probability
 
 | Usage | Meaning |
@@ -529,6 +540,8 @@ covers the range is used (5m → 15m → 1h). Value area = 70% of volume, grown 
 | `python experiments/klines1m.py --months 2026-10 SOON` | given months / coins |
 | `python experiments/l_shock.py` | "liquidation fade" event test on 5m and 1m with controls → `reports/l_shock.md`, `reports/l_shock_trades.csv` (`--no-oi` skips the database) |
 | `python experiments/profile_levels.py` | previous-day POC / VAH / VAL and impulse POC vs random levels → `reports/profile_levels.md` |
+| `python experiments/har_vol.py` | step 0 of the volatility-forecast idea: does a HAR model (log realized variance of the last 1 h / 4 h / 24 h / 7 d from 5m returns) forecast the next 4 h of movement better than ATR(14) on 15m? Pooled OLS, monthly walk-forward with a 4 h embargo, QLIKE loss; 1m Binance archive (`data/klines1m`) → `reports/har_vol.md` (`--limit N` — first N coins) |
+| `python experiments/liq_cascade.py` | "long after a long-liquidation cascade" event test: Coinalyze 15m long liquidations (Binance + Bybit) from the local database, trades on 1m Binance candles, controls "same drop without a cascade" and random entry; pre-registered criterion in the docstring → `reports/liq_cascade.md`, `reports/liq_cascade_trades.csv` (`--data` downloads the needed 1m candles, `--limit N` — first N coins) |
 
 ### `watch_app/pd_watch.py` — PD Watchlist (Windows window with the ticker list)
 

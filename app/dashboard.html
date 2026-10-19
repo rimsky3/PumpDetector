@@ -182,6 +182,17 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .mv-tag { font-size: 9.5px; font-weight: 600; letter-spacing: .05em; padding: 1px 5px; border-radius: 3px; margin-left: 6px; background: #2a2a26; color: var(--fg2); }
 .mv-z { display: inline-block; min-width: 46px; padding: 1px 6px; border-radius: 4px; font-weight: 500; }
 .mv-liq { font-size: 10.5px; font-weight: 500; padding: 1px 6px; border-radius: 4px; background: var(--line); color: var(--fg2); }
+/* «Vol ▾» — очікувана волатильність (volfc.py, HAR): таблиця, варіант A з макета 20.10; кольори режимів — і для чіпа на графіку */
+.vl-btn .mk-dot { background: var(--amber); } .vl-btn .mk-st { color: var(--amber); }
+.vl-pop { width: 660px; max-width: calc(100vw - 16px); }
+.vl-ttl { color: var(--amber); }
+.vr { font-size: 10.5px; font-weight: 500; padding: 1px 7px; border-radius: 10px; border: 1px solid currentColor; }
+.vr.calm, .vx.calm { color: var(--link); } .vr.normal, .vx.normal { color: var(--fg2); }
+.vr.active, .vx.active { color: var(--amber); } .vr.hot, .vx.hot { color: var(--hot-soft); }
+.vx { font-weight: 600; }
+.vl-flt { align-items: center; gap: 6px; }
+.vl-flt input { width: 64px; height: 24px; border-radius: 6px; border: 1px solid var(--line3); background: var(--card); color: var(--fg); padding: 0 6px; }
+.vl-flt .err { color: var(--hot-soft); }
 .mv-liq.deep { background: var(--ok-bg); color: var(--ok); } .mv-liq.thin { background: var(--cand-bg); color: var(--amber); } .mv-liq.vthin { background: var(--alert-bg); color: var(--warm); }
 .mv-add { border: 1px solid var(--line2); background: transparent; color: var(--fg2); border-radius: 5px; font-size: 12px; line-height: 1; padding: 2px 6px; }
 .mv-add:hover { color: var(--fg); border-color: var(--fg3); }
@@ -241,6 +252,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .pnhead .tk-stop { color: var(--warm); }
 .pnhead .tk-mover { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; border: 1px solid var(--mover); color: var(--mover); white-space: nowrap; cursor: default; }
 .pnhead .tk-mover.neg { border-color: var(--hot-soft); color: var(--hot-soft); }
+.pnhead .tk-vol { font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; border: 1px solid currentColor; white-space: nowrap; cursor: default; }
+.pnhead .tk-vol.calm { color: var(--link); } .pnhead .tk-vol.normal { color: var(--fg2); border-color: var(--line3); }
+.pnhead .tk-vol.active { color: var(--amber); } .pnhead .tk-vol.hot { color: var(--hot-soft); }
 /* чип Drivers (2026-10-08, власник): дві головні групи внеску в P — чому сигнал, без лівої панелі; лише Candidate / Alert */
 .pnhead .tk-why { display: inline-flex; align-items: center; gap: 8px; font-size: 11px; padding: 2px 9px; border-radius: 20px;
   border: 1px solid var(--line3); background: var(--card); color: var(--fg2); white-space: nowrap; cursor: default; }
@@ -296,7 +310,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   padding: 3px 8px; border-radius: 8px; background: color-mix(in srgb, var(--card) 80%, transparent); }
 .app.chartonly .pnhead .tk-name { font-size: 14px; }
 .app.chartonly .pnhead > * { font-size: 11px; }
-.app.chartonly .pnhead .tk-mover { padding: 1px 7px; }
+.app.chartonly .pnhead .tk-mover, .app.chartonly .pnhead .tk-vol { padding: 1px 7px; }
 .app.chartonly .ohlc, .app.chartonly .chart-help { display: none !important; }
 .app.chartonly .chart-card, .app.chartonly .pane .chart-card, .app.chartonly .pane .chart { min-height: 0; }
 .railbox { display: none; }
@@ -515,6 +529,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .gl.fpb, .chip.fpb { background: var(--ok-bg); color: var(--ok); } .gl.fpp, .chip.fpp { background: var(--cand-bg); color: var(--amber); }  /* не .p: .trow .p — колонка P */
 .gl.alert { background: var(--alert-bg); color: var(--hot-soft); } .gl.cand { background: var(--cand-bg); color: var(--amber); } .gl.past { opacity: .6; }
 .gl.auto { background: var(--live-bg); color: var(--link); }
+/* ×2.5 у рядку списку — очікувана волатильність Active / Hot (volfc.py, 20.10: власник — «позначка в рядках» для PD Watchlist) */
+.trow .vgl { height: 14px; line-height: 14px; padding: 0 4px; border-radius: 4px; font-size: 9.5px; font-weight: 700; flex: none; cursor: help; white-space: nowrap; }
+.vgl.active { background: var(--cand-bg); color: var(--amber); } .vgl.hot { background: var(--alert-bg); color: var(--hot-soft); }
 .keys { padding: 6px 14px; font-size: 10px; color: var(--fg3); border-top: 1px solid var(--line); display: flex; gap: 12px; }
 .keys b { color: var(--fg2); font-weight: 500; }
 .recent { padding: 10px 14px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; min-height: 0; }
@@ -774,6 +791,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
                   title="Монети з власним (ідіосинкратичним) рухом — рух, не пояснений ринком альтів"><span class="mk-dot" aria-hidden="true"></span>Movers <span class="mk-st" id="mvCount">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
           <div class="mk-pop mv-pop" id="mvPop" role="dialog" aria-label="Монети з власним рухом" hidden></div>
         </div>
+        <div class="mk-wrap vl-wrap">
+          <button class="mk-btn vl-btn" id="vlBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="vlPop"
+                  title="Очікувана волатильність (HAR): де чекати руху і якого розміру"><span class="mk-dot" aria-hidden="true"></span>Volatility <span class="mk-st" id="vlCount">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+          <div class="mk-pop vl-pop" id="vlPop" role="dialog" aria-label="Очікувана волатильність" hidden></div>
+        </div>
         <div class="mk-wrap sp-wrap">
           <button class="mk-btn sp-btn" id="spBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="spPop"
                   title="Розбіжність цін одного тікера між біржами: події й налаштування порогів"><span class="mk-dot" aria-hidden="true"></span>Spread <span class="mk-st" id="spCount">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
@@ -804,6 +826,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         <span class="pill none tk-status">—</span><span class="tk-p"></span>
         <span class="tk-pos" hidden></span><span class="small tk-stop" hidden></span>
         <span class="tk-mover" hidden></span>
+        <span class="tk-vol" hidden></span>
         <span class="tk-why" hidden></span>
         <span class="badge tk-ins" hidden title="Ця година була в навчанні моделі">in-sample</span>
       </div>
@@ -1122,7 +1145,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (st.chartOnly && st.ticker) window.pywebview?.api?.chart_title?.(st.ticker);
     const j = st.view === "journal", bt = st.view === "backtest", ch = st.view === "charts", li = st.view === "list", fc = !j && !bt && !ch && !li;
     $("app").classList.toggle("listonly", li);
-    if (li) { stopLive(); const nt = document.querySelector(".nt-wrap"); if (nt && nt.parentElement !== $("listBar")) $("listBar").prepend(nt); }
+    if (li) { stopLive(); const nt = document.querySelector(".nt-wrap"); if (nt && nt.parentElement !== $("listBar")) $("listBar").prepend(nt);
+      // «Volatility ▾» — і в PD Watchlist (власник 20.10): після «Dashboard ↗»
+      const vw = document.querySelector(".vl-wrap"); if (vw && vw.parentElement !== $("listBar")) $("listBar").append(vw); }
     $("app").classList.toggle("journal", !fc);
     $("viewForecast").hidden = !fc; $("rightPanel").hidden = !(fc || li); $("leftForecast").hidden = !fc;
     $("viewJournal").hidden = !j; $("leftJournal").hidden = !j;
@@ -1240,6 +1265,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     `власний рух ${fmtPct(mv.idio)} понад ринок (усього ${fmtPct(mv.tot)}), resid. z ${mv.z.toFixed(1)}σ — наскільки це незвично для монети\n` +
     `beta ${mv.beta == null ? "—" : mv.beta.toFixed(2)} · R² ${mv.r2 == null ? "—" : mv.r2.toFixed(2)} · ILLIQ ${mv.liq}` +
     `${mv.illiq_x ? " ×" + mv.illiq_x.toFixed(1) : ""} · оборот 24 год ${mv.turnover_24h ? "$" + (mv.turnover_24h / 1e6).toFixed(1) + "M" : "—"}`;
+
+  // ---------- Vol: очікувана волатильність (volfc.py) — чіп на графіку і таблиця «Vol ▾» ----------
+  const volMove = (v) => v == null ? "—" : "±" + (v * 100).toFixed(v >= 0.1 ? 0 : 1) + "%";
+  const volTitle = (v) => `Очікувана волатильність (HAR, volfc.py, оновлення щогодини${v.ts ? ", " + fmtTs(v.ts).slice(-5) + " UTC" : ""}):\n` +
+    `4 год: типовий рух ${volMove(v.exp_4)} — ×${v.vs_4 == null ? "—" : v.vs_4.toFixed(1)} від звичного (${volMove(v.usual_4)}), ${v.regime_4 || "—"}\n` +
+    `1 год: ${volMove(v.exp_1)} — ×${v.vs_1 == null ? "—" : v.vs_1.toFixed(1)} від звичного, ${v.regime_1 || "—"}\n` +
+    `Остання година фактично: ${volMove(v.last_1h)} · ATR 15m ${v.atr15 == null ? "—" : (v.atr15 * 100).toFixed(2) + "%"}\n` +
+    `Опис ринку, не сигнал моделі. У гарячі години прогноз зазвичай занижує рух — порівнюй з останньою годиною.`;
 
   // ---------- Drivers: внески ознак у P (drivers.py) ----------
   const DRV_COL = { "Open interest": "--oi", "Volume": "--link", "Price": "--pop", "Own move": "--wake", "Funding": "--accent", "Long / short": "--warm" };
@@ -1825,7 +1858,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const renderHead = () => {
       q(".tk-name").textContent = P.data ? P.data.ticker : (P.ticker || "—");
       root.classList.toggle("active", st.panes > 1 && isActive());
-      const d = P.data; if (!d) { q(".tk-mover").hidden = true; q(".tk-why").hidden = true; xsBtn.hidden = true; return; }
+      const d = P.data; if (!d) { q(".tk-mover").hidden = true; q(".tk-vol").hidden = true; q(".tk-why").hidden = true; xsBtn.hidden = true; return; }
       const ch = q(".tk-chg"); ch.textContent = fmtPct(d.chg_24h); ch.className = "tk-chg " + pctCls(d.chg_24h);
       q(".tk-ins").hidden = !d.in_sample;
       q(".tk-tf").textContent = `USDT Perp · ${d.tf || "1h"}` + (d.native_tf ? ` · модель ${d.native_tf}` : "");
@@ -1862,6 +1895,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           : `MOVER ${mv.h}H · z ${mv.z >= 0 ? "+" : ""}${mv.z.toFixed(1)} · idio ${fmtPct(mv.idio)}`;
         mvEl.className = "tk-mover" + (mv.z < 0 ? " neg" : "");
         mvEl.title = moverTitle(mv);
+      }
+      // Vol: очікуваний рух за 4 год і у скільки разів це більше звичного для монети (volfc.py, HAR; варіант B макета 20.10)
+      const vl = d.vol, vlEl = q(".tk-vol"); vlEl.hidden = !(vl && vl.exp_4 != null);
+      if (!vlEl.hidden) {
+        const tag = vl.regime_4 === "Active" || vl.regime_4 === "Hot" ? " " + vl.regime_4 : "";
+        vlEl.textContent = (st.chartOnly ? "" : "Exp 4H ") + volMove(vl.exp_4) + (vl.vs_4 != null ? " ×" + vl.vs_4.toFixed(1) : "") + tag;
+        vlEl.className = "tk-vol " + (vl.regime_4 || "normal").toLowerCase();
+        vlEl.title = volTitle(vl);
       }
       // Drivers: дві найбільші групи, що штовхають P вгору (drivers.py) — лише коли є Candidate / Alert і НЕМАЄ чипа MOVER
       // (власник: два чипи переносили заголовок на другий рядок); при MOVER групи Drivers — у його підказці, ⚠ — у тексті
@@ -2242,6 +2283,15 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       name.appendChild(x);
     }
     if (r.source === "auto" && r.channel !== "woke") { const x = el("span", "gl auto", "A"); x.title = "Added by the market scanner"; name.appendChild(x); }
+    // ×2.5 — очікуваний рух за 4 год у разах від звичного (volfc.py); лише Active / Hot, щоб не засмічувати список
+    const vm = r.vol;
+    if (vm && (vm.regime_4 === "Active" || vm.regime_4 === "Hot")) {
+      const x = el("span", "vgl " + vm.regime_4.toLowerCase(), "×" + vm.vs_4.toFixed(1));
+      x.title = `Expected volatility ${vm.regime_4}: next 4H ${volMove(vm.exp_4)} — ×${vm.vs_4.toFixed(1)} the coin's usual`
+        + (vm.vs_1 != null ? `\nnext 1H ${volMove(vm.exp_1)} — ×${vm.vs_1.toFixed(1)} (${vm.regime_1})` : "")
+        + `\nlast 1H actual ${volMove(vm.last_1h)}. Market description, not a model signal (Volatility ▾ for the table).`;
+      name.appendChild(x);
+    }
     const p = el("span", "num p " + (r.status === "alert" ? "hot" : r.status === "candidate" ? "amber" : "dim"), fmtP(r.probability));
     // ковзна 5-хв оцінка, новіша за офіційний бар, — дрібно під P: сірим, кольоровим — якщо вона вже Кандидат / Alert
     if (r.roll && Math.abs(r.roll.p15 - (r.probability ?? 0)) >= 0.05) {
@@ -3167,6 +3217,114 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   addEventListener("keydown", (e) => { if (e.key === "Escape" && MV.open) { toggleMovers(false); $("mvBtn").focus(); } });
   addEventListener("resize", () => { if (MV.open) placeMovers(); });
   loadMovers(); setInterval(loadMovers, 5 * 60 * 1000);
+
+  // ---------- «Vol ▾»: очікувана волатильність (volfc.py, HAR; скринер щогодини о HH:08), варіант A з макета 20.10 ----------
+  // Опис ринку, а не сигнал моделі; пояснення — notes/learning.md («Прогноз волатильності») і title заголовків.
+  const VL = { data: null, open: false, h: String(LS.get("pd-vl-h", "4")), sort: { k: "vs", dir: -1 } };
+  const VL_COLS = [
+    ["base", "Symbol", "Монета. IN LIST — уже в списку (клік — графік); ＋ — додати у watchlist"],
+    ["exp", "Exp. move", "Expected move — типовий рух (±1σ) за наступні 1 / 4 год за моделлю HAR (1 год, 4 год, доба, тиждень + година доби)"],
+    ["vs", "vs usual", "У скільки разів очікуваний рух більший за звичний для монети (медіана фактичного руху за 30 днів)"],
+    ["regime", "Regime", "Calm < 0.8× · Normal < 1.5× · Active < 2.5× · Hot ≥ 2.5× звичного (межі — пропозиція, не перевірені)"],
+    ["last", "Last 1H", "Фактичний рух останньої години. У гарячі години HAR зазвичай занижує рух — порівнюй"],
+    ["atr", "ATR 15m", "ATR(14) на 15m ÷ ціна — від нього рахується стоп моделі (2.13 ATR)"],
+    ["turn", "24H turnover", "$-оборот монети на Binance за 24 год"],
+  ];
+  const VL_ORDER = { Calm: 0, Normal: 1, Active: 2, Hot: 3 };
+  const vlVal = (r, k, h) => ({ base: r.base, exp: r["exp_" + h], vs: r["vs_" + h], regime: VL_ORDER[r["regime_" + h]],
+                                last: r.last_1h, atr: r.atr15, turn: r.turnover_24h })[k];
+  const renderVolBtn = () => {
+    const d = VL.data;
+    $("vlCount").textContent = !d || d.error ? "—" : String(d["hot_" + VL.h] ?? "—");
+    $("vlBtn").title = d && !d.error ? "Монет у режимі Hot (очікуваний рух ≥ 2.5× звичного) за " + VL.h + " год: " + d["hot_" + VL.h] + " (з " + d.n + ")"
+      : "Очікувана волатильність (HAR)";
+  };
+  const renderVolPop = () => {
+    const p = $("vlPop"), d = VL.data; p.replaceChildren();
+    if (!d || d.error) { p.appendChild(el("div", "mk-note", d?.error || "Завантаження…")); return; }
+    const h = VL.h, head = el("div", "mv-head");
+    head.appendChild(el("span", "mv-ttl vl-ttl", "Expected volatility"));
+    const seg = el("div", "mv-seg");
+    ["1", "4"].forEach((x) => { const b = el("button", "", x + "H"); b.setAttribute("aria-pressed", String(x === h));
+      b.addEventListener("click", (e) => { e.stopPropagation(); VL.h = x; LS.set("pd-vl-h", x); renderVolBtn(); renderVolPop(); }); seg.appendChild(b); });
+    head.appendChild(seg);
+    const m = d.model?.[h], ix = el("div", "mv-idx");
+    ix.appendChild(document.createTextNode("HAR + hour of day · 5m bars · " + d.n + " coins"));
+    if (m) ix.appendChild(el("span", "small", "weights 1H " + m.coef[1].toFixed(2) + " · 4H " + m.coef[2].toFixed(2) + " · 24H " + m.coef[3].toFixed(2) + " · 7D " + m.coef[4].toFixed(2)));
+    ix.appendChild(el("span", "small", fmtTs(d.ts) + " UTC"));
+    // межі обороту за 24 год (vol_config.json на сервері — одні для браузера й PD Watchlist); тікери списку — завжди
+    const cfg = d.config || {}, fl = el("div", "mv-idx vl-flt");
+    const num_ = (id, val, hint) => { const i = el("input"); i.type = "number"; i.min = "0"; i.step = "1"; i.id = id; i.value = val ?? "";
+      i.placeholder = id === "vlMax" ? "no cap" : "0"; i.title = hint; i.setAttribute("aria-label", hint);
+      i.addEventListener("click", (e) => e.stopPropagation()); return i; };
+    const mn = num_("vlMin", cfg.min_turnover_m, "Minimum 24H turnover, million $"), mx = num_("vlMax", cfg.max_turnover_m, "Maximum 24H turnover, million $ (empty — no cap)");
+    const save = () => saveVolCfg({ min_turnover_m: Math.max(0, +mn.value || 0), max_turnover_m: mx.value === "" ? null : Math.max(0, +mx.value || 0) });
+    mn.addEventListener("change", save); mx.addEventListener("change", save);
+    fl.append(el("span", "", "24H turnover $"), mn, el("span", "", "M –"), mx, el("span", "", "M"),
+              el("span", "small", "· list tickers always shown · " + d.n + " of " + (d.n_all ?? d.n)));
+    if (VL.err) fl.appendChild(el("span", "err", VL.err));
+    const inList = mvInList(), rows = (d.rows || []).slice(), s = VL.sort;
+    const num = (v) => v == null ? -Infinity : v;
+    rows.sort((a, b) => { const x = vlVal(a, s.k, h), y = vlVal(b, s.k, h);
+      if (s.k === "base") return (x > y ? 1 : x < y ? -1 : 0) * s.dir;
+      return (num(x) > num(y) ? 1 : num(x) < num(y) ? -1 : 0) * s.dir; });
+    const t = el("table"), trh = el("tr");
+    VL_COLS.forEach(([k, name, hint]) => { const c = el("th", "", k === "exp" ? name + " " + h + "H" : name); c.title = hint;
+      c.setAttribute("aria-sort", s.k === k ? (s.dir > 0 ? "ascending" : "descending") : "none");
+      c.addEventListener("click", (e) => { e.stopPropagation(); VL.sort = { k, dir: s.k === k ? -s.dir : -1 }; renderVolPop(); }); trh.appendChild(c); });
+    const thead = el("thead"); thead.appendChild(trh); t.appendChild(thead);
+    const tb = el("tbody");
+    rows.forEach((r) => {
+      const has = inList.has(r.base), tr = el("tr", has ? "open" : ""), rg = r["regime_" + h], cls = (rg || "").toLowerCase();
+      const first = el("td"); first.appendChild(el("span", "mv-sym", r.base));
+      if (has) first.appendChild(el("span", "mv-tag", "IN LIST"));
+      tr.appendChild(first);
+      tr.appendChild(el("td", "", volMove(r["exp_" + h])));
+      tr.appendChild(el("td", "vx " + cls, r["vs_" + h] == null ? "—" : "×" + r["vs_" + h].toFixed(1)));
+      const rc = el("td"); if (rg) rc.appendChild(el("span", "vr " + cls, rg)); tr.appendChild(rc);
+      tr.append(el("td", "", volMove(r.last_1h)), el("td", "", r.atr15 == null ? "—" : (r.atr15 * 100).toFixed(2) + "%"));
+      const last = el("td", "", r.turnover_24h ? (r.turnover_24h / 1e6).toFixed(1) + "M " : "— ");
+      if (!has) { const a = el("button", "mv-add", "＋"); a.title = "Додати " + r.base + " у watchlist";
+        a.addEventListener("click", (e) => { e.stopPropagation(); addTicker(r.base); }); last.appendChild(a); }
+      tr.appendChild(last);
+      if (has) tr.addEventListener("click", () => { toggleVol(false); selectTicker(r.base); });
+      tb.appendChild(tr);
+    });
+    t.appendChild(tb);
+    const wrap = el("div", "mv-tbl"); wrap.appendChild(t);
+    const note = el("div", "mk-note", "Опис ринку, а не сигнал моделі: де чекати руху і якого розміру. Exp. move — типовий рух (±1σ); vs usual — у скільки разів більше звичного для монети. У гарячі години прогноз занижує рух — порівнюй з Last 1H. Оновлення щогодини.");
+    p.append(head, ix, fl, wrap, note);
+  };
+  const saveVolCfg = async (patch) => {
+    VL.err = null;
+    try { await api("/api/vol/config", { method: "POST", body: JSON.stringify(patch), quiet: true }); }
+    catch (e) { VL.err = e.message; }
+    await loadVol();
+  };
+  const placeVol = () => {
+    const p = $("vlPop"), r = $("vlBtn").getBoundingClientRect(), w = p.offsetWidth, hgt = p.offsetHeight;
+    let left = r.right - w; if (left < 8) left = Math.min(r.left, innerWidth - w - 8);
+    let top = r.bottom + 6; if (top + hgt > innerHeight - 8) top = Math.max(8, innerHeight - hgt - 8);
+    p.style.left = Math.max(8, left) + "px"; p.style.top = top + "px";
+  };
+  const toggleVol = (open) => {
+    VL.open = open; $("vlPop").hidden = !open; $("vlBtn").setAttribute("aria-expanded", String(open));
+    if (open) { renderVolPop(); placeVol(); }
+  };
+  const loadVol = async () => {
+    if (st.chartOnly) return;
+    try { VL.data = await api("/api/vol", { quiet: true }); } catch (e) { VL.data = { error: e.message }; }
+    renderVolBtn(); if (VL.open) { renderVolPop(); placeVol(); }
+  };
+  $("vlBtn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!VL.open) { if (MK.open) toggleMarket(false); if (MV.open) toggleMovers(false); if (NT.open) toggleNotify(false); }
+    toggleVol(!VL.open);
+  });
+  document.addEventListener("click", (e) => { if (VL.open && !e.target.closest(".vl-wrap")) toggleVol(false); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && VL.open) { toggleVol(false); $("vlBtn").focus(); } });
+  addEventListener("resize", () => { if (VL.open) placeVol(); });
+  loadVol(); setInterval(loadVol, 5 * 60 * 1000);
 
   // ---------- «Spread ▾» і картка «Δ»: розбіжність цін тікера між біржами (spread.py; монітор у процесі дашборда, зріз кожні 15 с) ----------
   // Подія = розбіжність по біду й аску ≥ порогу, у кілька разів більша за звичайну для монети, і тримається заданий час.

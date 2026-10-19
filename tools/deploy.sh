@@ -24,7 +24,7 @@ HOST="ubuntu@45.76.90.13"
 PORT=2222
 KEY="D:/keys/pd.pem"
 DIR="pd"                                   # папка на сервері: /home/ubuntu/pd
-SERVER_OWNED='^(watchlist\.txt|scan_config\.json|spread_config\.json|twap_config\.json)$'
+SERVER_OWNED='^(watchlist\.txt|scan_config\.json|spread_config\.json|twap_config\.json|vol_config\.json)$'
 SKIP='^(notes/|images_bags/|data/|ТЗ )'      # особисте і великі локальні кеші — серверу не потрібні
 
 first=0; models=0; restart=0; labels=0; backtests=0; yes=0
