@@ -184,7 +184,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .mv-liq { font-size: 10.5px; font-weight: 500; padding: 1px 6px; border-radius: 4px; background: var(--line); color: var(--fg2); }
 /* «Vol ▾» — очікувана волатильність (volfc.py, HAR): таблиця, варіант A з макета 20.10; кольори режимів — і для чіпа на графіку */
 .vl-btn .mk-dot { background: var(--amber); } .vl-btn .mk-st { color: var(--amber); }
-.vl-pop { width: 660px; max-width: calc(100vw - 16px); }
+.vl-pop { width: 760px; max-width: calc(100vw - 16px); }
+.vsn .pos { color: var(--ok); } .vsn .neg { color: var(--hot); }
 .vl-ttl { color: var(--amber); }
 .vr { font-size: 10.5px; font-weight: 500; padding: 1px 7px; border-radius: 10px; border: 1px solid currentColor; }
 .vr.calm, .vx.calm { color: var(--link); } .vr.normal, .vx.normal { color: var(--fg2); }
@@ -1269,10 +1270,20 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   // ---------- Vol: очікувана волатильність (volfc.py) — чіп на графіку і таблиця «Vol ▾» ----------
   // горизонт чіпа на графіку й позначки в списку — той самий перемикач 1H / 4H, що в таблиці Volatility ▾ (LS pd-vl-h)
   const volH = () => (String(LS.get("pd-vl-h", "4")) === "1" ? "1" : "4");
+  // «Since fcst»: зміна ціни за H год і фактичний рух ÷ прогноз, зроблений H год тому (колір — як режими: ≥ 1.5 / ≥ 2.5)
+  const volSince = (r, h) => {
+    const td = el("td", "vsn"), f = r["fc_" + h], c = r["chg_" + h];
+    if (f == null) { td.textContent = "—"; return td; }
+    td.append(el("span", c >= 0 ? "pos" : "neg", fmtPct(c)), " ",
+              el("span", "vx " + (f >= 2.5 ? "hot" : f >= 1.5 ? "active" : f < 0.8 ? "calm" : "normal"), "×" + f.toFixed(1)));
+    td.title = `За останні ${h} год ціна ${fmtPct(c)}; фактичний рух ${volMove(r["real_" + h])} — ×${f.toFixed(1)} від прогнозу, зробленого ${h} год тому`;
+    return td;
+  };
   const volMove = (v) => v == null ? "—" : "±" + (v * 100).toFixed(v >= 0.1 ? 0 : 1) + "%";
-  const volTitle = (v) => `Очікувана волатильність (HAR, volfc.py, оновлення щогодини${v.ts ? ", " + fmtTs(v.ts).slice(-5) + " UTC" : ""}):\n` +
+  const volTitle = (v) => `Очікувана волатильність (HAR, volfc.py, прогноз кожні 5 хв${v.ts ? ", " + fmtTs(v.ts).slice(-5) + " UTC" : ""}):\n` +
     `4 год: типовий рух ${volMove(v.exp_4)} — ×${v.vs_4 == null ? "—" : v.vs_4.toFixed(1)} від звичного (${volMove(v.usual_4)}), ${v.regime_4 || "—"}\n` +
     `1 год: ${volMove(v.exp_1)} — ×${v.vs_1 == null ? "—" : v.vs_1.toFixed(1)} від звичного, ${v.regime_1 || "—"}\n` +
+    (v.fc_4 != null ? `За останні 4 год: ціна ${fmtPct(v.chg_4)}, рух ×${v.fc_4.toFixed(1)} від тодішнього прогнозу` + (v.fc_1 != null ? ` · за 1 год: ${fmtPct(v.chg_1)}, ×${v.fc_1.toFixed(1)}` : "") + "\n" : "") +
     `Остання година фактично: ${volMove(v.last_1h)} · ATR 15m ${v.atr15 == null ? "—" : (v.atr15 * 100).toFixed(2) + "%"}\n` +
     `Опис ринку, не сигнал моделі. У гарячі години прогноз зазвичай занижує рух — порівнюй з останньою годиною.`;
 
@@ -2292,6 +2303,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const x = el("span", "vgl " + vrg.toLowerCase(), "×" + vm["vs_" + vh].toFixed(1));
       x.title = `Expected volatility ${vrg}: next ${vh}H ${volMove(vm["exp_" + vh])} — ×${vm["vs_" + vh].toFixed(1)} the coin's usual`
         + (vm["vs_" + oh] != null ? `\nnext ${oh}H ${volMove(vm["exp_" + oh])} — ×${vm["vs_" + oh].toFixed(1)} (${vm["regime_" + oh]})` : "")
+        + (vm["fc_" + vh] != null ? `\nlast ${vh}H: price ${fmtPct(vm["chg_" + vh])}, moved ×${vm["fc_" + vh].toFixed(1)} of the forecast made then` : "")
         + `\nlast 1H actual ${volMove(vm.last_1h)}. Market description, not a model signal (Volatility ▾: 1H / 4H switch and the table).`;
       name.appendChild(x);
     }
@@ -3221,7 +3233,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   addEventListener("resize", () => { if (MV.open) placeMovers(); });
   loadMovers(); setInterval(loadMovers, 5 * 60 * 1000);
 
-  // ---------- «Vol ▾»: очікувана волатильність (volfc.py, HAR; скринер щогодини о HH:08), варіант A з макета 20.10 ----------
+  // ---------- «Volatility ▾»: очікувана волатильність (volfc.py, HAR; скринер з кожним 5m-баром), варіант A з макета 20.10 ----------
   // Опис ринку, а не сигнал моделі; пояснення — notes/learning.md («Прогноз волатильності») і title заголовків.
   const VL = { data: null, open: false, h: String(LS.get("pd-vl-h", "4")), sort: { k: "vs", dir: -1 } };
   const VL_COLS = [
@@ -3229,13 +3241,14 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     ["exp", "Exp. move", "Expected move — типовий рух (±1σ) за наступні 1 / 4 год за моделлю HAR (1 год, 4 год, доба, тиждень + година доби)"],
     ["vs", "vs usual", "У скільки разів очікуваний рух більший за звичний для монети (медіана фактичного руху за 30 днів)"],
     ["regime", "Regime", "Calm < 0.8× · Normal < 1.5× · Active < 2.5× · Hot ≥ 2.5× звичного (межі — пропозиція, не перевірені)"],
+    ["since", "Since fcst", "Зміна ціни за останні 1 / 4 год і як справдився прогноз, зроблений тоді: ×2.0 — монета рухалась удвічі сильніше, ніж модель чекала (гарячіша, ніж здається; поточний прогноз теж може занижувати), ×0.5 — удвічі слабше"],
     ["last", "Last 1H", "Фактичний рух останньої години. У гарячі години HAR зазвичай занижує рух — порівнюй"],
     ["atr", "ATR 15m", "ATR(14) на 15m ÷ ціна — від нього рахується стоп моделі (2.13 ATR)"],
     ["turn", "24H turnover", "$-оборот монети на Binance за 24 год"],
   ];
   const VL_ORDER = { Calm: 0, Normal: 1, Active: 2, Hot: 3 };
   const vlVal = (r, k, h) => ({ base: r.base, exp: r["exp_" + h], vs: r["vs_" + h], regime: VL_ORDER[r["regime_" + h]],
-                                last: r.last_1h, atr: r.atr15, turn: r.turnover_24h })[k];
+                                since: r["fc_" + h], last: r.last_1h, atr: r.atr15, turn: r.turnover_24h })[k];
   const renderVolBtn = () => {
     const d = VL.data;
     $("vlCount").textContent = !d || d.error ? "—" : String(d["hot_" + VL.h] ?? "—");
@@ -3254,7 +3267,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const m = d.model?.[h], ix = el("div", "mv-idx");
     ix.appendChild(document.createTextNode("HAR + hour of day · 5m bars · " + d.n + " coins"));
     if (m) ix.appendChild(el("span", "small", "weights 1H " + m.coef[1].toFixed(2) + " · 4H " + m.coef[2].toFixed(2) + " · 24H " + m.coef[3].toFixed(2) + " · 7D " + m.coef[4].toFixed(2)));
-    ix.appendChild(el("span", "small", fmtTs(d.ts) + " UTC"));
+    ix.appendChild(el("span", "small", "forecast from " + fmtTs(d.ts).slice(-5) + " UTC · every 5 min"));
     // межі обороту за 24 год (vol_config.json на сервері — одні для браузера й PD Watchlist); тікери списку — завжди
     const cfg = d.config || {}, fl = el("div", "mv-idx vl-flt");
     const num_ = (id, val, hint) => { const i = el("input"); i.type = "number"; i.min = "0"; i.step = "1"; i.id = id; i.value = val ?? "";
@@ -3285,6 +3298,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       tr.appendChild(el("td", "", volMove(r["exp_" + h])));
       tr.appendChild(el("td", "vx " + cls, r["vs_" + h] == null ? "—" : "×" + r["vs_" + h].toFixed(1)));
       const rc = el("td"); if (rg) rc.appendChild(el("span", "vr " + cls, rg)); tr.appendChild(rc);
+      tr.appendChild(volSince(r, h));
       tr.append(el("td", "", volMove(r.last_1h)), el("td", "", r.atr15 == null ? "—" : (r.atr15 * 100).toFixed(2) + "%"));
       const last = el("td", "", r.turnover_24h ? (r.turnover_24h / 1e6).toFixed(1) + "M " : "— ");
       if (!has) { const a = el("button", "mv-add", "＋"); a.title = "Додати " + r.base + " у watchlist";
@@ -3295,7 +3309,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     });
     t.appendChild(tb);
     const wrap = el("div", "mv-tbl"); wrap.appendChild(t);
-    const note = el("div", "mk-note", "Опис ринку, а не сигнал моделі: де чекати руху і якого розміру. Exp. move — типовий рух (±1σ); vs usual — у скільки разів більше звичного для монети. У гарячі години прогноз занижує рух — порівнюй з Last 1H. Оновлення щогодини.");
+    const note = el("div", "mk-note", "Опис ринку, а не сигнал моделі: де чекати руху і якого розміру. Exp. move — типовий рух (±1σ); vs usual — у скільки разів більше звичного для монети. У гарячі години прогноз занижує рух — дивись Since fcst і Last 1H. Прогноз — від поточної ціни, кожні 5 хв.");
     p.append(head, ix, fl, wrap, note);
   };
   const saveVolCfg = async (patch) => {
@@ -3330,7 +3344,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   document.addEventListener("click", (e) => { if (VL.open && !e.target.closest(".vl-wrap")) toggleVol(false); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && VL.open) { toggleVol(false); $("vlBtn").focus(); } });
   addEventListener("resize", () => { if (VL.open) placeVol(); });
-  loadVol(); setInterval(loadVol, 5 * 60 * 1000);
+  loadVol(); setInterval(loadVol, 60 * 1000);           // прогноз оновлюється з кожним 5m-баром
 
   // ---------- «Spread ▾» і картка «Δ»: розбіжність цін тікера між біржами (spread.py; монітор у процесі дашборда, зріз кожні 15 с) ----------
   // Подія = розбіжність по біду й аску ≥ порогу, у кілька разів більша за звичайну для монети, і тримається заданий час.

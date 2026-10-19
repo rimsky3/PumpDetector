@@ -31,7 +31,8 @@ def vol_mark(base: str) -> dict | None:
     v = volfc.info(base)
     if not v or v.get("vs_4") is None:
         return None
-    return {k: v.get(k) for k in ("exp_4", "vs_4", "regime_4", "exp_1", "vs_1", "regime_1", "last_1h", "ts")}
+    return {k: v.get(k) for k in ("exp_4", "vs_4", "regime_4", "exp_1", "vs_1", "regime_1", "last_1h", "ts",
+                                  "chg_1", "chg_4", "fc_1", "fc_4")}
 
 
 def watch_list_15m(conn) -> dict:

@@ -96,7 +96,8 @@
   потік Coinalyze, сканер ринку, wake, footprint, запис стакану; `--backfill-15m DAYS` — історія оцінок.
 - `scanner.py` — авто-список з усіх USDT-перпів Binance (ліквідність = сер. оборот 30 дн) + канал WOKE; `wake.py` —
   «прокидається» на 5m; `footprint.py` — мітки b / p; `market.py` — ширина ринку; `movers.py`; `volfc.py` — очікувана волатильність
-  (HAR-S на 5m Binance, скринер о HH:08 → reports/volfc.json; «Volatility ▾» і чіп на графіку, 20.10; режими Calm / Normal / Active / Hot
+  (HAR-S на 5m Binance, скринер з кожним 5m-баром — прогноз «від зараз» + «Since fcst» (як справдився прогноз H год тому),
+  коефіцієнти щогодини → reports/volfc.json; «Volatility ▾» і чіп на графіку, 20.10; режими Calm / Normal / Active / Hot
   — межі 0.8 / 1.5 / 2.5× звичного, не перевірені; фільтр обороту таблиці — `vol_config.json`, як twap_config: у git немає,
   deploy не чіпає); `drivers.py` — TreeSHAP.
 - `dashboard.py` (HTTP-маршрути, запуск) + пакет `dashboard_app/` (19.10, розбиття за відповідальністю: common, trades,

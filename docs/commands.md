@@ -450,7 +450,8 @@ guide to every column: `notes/movers.md`.
 | `python volfc.py --limit 20` | first 20 coins only (check) |
 | `python volfc.py --show` | print the last result without updating |
 
-The screener runs it every hour at HH:08 (`volfc.watcher`). Dashboard: **Volatility N ▾** (`/api/vol`) and the `vol` chip in
+The screener runs it after every 5m bar (`volfc.watcher` → `Updater.step`: new candles and a forecast from now every
+5 minutes; coin set, coefficients and usual moves hourly). Dashboard: **Volatility N ▾** (`/api/vol`) and the `vol` chip in
 `/api/ticker`. See `docs/screener.md`, "Expected volatility".
 
 ### `drivers.py` — why the model gave this probability

@@ -20,7 +20,10 @@ volfc.py — очікувана волатильність (HAR): кнопка �
     last_1h   фактичний рух останньої години (у гарячі години HAR занижує — для порівняння)
     atr15     ATR(14) 15m ÷ ціна (як risk.atr; ним рахується стоп моделі)
     turnover_24h  $-оборот Binance за 24 год
-Скринер (watcher, щогодини о HH:08) пише reports/volfc.json; дашборд — /api/vol і поле «vol» у /api/ticker.
+Скринер (watcher) з кожним 5m-баром (+25 с) дотягує свічки і рахує прогноз «від зараз»; набір монет, коефіцієнти і
+«звичний» рух — раз на годину. Для перевірки прогнозу: chg_H — зміна ціни за останні H год, fc_H — фактичний рух за ці
+H год ÷ прогноз, зроблений H год тому (> 1.5 — монета рухається сильніше, ніж модель чекала).
+Пише reports/volfc.json; дашборд — /api/vol і поле «vol» у /api/ticker і рядках /api/list.
 
     python volfc.py               # оновити кеш і порахувати (перший раз ~20 хв)
     python volfc.py --limit 20    # перевірка на 20 монетах
@@ -142,40 +145,89 @@ def atr15(b5: pd.DataFrame) -> float | None:
     return float(a.iloc[-1] / b["c"].iloc[-1])
 
 
-def compute(bars: dict) -> dict:
-    """bars: {символ: 5m DataFrame (c, h, l, q), лише закриті бари} → вміст reports/volfc.json."""
-    pts = {s: hourly_points(b["c"]) for s, b in bars.items() if len(b) > WIN["7d"]}
-    pts = {s: p for s, p in pts.items() if len(p)}
+def fit_all(bars: dict) -> tuple[dict, dict]:
+    """Щогодини: коефіцієнти HAR-S (pooled на всіх монетах) і «звичний» рух кожної монети → (models, usual)."""
+    pts = [hourly_points(b["c"].astype("float64")) for b in bars.values() if len(b) > WIN["7d"]]
+    pts = [p for p in pts if len(p)]
     if not pts:
-        return {"error": "немає даних"}
-    allp = pd.concat(pts.values(), ignore_index=True)
+        return {h: None for h in HORIZONS}, {}
+    allp = pd.concat(pts, ignore_index=True)
     models = {h: fit(allp, h) for h in HORIZONS}
+    usual = {s: {h: usual_move(b["c"].astype("float64"), h) for h in HORIZONS} for s, b in bars.items() if len(b) > WIN["7d"]}
+    return models, usual
+
+
+def _grid(c: pd.Series) -> tuple[pd.DatetimeIndex, np.ndarray, np.ndarray]:
+    """Рівна 5m-сітка: закриття (NaN у дірках) і квадрати log-доходностей кожного бару (від закриття попереднього)."""
+    grid = pd.date_range(c.index[0], c.index[-1], freq=BAR)
+    cc = c.astype("float64").reindex(grid)
+    sq = (np.log(cc.where(cc > 0)).diff() ** 2).to_numpy()
+    return grid, cc.to_numpy(), sq
+
+
+def _wvar(sq: np.ndarray, end: int, n: int) -> float:
+    """Середній квадрат доходності барів [end − n, end) — як вікна hourly_points; NaN, якщо даних < MIN_FILL."""
+    if end - n < 0:
+        return np.nan
+    w = sq[end - n:end]
+    k = np.isfinite(w).sum()
+    return float(np.nansum(w) / k) if k >= MIN_FILL * n else np.nan
+
+
+def point(sq: np.ndarray, end: int, moment: pd.Timestamp) -> pd.DataFrame:
+    """Ознаки HAR у довільний момент (закриття бару end − 1) — ті самі, що hourly_points дає на закритті години."""
+    v = {f"x{k}": _wvar(sq, end, n) for k, n in (("1", 12), ("4", 48), ("24", 288), ("168", 2016))}
+    d = pd.DataFrame({k: [np.log(x) if x > 0 else np.nan] for k, x in v.items()})
+    d["hour"] = moment.hour
+    return d
+
+
+def snapshot(bars: dict, models: dict, usual: dict) -> dict:
+    """Прогноз «від зараз» на закритті останнього 5m-бару (кожні 5 хв) + перевірка прогнозу, зробленого H год тому:
+    chg_H — зміна ціни за H год; fc_H — фактичний рух за ці H год ÷ тодішній прогноз (×2 — рухалась удвічі сильніше,
+    ніж модель чекала: монета гарячіша, ніж здається)."""
+    if not bars:
+        return {"error": "немає даних"}
+    last_ts = max(b.index[-1] for b in bars.values() if len(b))
     rows = []
-    for s, p in pts.items():
-        b = bars[s]
-        last = p.iloc[[-1]]
-        if last.index[0] < b.index[-1] + BAR - pd.Timedelta(hours=1):          # остання повна година не пізніше
+    for s, b in bars.items():
+        if len(b) <= WIN["7d"] or b.index[-1] < last_ts - pd.Timedelta(minutes=30):       # монета без свіжих свічок
             continue
+        grid, cc, sq = _grid(b["c"])
+        end, moment = len(sq), grid[-1] + BAR
         r = {"symbol": s, "base": s[:-4] if s.endswith("USDT") else s}
-        sq = np.log(b["c"]).diff().iloc[-12:] ** 2
-        r["last_1h"] = float(np.sqrt(sq.sum())) if sq.notna().sum() >= 10 else None
-        r["atr15"] = atr15(b)
+        r["last_1h"] = float(np.sqrt(_wvar(sq, end, 12) * 12)) if np.isfinite(_wvar(sq, end, 12)) else None
+        r["atr15"] = atr15(b.iloc[-600:].astype("float64"))
         r["turnover_24h"] = float(b["q"].iloc[-288:].sum())
+        now_px = float(pd.Series(cc).ffill().iloc[-1])
         for h in HORIZONS:
-            e, u = forecast(last, models[h], h), usual_move(b["c"], h)
+            n = 12 * h
+            e = forecast(point(sq, end, moment), models.get(h), h)
+            u = (usual.get(s) or {}).get(h)
             vs = e / u if e and u else None
-            r.update({f"exp_{h}": e, f"usual_{h}": u, f"vs_{h}": vs, f"regime_{h}": regime(vs)})
+            prev = forecast(point(sq, end - n, moment - pd.Timedelta(hours=h)), models.get(h), h)   # прогноз H год тому
+            real = float(np.sqrt(_wvar(sq, end, n) * n)) if np.isfinite(_wvar(sq, end, n)) else None
+            then = pd.Series(cc[:end - n]).ffill()
+            px0 = float(then.iloc[-1]) if len(then) and np.isfinite(then.iloc[-1]) else None
+            r.update({f"exp_{h}": e, f"usual_{h}": u, f"vs_{h}": vs, f"regime_{h}": regime(vs),
+                      f"real_{h}": real, f"fc_{h}": real / prev if real and prev else None,
+                      f"chg_{h}": now_px / px0 - 1 if px0 else None})
         if r["exp_4"] is not None:
             rows.append(r)
     clean = lambda v: None if v is None or (isinstance(v, float) and not np.isfinite(v)) else (round(v, 6) if isinstance(v, float) else v)  # noqa: E731
-    ts = max(p.index[-1] for p in pts.values())
-    out = {"ts": int(ts.timestamp()), "n": len(rows), "regimes": [[e if np.isfinite(e) else None, n] for e, n in REGIMES],
+    out = {"ts": int((last_ts + BAR).timestamp()), "n": len(rows),
+           "regimes": [[e if np.isfinite(e) else None, n] for e, n in REGIMES],
            "model": {str(h): ({"coef": [round(float(x), 4) for x in m["beta"][:5]], "rows": m["rows"]} if m else None)
                      for h, m in models.items()},
            "rows": [{k: clean(v) for k, v in r.items()} for r in sorted(rows, key=lambda r: -(r["vs_4"] or 0))]}
     for h in HORIZONS:
         out[f"hot_{h}"] = sum(1 for r in rows if r[f"regime_{h}"] == "Hot")
     return out
+
+
+def compute(bars: dict) -> dict:
+    """bars: {символ: 5m DataFrame (c, h, l, q), лише закриті бари} → вміст reports/volfc.json (перенавчання + прогноз)."""
+    return snapshot(bars, *fit_all(bars))
 
 
 # ---------------------------------------------------------------- дані з Binance
@@ -281,59 +333,79 @@ def load_cache() -> dict:
         return {}
 
 
+class Updater:
+    """Свічки й прогноз — з кожним 5m-баром; набір монет, коефіцієнти і «звичний» рух — раз на годину (зміна години).
+    Свічки тримаються в пам'яті (float32), на диск — раз на годину (reports/volfc_5m.pkl, щоб перезапуск не качав 31 день)."""
+
+    def __init__(self, limit: int = 0):
+        import market
+        self.limit, self.lim = limit, market._Limiter(WEIGHT_PER_SEC)
+        self.bars = load_cache()
+        self.syms, self.models, self.usual, self.hour = [], {}, {}, None
+
+    def step(self, log=print) -> dict:
+        now = pd.Timestamp(datetime.now(timezone.utc))
+        hour, start = now.floor("h"), (now - pd.Timedelta(days=HIST_DAYS)).floor("h")
+        hourly = hour != self.hour
+        if hourly or not self.syms:
+            self.syms = universe()[: self.limit or None]
+        t0 = time.time()
+
+        def job(sym):
+            have = self.bars.get(sym)
+            frm = have.index.max() + BAR if have is not None and len(have) else start
+            return sym, _klines(sym, max(frm, start), now, self.lim)
+
+        with ThreadPoolExecutor(WORKERS) as pool:
+            got = dict(pool.map(job, self.syms))
+        new = {}
+        for s in self.syms:
+            parts = [x for x in (self.bars.get(s), got.get(s)) if x is not None and len(x)]
+            if parts:
+                df = pd.concat(parts) if len(parts) > 1 else parts[0]
+                df = df[~df.index.duplicated(keep="last")].sort_index()
+                new[s] = df[df.index >= start].astype("float32")
+        self.bars = new
+        if hourly or not self.models:
+            self.models, self.usual = fit_all(self.bars)
+            self.hour = hour
+            os.makedirs(os.path.dirname(CACHE), exist_ok=True)
+            with open(CACHE + ".tmp", "wb") as f:
+                pickle.dump(self.bars, f)
+            os.replace(CACHE + ".tmp", CACHE)
+        out = snapshot(self.bars, self.models, self.usual)
+        out["fit_ts"] = int(self.hour.timestamp()) if self.hour is not None else None
+        with open(OUT + ".tmp", "w", encoding="utf-8") as f:
+            json.dump(out, f, ensure_ascii=False)
+        os.replace(OUT + ".tmp", OUT)
+        if hourly:
+            log(f"  vol: {out.get('n', 0)} монет, Hot 4H {out.get('hot_4', '—')}, {time.time() - t0:.0f} с (з перенавчанням)")
+        return out
+
+
 def update(limit: int = 0, log=print) -> dict:
-    """Дотягнути 5m-свічки ліквідних альтів, порахувати прогноз → reports/volfc.json."""
-    import market
-    now = pd.Timestamp(datetime.now(timezone.utc))
-    start = (now - pd.Timedelta(days=HIST_DAYS)).floor("h")
-    syms = universe()[: limit or None]
-    cache = load_cache()
-    lim = market._Limiter(WEIGHT_PER_SEC)
-
-    def job(sym):
-        have = cache.get(sym)
-        frm = have.index.max() + BAR if have is not None and len(have) else start
-        return sym, _klines(sym, max(frm, start), now, lim)
-
-    t0 = time.time()
-    with ThreadPoolExecutor(WORKERS) as pool:
-        got = dict(pool.map(job, syms))
-    new = {}
-    for s in syms:
-        parts = [x for x in (cache.get(s), got.get(s)) if x is not None and len(x)]
-        if parts:
-            df = pd.concat(parts)
-            df = df[~df.index.duplicated(keep="last")].sort_index()
-            new[s] = df[df.index >= start]
-    os.makedirs(os.path.dirname(CACHE), exist_ok=True)
-    with open(CACHE + ".tmp", "wb") as f:
-        pickle.dump(new, f)
-    os.replace(CACHE + ".tmp", CACHE)
-    out = compute(new)
-    with open(OUT + ".tmp", "w", encoding="utf-8") as f:
-        json.dump(out, f, ensure_ascii=False)
-    os.replace(OUT + ".tmp", OUT)
-    log(f"  vol: {out.get('n', 0)} монет, Hot 4H {out.get('hot_4', '—')}, {time.time() - t0:.0f} с")
-    return out
+    """Один прохід з нуля (CLI): дотягнути свічки, перенавчити, порахувати прогноз → reports/volfc.json."""
+    return Updater(limit).step(log)
 
 
-def watcher(minute: int = 8) -> threading.Thread:
-    """Для screener.py --loop: щогодини о HH:08 (і одразу при старті) у власному потоці, з nice (2 vCPU на сервері);
-    :08 — між 15m-циклами скринера (:02 / :17) і після market.py (:01)."""
+def watcher(delay: int = 25) -> threading.Thread:
+    """Для screener.py --loop: через delay с після закриття кожного 5m-бару (і одразу при старті) у власному потоці,
+    з nice (2 vCPU на сервері). Перший запуск качає 31 день свічок (~25 хв), далі — один короткий запит на монету."""
     def run():
         try:
             os.nice(5)
         except (AttributeError, OSError):
             pass
+        up = Updater()
         while True:
             try:
-                update()
+                up.step()
             except Exception as e:
                 print(f"  ! vol: {type(e).__name__}: {e}")
             now = datetime.now(timezone.utc)
-            nxt = now.replace(minute=minute, second=30, microsecond=0)
+            nxt = now.replace(second=0, microsecond=0) + timedelta(minutes=5 - now.minute % 5, seconds=delay)
             if nxt <= now:
-                nxt += timedelta(hours=1)
+                nxt += timedelta(minutes=5)
             time.sleep((nxt - now).total_seconds())
     th = threading.Thread(target=run, daemon=True, name="volfc")
     th.start()

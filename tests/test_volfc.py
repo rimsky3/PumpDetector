@@ -104,3 +104,40 @@ def test_save_config_validates(tmp_path, monkeypatch):
         except ValueError:
             pass
     assert volfc.load_config() == {"min_turnover_m": 20.0, "max_turnover_m": None}
+
+
+def test_point_matches_training_features():
+    """Ознаки «від зараз» (point) на закритті години — ті самі, що в навчанні (hourly_points); і на півгодини раніше —
+    ті самі, що hourly_points дав би, якби дані закінчувались там."""
+    b = walk(9, 0.002, 3)
+    b = b[b.index < b.index[-1].floor("h")]                        # останній бар закривається рівно о :00
+    grid, cc, sq = volfc._grid(b["c"])
+    p = volfc.hourly_points(b["c"])
+    got = volfc.point(sq, len(sq), grid[-1] + volfc.BAR)
+    for k in ("x1", "x4", "x24", "x168"):
+        assert np.isclose(got[k].iloc[0], p[k].iloc[-1]), k
+    cut = b.iloc[:-6]                                               # пів години раніше
+    q = volfc.hourly_points(cut["c"])                               # останній рядок — момент закриття бару, не :00
+    g2, c2, s2 = volfc._grid(cut["c"])
+    mid = volfc.point(sq, len(sq) - 6, grid[-1] + volfc.BAR - pd.Timedelta(minutes=30))
+    assert np.isclose(mid["x4"].iloc[0], volfc.point(s2, len(s2), g2[-1] + volfc.BAR)["x4"].iloc[0])
+    assert q.index[-1] < p.index[-1]
+
+
+def test_since_forecast():
+    """Спокійна монета: фактичний рух ≈ прогнозу H год тому (fc ≈ 1), chg — зміна ціни за H год. Монета, що остання година
+    рухається вчетверо сильніше: fc_1 > 2."""
+    bars = {f"C{i}USDT": clustered(16, 40 + i) for i in range(5)}
+    calm = volfc.compute(bars)
+    r = next(x for x in calm["rows"] if x["base"] == "C1")
+    c = bars["C1USDT"]["c"]
+    assert np.isclose(r["chg_4"], c.iloc[-1] / c.iloc[-49] - 1, atol=1e-5)          # у JSON — 6 знаків
+    hot = bars["C0USDT"].copy()
+    lr = np.log(hot["c"]).diff().fillna(0).to_numpy().copy()
+    lr[-12:] *= 4
+    hot["c"] = 100 * np.exp(np.cumsum(lr))
+    bars["C0USDT"] = hot
+    out = volfc.compute(bars)
+    r0 = next(x for x in out["rows"] if x["base"] == "C0")
+    others = [x["fc_1"] for x in out["rows"] if x["base"] != "C0"]
+    assert r0["fc_1"] > 2 and max(others) < r0["fc_1"] and 0.4 < np.median(others) < 2.5
