@@ -32,7 +32,11 @@ from datetime import datetime, timezone
 ROOT = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(ROOT, "reports", "my_positions.json")
 VOLFC = os.path.join(ROOT, "reports", "volfc.json")
-FAPI, WS = "https://fapi.binance.com", "wss://fstream.binance.com/ws/"
+FAPI = "https://fapi.binance.com"
+# з 2026-04-23 події акаунта йдуть ЛИШЕ через /private (стара /ws/<listenKey> приймає з'єднання, але мовчить — 20.10 вхід AGT
+# не прийшов): https://developers.binance.com/docs/derivatives/usds-margined-futures/websocket-market-streams/Important-WebSocket-Change-Notice
+WS = "wss://fstream.binance.com/private/ws?listenKey={lk}&events=ORDER_TRADE_UPDATE/ACCOUNT_UPDATE"
+POLL_SEC = 30                  # страховка: звірка позицій через REST, навіть якщо потік мовчить (вага 5 / запит)
 KEEPALIVE_SEC = 30 * 60
 RECONNECT_SEC = 23 * 3600
 HEARTBEAT_SEC = 60
@@ -80,6 +84,14 @@ def apply_positions(state: dict, rows: list[dict], at: float, forecast, approx: 
                       "approx": approx, "cone": {"at": at, "p": ep, "e1": e1, "e4": e4}}
         changes.append(f"open {base_of(sym)} {side}")
     return changes
+
+
+def trade_row(t: dict) -> tuple:
+    """Виконання з REST /fapi/v1/userTrades → рядок my_fills (тип ордера й reduceOnly REST не віддає)."""
+    return (t["symbol"], int(t["id"]), datetime.fromtimestamp(int(t["time"]) / 1000, timezone.utc), t.get("side"),
+            t.get("positionSide"), None, float(t["price"]), float(t["qty"]), float(t.get("quoteQty") or 0),
+            float(t.get("realizedPnl") or 0), float(t.get("commission") or 0), t.get("commissionAsset"), int(t.get("orderId") or 0),
+            bool(t.get("maker")), None)
 
 
 def fill_row(o: dict) -> tuple | None:
@@ -165,8 +177,9 @@ def snapshot(b) -> list[dict]:
              "t": int(r.get("updateTime") or 0) / 1000} for r in rows if float(r["positionAmt"]) != 0]
 
 
-def reconcile(state: dict, snap: list[dict], forecast) -> list[str]:
-    """Після старту / обриву потоку: закрити зниклі позиції, додати нові (пін від updateTime, approx)."""
+def reconcile(state: dict, snap: list[dict], forecast, approx: bool = True) -> list[str]:
+    """Після старту / обриву потоку / щоPOLL_SEC: закрити зниклі позиції, додати нові (пін від updateTime; approx — якщо
+    позиція могла відкритись задовго до знімка, тобто на старті сервісу)."""
     open_keys = {f"{r['s']}|{r['ps']}" for r in snap}
     changes = apply_positions(state, [{"s": k.split("|")[0], "pa": 0, "ps": k.split("|")[1]} for k in list(state) if k not in open_keys],
                               time.time(), forecast)
@@ -174,7 +187,7 @@ def reconcile(state: dict, snap: list[dict], forecast) -> list[str]:
         old = state.get(f"{r['s']}|{r['ps']}")
         if old and old["side"] == ("long" if float(r["pa"]) > 0 else "short"):
             continue
-        changes += apply_positions(state, [r], r["t"] or time.time(), forecast, approx=True)
+        changes += apply_positions(state, [r], r["t"] or time.time(), forecast, approx=approx)
     return changes
 
 
@@ -214,13 +227,14 @@ async def run(log=print) -> None:
                 log(f"[{datetime.now(timezone.utc):%H:%M:%S}] знімок: " + ", ".join(ch))
             lk = (await asyncio.to_thread(lambda: b.s.post(f"{FAPI}/fapi/v1/listenKey", timeout=10))).json()["listenKey"]
             started = last_alive = last_hb = time.time()
-            async with websockets.connect(WS + lk, open_timeout=20, ping_interval=20, ping_timeout=20) as ws:
+            last_poll = time.time()
+            async with websockets.connect(WS.format(lk=lk), open_timeout=20, ping_interval=20, ping_timeout=20) as ws:
                 log(f"[{datetime.now(timezone.utc):%H:%M:%S}] потік акаунта підключено, відкритих позицій: {len(state)}")
                 save(state, True)
                 delay = 1
                 while time.time() - started < RECONNECT_SEC:
                     try:
-                        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=HEARTBEAT_SEC))
+                        msg = json.loads(await asyncio.wait_for(ws.recv(), timeout=10))
                     except asyncio.TimeoutError:
                         msg = None
                     now = time.time()
@@ -241,6 +255,20 @@ async def run(log=print) -> None:
                             if row:
                                 fills.append(row)
                                 await asyncio.to_thread(write_fills)
+                    if now - last_poll >= POLL_SEC:          # страховка, якщо потік знову мовчки перестане надсилати події
+                        last_poll = now
+                        ch = reconcile(state, await asyncio.to_thread(snapshot, b), forecast, approx=False)
+                        if ch:
+                            save(state, True)
+                            log(f"[{datetime.now(timezone.utc):%H:%M:%S}] REST: " + ", ".join(ch))
+                            for sym in {c.split()[1] for c in ch}:
+                                try:
+                                    tr = await asyncio.to_thread(b.get, FAPI, "/fapi/v1/userTrades", symbol=sym + "USDT",
+                                                                 startTime=int((now - 86400) * 1000), limit=1000)
+                                    fills.extend(trade_row(t) for t in tr)
+                                except Exception as e:
+                                    log(f"! userTrades {sym}: {type(e).__name__}: {e}")
+                            await asyncio.to_thread(write_fills)
                     if now - last_hb >= HEARTBEAT_SEC:
                         save(state, True)
                         await asyncio.to_thread(write_fills)

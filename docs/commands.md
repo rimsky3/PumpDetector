@@ -446,7 +446,7 @@ guide to every column: `notes/movers.md`.
 
 | Usage | Meaning |
 |---|---|
-| `python my_positions.py --loop` | service (container `myacct`): snapshot of open positions, then the Binance USDⓈ-M user data stream (listenKey, keep-alive every 30 min, reconnect on drop / expiry / every 23 h). A new position pins the chart cone at the entry time and price with that moment's Volatility forecast; adding or partly closing keeps the pin; a flat position removes it; a flip is close + open. Fills (`x = TRADE`) go to `my_fills`. State → `reports/my_positions.json`, read by `/api/positions` |
+| `python my_positions.py --loop` | service (container `myacct`): snapshot of open positions, then the Binance USDⓈ-M user data stream on the `/private` endpoint (`wss://fstream.binance.com/private/ws?listenKey=…&events=ORDER_TRADE_UPDATE/ACCOUNT_UPDATE`; the legacy `/ws/<listenKey>` path accepts the connection but no longer sends events since 2026-04) with keep-alive every 30 min and reconnect on drop / expiry / every 23 h, plus a REST position check every 30 s as a safety net (changed symbols also get their last 24 h of `userTrades` written to `my_fills`). A new position pins the chart cone at the entry time and price with that moment's Volatility forecast; adding or partly closing keeps the pin; a flat position removes it; a flip is close + open. Fills (`x = TRADE`) go to `my_fills`. State → `reports/my_positions.json`, read by `/api/positions` |
 | `python my_positions.py --once` | snapshot of open positions only → `reports/my_positions.json` (check) |
 
 The key is the read-only one from `my_trades.py` (`python my_trades.py --check` shows its permissions).

@@ -121,7 +121,8 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
 - `my_positions.py` — позиції власника Binance Futures наживо (20.10, контейнер myacct; ключ ЛИШЕ ЧИТАННЯ з my_trades.py, на
   сервері в ~/pd/.env): потік подій акаунта → reports/my_positions.json → `/api/positions` (опитування сторінкою раз на 2 с) → конус сам закріплюється від входу
   (поки Cone увімкнено) і знімається після виходу; виконання → таблиця my_fills (для заміру edge власника проти моделі).
-  Оновлення коду myacct: `--restart` його НЕ перезапускає — `docker compose ... restart myacct`.
+  `deploy.sh --restart` перезапускає й myacct. Потік подій — ЛИШЕ `wss://fstream.binance.com/private/ws?listenKey=…&events=…`
+  (стара /ws/<listenKey> з 04.2026 мовчить — 20.10 вхід AGT не прийшов); страховка — звірка позицій через REST кожні 30 с.
 - `hl_twap.py` — активні TWAP Hyperliquid (18.10, контейнер hltwap): потік угод усіх перпів (адреси є в угодах) → адреса з
   порціями кожні ~30 с → підтвердження `info twapHistory`; стакан l2Book для монет з TWAP. ЛИШЕ В ПАМ'ЯТІ (рішення власника:
   «просто бачити») → `http://hltwap:8790/twaps` → `dashboard_app.twaps.twaps_view` (`/api/twaps`, + оборот Binance з trade_bars → % Vol)
@@ -139,7 +140,7 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
 - Vultr Frankfurt (2 vCPU, 4 ГБ), IP 45.76.90.13, SSH порт 2222, користувач ubuntu, ключ `/d/keys/pd.pem` (у Git Bash саме
   так; `D:\keys\…` він «з'їдає»). Docker Compose (`docker-compose.server.yml`): db, screener, dashboard, caddy (HTTPS
   https://45-76-90-13.sslip.io з паролем), tgbot, liqrec, traderec. Код змонтовано — оновлення без перебудови образу.
-- `bash tools/deploy.sh` — код; `--restart` — + перезапуск screener, dashboard і tgbot; `--models` — + models/;
+- `bash tools/deploy.sh` — код; `--restart` — + перезапуск screener, dashboard, tgbot і myacct; `--models` — + models/;
   `--labels` — лише розмітка і списки (+ load_pumps.py і fetch.py --new на сервері); `--backtests` — прогони бектесту.
   liqrec і traderec `--restart` не чіпає.
 - Розмітка: pull_db → label.py → `deploy.sh --labels`. Нова модель: «Прийняти» → `deploy.sh --models --restart`.

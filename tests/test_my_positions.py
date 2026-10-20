@@ -53,3 +53,15 @@ def test_fill_row_and_save_load(tmp_path):
     path = str(tmp_path / "pos.json")
     M.save(st, True, path)
     assert M.load_state(path) == st
+
+
+def test_rest_poll_and_trade_row():
+    """Страховка через REST: нова позиція з опитування — пін від updateTime без «~» (approx=False); виконання з userTrades."""
+    st = {}
+    ch = M.reconcile(st, [{"s": "AGTUSDT", "pa": "100", "ep": "0.0857", "ps": "BOTH", "t": 1500.0}], FC, approx=False)
+    assert ch == ["open AGT long"] and st["AGTUSDT|BOTH"]["cone"]["at"] == 1500.0 and not st["AGTUSDT|BOTH"]["approx"]
+    t = {"symbol": "AGTUSDT", "id": 9, "orderId": 3, "side": "BUY", "price": "0.0857", "qty": "100", "quoteQty": "8.57",
+         "realizedPnl": "0", "commission": "0.003", "commissionAsset": "USDT", "time": 1792459293714, "positionSide": "BOTH",
+         "maker": False}
+    r = M.trade_row(t)
+    assert r[0] == "AGTUSDT" and r[1] == 9 and r[6] == 0.0857 and r[8] == 8.57 and r[5] is None
