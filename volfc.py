@@ -380,7 +380,20 @@ class Updater:
         os.replace(OUT + ".tmp", OUT)
         if hourly:
             log(f"  vol: {out.get('n', 0)} монет, Hot 4H {out.get('hot_4', '—')}, {time.time() - t0:.0f} с (з перенавчанням)")
+        _trim()
         return out
+
+
+def _trim() -> None:
+    """Повернути системі пам'ять, звільнену після перенавчання (glibc сама її не віддає: на сервері 20.10 скринер тримав
+    ~890 МБ замість ~330). На Windows / не-glibc — нічого не робить."""
+    import ctypes
+    import gc
+    gc.collect()
+    try:
+        ctypes.CDLL("libc.so.6").malloc_trim(0)
+    except (OSError, AttributeError):
+        pass
 
 
 def update(limit: int = 0, log=print) -> dict:
