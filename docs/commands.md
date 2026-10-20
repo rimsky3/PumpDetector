@@ -442,6 +442,15 @@ The screener's market thread runs it every hour after `market.update` (which now
 `reports/market_qvol.pkl`). Dashboard: the **Movers N ▾** button (`/api/movers`); N = coins with |z| ≥ 2.5. Owner's
 guide to every column: `notes/movers.md`.
 
+### `my_positions.py` — the owner's positions live (read-only key)
+
+| Usage | Meaning |
+|---|---|
+| `python my_positions.py --loop` | service (container `myacct`): snapshot of open positions, then the Binance USDⓈ-M user data stream (listenKey, keep-alive every 30 min, reconnect on drop / expiry / every 23 h). A new position pins the chart cone at the entry time and price with that moment's Volatility forecast; adding or partly closing keeps the pin; a flat position removes it; a flip is close + open. Fills (`x = TRADE`) go to `my_fills`. State → `reports/my_positions.json`, read by `/api/positions` |
+| `python my_positions.py --once` | snapshot of open positions only → `reports/my_positions.json` (check) |
+
+The key is the read-only one from `my_trades.py` (`python my_trades.py --check` shows its permissions).
+
 ### `volfc.py` — expected volatility (HAR)
 
 | Usage | Meaning |

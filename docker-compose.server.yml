@@ -99,6 +99,23 @@ services:
 
   # активні TWAP Hyperliquid по всьому ринку (потік угод → адреси з порціями кожні 30 с → twapHistory), лише в пам'яті;
   # дашборд питає http://hltwap:8790/twaps (порт лише всередині мережі compose); hl_twap.py; ~2–4% ядра
+  # позиції власника Binance Futures наживо (my_positions.py): конус від входу в дашборді + запис виконань у my_fills;
+  # ключ ЛИШЕ ЧИТАННЯ — BINANCE_API_KEY / BINANCE_API_SECRET у ~/pd/.env (не в git); одне WebSocket-з'єднання
+  myacct:
+    build: .
+    image: pump-detector
+    restart: unless-stopped
+    command: python my_positions.py --loop
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@db:5432/pump_detector
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 150m
+
   hltwap:
     build: .
     image: pump-detector

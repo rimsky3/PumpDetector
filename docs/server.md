@@ -21,6 +21,7 @@ labeling, training, backtests and experiments stay on the laptop.
 | `screener` | `python screener.py --loop` | `restart: unless-stopped`; the only screener — never run a second one on the laptop (one Coinalyze key, 40 calls/min) |
 | `liqrec` | `python liq_recorder.py` | own liquidation feed over WebSocket (docs/liquidations.md); ~45 MB |
 | `hltwap` | `python hl_twap.py` | active Hyperliquid TWAP orders found from the public trade stream, in memory only; the dashboard reads `http://hltwap:8790/twaps` (docs/commands.md); ~2–4% of a core, limit 200 MB |
+| `myacct` | `python my_positions.py --loop` | the owner's Binance Futures positions live through the account event stream (read-only key `BINANCE_API_KEY` / `BINANCE_API_SECRET` in `~/pd/.env`): writes `reports/my_positions.json` for the dashboard (the cone pins itself to the entry while a position is open) and every fill into `my_fills`; one WebSocket, limit 150 MB |
 | `traderec` | `python trade_recorder.py` | own trade feed (Binance + Bybit) → 5-minute summaries with a footprint `trade_bars`; the screener's b / p marks need it (docs/trades.md) |
 | `dashboard` | `python dashboard.py --host 0.0.0.0 --no-browser` | published on `127.0.0.1:8766` of the server only; reached through an SSH tunnel |
 

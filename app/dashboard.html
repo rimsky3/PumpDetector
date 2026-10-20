@@ -298,6 +298,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 /* легке вікно: з панелі — лише таймфрейм і профіль обсягу; без чіпа «Δ бірж» (власник, 15.10) */
 .app.chartonly .head .r > :not(#tfSeg):not(#vpSeg):not(#coneBtn), .app.chartonly .tk-xs { display: none !important; }
 .app.chartonly #coneBtn { height: 24px; padding: 0 7px; font-size: 10.5px; }
+#coneBtn { white-space: nowrap; }
+#coneBtn.pin[aria-pressed="true"] { background: var(--live-bg); border-color: var(--link); color: var(--link); }
 /* без «USDT Perp · 5m · модель 15m» і «live» (власник, 15.10: зайве у вікні графіка) */
 .app.chartonly .pnhead .tk-tf, .app.chartonly .pnhead .live-dot { display: none !important; }
 /* варіант C (власник, 15.10): над графіком нічого — тікер і стан напівпрозорою легендою в лівому верхньому куті графіка,
@@ -784,7 +786,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
         </div>
         <button class="tool fptool" id="logBtn" aria-pressed="false" title="Логарифмічна шкала ціни: однакова відстань на графіку = однакова зміна у %. Пояснення — у «?» ліворуч" aria-label="Логарифмічна шкала ціни">log</button>
-        <button class="tool fptool" id="coneBtn" aria-pressed="false" title="Конус очікуваного руху на 4 год від останньої ціни (volfc.py, HAR): яскраво ±1σ — ціна там приблизно у 2 з 3 випадків, бліде ±2σ — вихід рідко. Опис розмаху, не рівні" aria-label="Конус очікуваного руху">Cone</button>
+        <button class="tool fptool" id="coneBtn" aria-pressed="false" title="Конус очікуваного руху на 4 год (volfc.py, HAR). Клік: Off → Live (від поточної ціни — план «якщо зайти зараз») → Pin (закріпити від ціни й прогнозу цієї миті на 4 год — контроль угоди після входу; блакитний) → Off. яскраво ±1σ — ціна там приблизно у 2 з 3 випадків, бліде ±2σ — вихід рідко. Опис розмаху, не рівні" aria-label="Конус очікуваного руху">Cone</button>
         <div class="mk-wrap">
           <button class="mk-btn" id="mkBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mkPop"
                   title="Стан ринку альтів: частка альтів, дорожчих ніж тиждень тому"><span class="mk-dot" aria-hidden="true"></span>Market: <span class="mk-st" id="mkState">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
@@ -1455,7 +1457,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     // налаштування вікна (лінковка вимкнена — кожне своє): ТФ графіка (null — ТФ моделі), FP, профіль обсягу за період
     const cfg0 = LS.get(`pd-pane-cfg-${n}`, null) || { tf: null, fp: LS.get("pd-fp", false), vp: LS.get("pd-vp-period", "off") };
     // xs — панель «Δ бірж» під графіком (за замовчуванням увімкнена; з'являється, коли тікер є щонайменше на двох біржах)
-    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off", xs: cfg0.xs !== false, log: !!cfg0.log, cone: !!cfg0.cone };
+    const P = { n, root, ticker: LS.get(n ? "pd-ticker2" : "pd-ticker", null), data: null, tf: cfg0.tf, fp: !!cfg0.fp, vpP: cfg0.vp || "off", xs: cfg0.xs !== false, log: !!cfg0.log,
+                cone: cfg0.cone === true ? "live" : ["live", "pin"].includes(cfg0.cone) ? cfg0.cone : "off" };   // off | live | pin
     const saveCfg = () => LS.set(`pd-pane-cfg-${n}`, { tf: P.tf, fp: P.fp, vp: P.vpP, xs: P.xs, log: P.log, cone: P.cone });
     let chart = null, S = {}, priceLines = [], markersApi = null, probMarkers = null, idx = new Map(), rangeKey = null;
     let xsSer = {}, xsZone = null, xsKey = "";          // панель «Δ бірж»: лінія на біржу + підсвітка барів з розбіжністю ≥ порогу
@@ -1541,8 +1544,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       }
       // конус очікуваного руху (app/js/cone.js, кнопка Cone, 20.10): прогноз volfc.py з /api/ticker → vol
       if (window.PDCone) {
-        cone = PDCone.create({ chart, el: chartEl, series: S.candles, bar: () => P.data?.bar || 900, vol: () => P.data?.vol });
-        cone.setOn(P.cone);
+        cone = PDCone.create({ chart, el: chartEl, series: S.candles, bar: () => P.data?.bar || 900, vol: () => P.data?.vol,
+          symbol: () => P.ticker || "", pos: () => (st.myPos || {})[P.ticker] || null });
+        cone.setMode(P.cone);
       }
       applyLog();
     };
@@ -2029,7 +2033,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       load, renderHead, renderChart, setRange, live, renderXs,
       setXs: (v) => { P.xs = !!v; saveCfg(); renderChart(); },
       setLog: (v) => { P.log = !!v; saveCfg(); applyLog(); },
-      setCone: (v) => { P.cone = !!v; saveCfg(); if (cone) cone.setOn(P.cone); },
+      setCone: (m, fresh = false) => { P.cone = m; saveCfg(); if (cone) cone.setMode(m, fresh); },
       toggleRuler: () => { if (ruler) ruler.toggle(); }, toggleVp: () => { if (vp) vp.toggle(); },
       setVpPeriod: (p) => { P.vpP = p; saveCfg(); if (vp) vp.setPeriod(p); },
       setFp: (v) => { P.fp = !!v; saveCfg(); if (fpv) fpv.setOn(P.fp); hollow(P.fp); },
@@ -2046,7 +2050,8 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("fpBtn").setAttribute("aria-pressed", String(!!P.fp)); pressIn("vpSeg", "vp", P.vpP || "off");
     $("xsBtn").setAttribute("aria-pressed", String(!!P.xs));
     $("logBtn").setAttribute("aria-pressed", String(!!P.log));
-    $("coneBtn").setAttribute("aria-pressed", String(!!P.cone));
+    const cb = $("coneBtn"); cb.setAttribute("aria-pressed", String(P.cone !== "off"));
+    cb.textContent = P.cone === "pin" ? "Cone · pin" : "Cone"; cb.classList.toggle("pin", P.cone === "pin");
     $("linkBtn").setAttribute("aria-pressed", String(st.link));
   };
   // лінковка вікон (кнопка біля FP): увімкнена — ТФ, FP і профіль обсягу міняються в обох вікнах, вимкнена — лише в активному
@@ -2109,7 +2114,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   });
   $("xsBtn").addEventListener("click", () => { const v = !activePane().xs; targetPanes().forEach((p) => p.setXs(v)); renderToolbar(); });
   $("logBtn").addEventListener("click", () => { const v = !activePane().log; targetPanes().forEach((p) => p.setLog(v)); renderToolbar(); });
-  $("coneBtn").addEventListener("click", () => { const v = !activePane().cone; targetPanes().forEach((p) => p.setCone(v)); renderToolbar(); });
+  // Cone: Off → Live (від поточної ціни) → Pin (закріпити зараз: та ціна й прогноз на 4 год) → Off
+  $("coneBtn").addEventListener("click", () => {
+    const next = { off: "live", live: "pin", pin: "off" }[activePane().cone] || "off";
+    targetPanes().forEach((p) => p.setCone(next, next === "pin")); renderToolbar();
+  });
   // лінковка: при вмиканні інші вікна беруть налаштування активного (ТФ, FP, профіль)
   const syncFromActive = () => {
     const a = activePane();
@@ -3357,6 +3366,13 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   addEventListener("keydown", (e) => { if (e.key === "Escape" && VL.open) { toggleVol(false); $("vlBtn").focus(); } });
   addEventListener("resize", () => { if (VL.open) placeVol(); });
   loadVol(); setInterval(loadVol, 60 * 1000);           // прогноз оновлюється з кожним 5m-баром
+  // позиції власника (my_positions.py, контейнер myacct): конус автоматично закріплюється від входу і знімається після виходу;
+  // cone.js перемальовується кожні 2 с і бере st.myPos сам
+  const loadMyPos = async () => {
+    try { const d = await api("/api/positions", { quiet: true }); st.myPos = Object.fromEntries((d.positions || []).map((p) => [p.base, p])); }
+    catch (e) { /* немає даних — без конуса від входу */ }
+  };
+  loadMyPos(); setInterval(loadMyPos, 10 * 1000);
 
   // ---------- «Spread ▾» і картка «Δ»: розбіжність цін тікера між біржами (spread.py; монітор у процесі дашборда, зріз кожні 15 с) ----------
   // Подія = розбіжність по біду й аску ≥ порогу, у кілька разів більша за звичайну для монети, і тримається заданий час.

@@ -118,6 +118,10 @@
 ТФ і профіль обсягу — компактно в правому, без рядка OI / обсяг, без «USDT Perp · ТФ · модель» і «live», одне вікно, без FP / Δ / Market / Movers / Spread, одне вікно на всі кліки, нове вікно графіка — з розміром і масштабом графіка, зміненого останнім (`ChartWin.remember`,
 config `chart_*`), без звуку й сповіщень — `st.chartOnly`; Shift + клік — додаткове вікно `ChartWin(main=False)`, закривається насовсім; «поверх усіх» — один перемикач для всіх вікон; браузер не чіпає); трей, «поверх усіх», Ctrl + / − / 0 — масштаб WebView2 і розмір вікна (`Api.zoom`, config `zoom`), сповіщення через трей
   (сторінка підміняє `Notification` на `window.pywebview.api.notify`). Збирання — окреме середовище `.venv-watch`.
+- `my_positions.py` — позиції власника Binance Futures наживо (20.10, контейнер myacct; ключ ЛИШЕ ЧИТАННЯ з my_trades.py, на
+  сервері в ~/pd/.env): потік подій акаунта → reports/my_positions.json → `/api/positions` → конус сам закріплюється від входу
+  (поки Cone увімкнено) і знімається після виходу; виконання → таблиця my_fills (для заміру edge власника проти моделі).
+  Оновлення коду myacct: `--restart` його НЕ перезапускає — `docker compose ... restart myacct`.
 - `hl_twap.py` — активні TWAP Hyperliquid (18.10, контейнер hltwap): потік угод усіх перпів (адреси є в угодах) → адреса з
   порціями кожні ~30 с → підтвердження `info twapHistory`; стакан l2Book для монет з TWAP. ЛИШЕ В ПАМ'ЯТІ (рішення власника:
   «просто бачити») → `http://hltwap:8790/twaps` → `dashboard_app.twaps.twaps_view` (`/api/twaps`, + оборот Binance з trade_bars → % Vol)

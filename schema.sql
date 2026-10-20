@@ -118,6 +118,18 @@ CREATE TABLE IF NOT EXISTS book_ratio (
 );
 
 -- Ліквідації напряму з бірж через WebSocket (liq_recorder.py, з 2026-10-06): кожна подія + періоди живих з'єднань.
+-- Виконання угод власника на Binance USDⓈ-M Futures (my_positions.py, з 2026-10-20; ключ лише читання): для заміру edge
+-- власника проти входів моделі на тих самих монетах. Позиції — з послідовності виконань (як my_trades.positions).
+CREATE TABLE IF NOT EXISTS my_fills (
+    symbol TEXT NOT NULL, trade_id BIGINT NOT NULL,
+    ts TIMESTAMPTZ NOT NULL, side TEXT, position_side TEXT, order_type TEXT,
+    price DOUBLE PRECISION, qty DOUBLE PRECISION, quote DOUBLE PRECISION,
+    realized_pnl DOUBLE PRECISION, commission DOUBLE PRECISION, commission_asset TEXT,
+    order_id BIGINT, maker BOOLEAN, reduce_only BOOLEAN,
+    recv_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (symbol, trade_id)
+);
+
 CREATE TABLE IF NOT EXISTS liq_events (
     exchange  TEXT NOT NULL,              -- Binance / Bybit / OKX (як markets.exchange_name)
     symbol    TEXT NOT NULL,              -- символ на біржі (markets.symbol_on_exchange): BTCUSDT, BTC-USDT-SWAP

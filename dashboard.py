@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 import footprint
 import market
 import movers
+import my_positions
 import orderbook
 import scanner
 import spread
@@ -127,6 +128,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, scan_view(q))
             except ValueError as e:
                 return self._send(400, {"error": str(e)})
+        if url.path == "/api/positions":       # позиції власника Binance Futures (my_positions.py, контейнер myacct): пін конуса
+            return self._send(200, my_positions.load())
         if url.path == "/api/vol":             # очікувана волатильність (кнопка «Volatility»): reports/volfc.json від volfc.py
             return self._send(200, volfc.view(volfc.load(), volfc.load_config(), list_tickers()))
         if url.path == "/api/movers":          # монети з власним рухом (кнопка «Movers»): reports/movers.json від market.py
