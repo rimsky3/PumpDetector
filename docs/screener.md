@@ -156,7 +156,7 @@ marks with the expected move. Between the 1 h and 4 h forecasts the variance gro
 price · e^(±kσ). Turning it on makes room on the right (4 hours of bars: 48 on 5m, 16 on 15m, 4 on 1h). It shows the
 range, not levels — the price does not bounce off the cone's edge. The button cycles **Live** (from the latest price,
 moves with it — "if I enter now") → **Pin** (blue; frozen at the click: that price and that forecast for 4 hours, kept per
-ticker in localStorage and restored after a reload — "how is my trade doing against the expected range") → off.
+ticker in localStorage and restored after a reload — "how is my trade doing against the expected range") → off. The ±1σ bounds at +1H and +4H are also shown as labels on the price scale (+4H / +1H / −1H / −4H).
 
 ## Drivers card (since 2026-10-08)
 

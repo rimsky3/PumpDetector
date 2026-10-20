@@ -90,7 +90,10 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/pulse":
             # дешева перевірка «чи є нове» (без бази): mtime мітки нових оцінок скринера і подій «прокидається»
             mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else 0      # noqa: E731
-            return self._send(200, {"sig": mt(SIGNALS_STAMP), "wake": mt(wake.EVENTS_FILE), "woke": mt(scanner.WOKE_FILE)})
+            # page — версія сторінки (найновіший час зміни dashboard.html і app/js/*): змінилась після деплою → вікна
+            # (і PD Watchlist, де F5 не працює) перезавантажуються самі
+            page = max([mt(PAGE)] + [mt(os.path.join(JS_DIR, f)) for f in os.listdir(JS_DIR) if f.endswith(".js")])
+            return self._send(200, {"sig": mt(SIGNALS_STAMP), "wake": mt(wake.EVENTS_FILE), "woke": mt(scanner.WOKE_FILE), "page": page})
         if url.path == "/api/meta":
             return self._route(meta)
         if url.path == "/api/list":

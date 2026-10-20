@@ -119,7 +119,7 @@
 config `chart_*`), без звуку й сповіщень — `st.chartOnly`; Shift + клік — додаткове вікно `ChartWin(main=False)`, закривається насовсім; «поверх усіх» — один перемикач для всіх вікон; браузер не чіпає); трей, «поверх усіх», Ctrl + / − / 0 — масштаб WebView2 і розмір вікна (`Api.zoom`, config `zoom`), сповіщення через трей
   (сторінка підміняє `Notification` на `window.pywebview.api.notify`). Збирання — окреме середовище `.venv-watch`.
 - `my_positions.py` — позиції власника Binance Futures наживо (20.10, контейнер myacct; ключ ЛИШЕ ЧИТАННЯ з my_trades.py, на
-  сервері в ~/pd/.env): потік подій акаунта → reports/my_positions.json → `/api/positions` → конус сам закріплюється від входу
+  сервері в ~/pd/.env): потік подій акаунта → reports/my_positions.json → `/api/positions` (опитування сторінкою раз на 2 с) → конус сам закріплюється від входу
   (поки Cone увімкнено) і знімається після виходу; виконання → таблиця my_fills (для заміру edge власника проти моделі).
   Оновлення коду myacct: `--restart` його НЕ перезапускає — `docker compose ... restart myacct`.
 - `hl_twap.py` — активні TWAP Hyperliquid (18.10, контейнер hltwap): потік угод усіх перпів (адреси є в угодах) → адреса з
@@ -152,6 +152,9 @@ config `chart_*`), без звуку й сповіщень — `st.chartOnly`; S
   основним режимом; епізод Alert — `dashboard_app.trades.alert_since` (бари Alert з проміжками ≤ 1 год).
 - Сповіщення = входи моделі основного режиму (`dashboard_app.trades.split_by_trades` → alerts / realerts / cands / lates). Telegram:
   типи з `tg_bot.DEFAULTS` (Alert, Re-alert, Late, Candidate, Volume 5m, b / p, WOKE, Spread, TWAP); режим читає зі strategies.json.
+- Після деплою сторінки перезавантажуються самі (20.10): `/api/pulse` віддає `page` — найновіший mtime dashboard.html і
+  app/js/*.js; змінився — `location.reload()` (не під час вводу в поле). Причина — у вікнах PD Watchlist (WebView2) F5 не
+  працює, і вони жили зі старим кодом; F5 / Ctrl+R там тепер обробляє сама сторінка.
 - Два вікна графіків; ТФ / FP / профіль — налаштування вікна. `load()` у dashboard.html пропускає повторне завантаження
   за ключем тікер | ТФ | повна інфо | модель | режим — нове, що впливає на вигляд графіка, додавати в цей ключ.
 - Стоп показується, не чекаючи закриття 15m-бару: на відкритому графіку — миттєво в браузері (жива свічка проти стопу,

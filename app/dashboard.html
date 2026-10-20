@@ -2034,6 +2034,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       setXs: (v) => { P.xs = !!v; saveCfg(); renderChart(); },
       setLog: (v) => { P.log = !!v; saveCfg(); applyLog(); },
       setCone: (m, fresh = false) => { P.cone = m; saveCfg(); if (cone) cone.setMode(m, fresh); },
+      coneRedraw: () => { if (cone) cone.redraw(); },
       toggleRuler: () => { if (ruler) ruler.toggle(); }, toggleVp: () => { if (vp) vp.toggle(); },
       setVpPeriod: (p) => { P.vpP = p; saveCfg(); if (vp) vp.setPeriod(p); },
       setFp: (v) => { P.fp = !!v; saveCfg(); if (fpv) fpv.setOn(P.fp); hollow(P.fp); },
@@ -2051,7 +2052,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("xsBtn").setAttribute("aria-pressed", String(!!P.xs));
     $("logBtn").setAttribute("aria-pressed", String(!!P.log));
     const cb = $("coneBtn"); cb.setAttribute("aria-pressed", String(P.cone !== "off"));
-    cb.textContent = P.cone === "pin" ? "Cone · pin" : "Cone"; cb.classList.toggle("pin", P.cone === "pin");
+    cb.textContent = P.cone === "pin" ? (st.chartOnly ? "Pin" : "Cone · pin") : "Cone"; cb.classList.toggle("pin", P.cone === "pin");
     $("linkBtn").setAttribute("aria-pressed", String(st.link));
   };
   // лінковка вікон (кнопка біля FP): увімкнена — ТФ, FP і профіль обсягу міняються в обох вікнах, вимкнена — лише в активному
@@ -3367,12 +3368,18 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   addEventListener("resize", () => { if (VL.open) placeVol(); });
   loadVol(); setInterval(loadVol, 60 * 1000);           // прогноз оновлюється з кожним 5m-баром
   // позиції власника (my_positions.py, контейнер myacct): конус автоматично закріплюється від входу і знімається після виходу;
-  // cone.js перемальовується кожні 2 с і бере st.myPos сам
+  // опитування раз на 2 с (власник 20.10: «чому лише через 10 с?» — запит лише читає маленький файл, без бази й Binance);
+  // змінились позиції — конуси перемальовуються одразу, без чекання свого 2-секундного такту
+  let myPosKey = "";
   const loadMyPos = async () => {
-    try { const d = await api("/api/positions", { quiet: true }); st.myPos = Object.fromEntries((d.positions || []).map((p) => [p.base, p])); }
-    catch (e) { /* немає даних — без конуса від входу */ }
+    try {
+      const d = await api("/api/positions", { quiet: true }), list = d.positions || [];
+      st.myPos = Object.fromEntries(list.map((p) => [p.base, p]));
+      const k = list.map((p) => `${p.base}|${p.side}|${p.opened}`).join(",");
+      if (k !== myPosKey) { myPosKey = k; PANES.forEach((p) => p.coneRedraw()); }
+    } catch (e) { /* немає даних — без конуса від входу */ }
   };
-  loadMyPos(); setInterval(loadMyPos, 10 * 1000);
+  loadMyPos(); setInterval(loadMyPos, 2 * 1000);
 
   // ---------- «Spread ▾» і картка «Δ»: розбіжність цін тікера між біржами (spread.py; монітор у процесі дашборда, зріз кожні 15 с) ----------
   // Подія = розбіжність по біду й аску ≥ порогу, у кілька разів більша за звичайну для монети, і тримається заданий час.
@@ -4088,6 +4095,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     if (b.dataset.tf === CH.tf) return;
     CH.tf = b.dataset.tf; LS.set("pd-ch-tf", CH.tf); stopCharts(); CH.data = {}; loadCharts();
   }));
+  // F5 / Ctrl+R у вікнах PD Watchlist (WebView2 у pywebview клавіші перезавантаження не обробляє, 20.10); у браузері — його власні
+  addEventListener("keydown", (e) => {
+    if (!window.pywebview) return;
+    if (e.key === "F5" || ((e.ctrlKey || e.metaKey) && (e.key === "r" || e.key === "R" || e.code === "KeyR"))) { e.preventDefault(); location.reload(); }
+  });
   // Ctrl + / Ctrl − / Ctrl 0 у вікні PD Watchlist (#list у застосунку): масштаб сторінки і розмір вікна разом (15.10).
   // У звичайному браузері ці клавіші не чіпаємо — там працює масштаб самого браузера.
   addEventListener("keydown", (e) => {
@@ -4140,12 +4152,19 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     setInterval(async () => { try { st.meta = await api("/api/meta", { quiet: true }); } catch (e) { return; } renderSystem(); checkRetrain(); refreshAll(); }, 60000);
     setInterval(renderStatus, 1000);
     // нові оцінки скринера → список (сповіщення) і графік відкритого тікера за ≤ 5 с, а не за хвилину
-    let pulseKey = null, pulseBusy = false;
+    let pulseKey = null, pulseBusy = false, pageVer = null;
     setInterval(async () => {
       if (pulseBusy) return;
       pulseBusy = true;
       try {
         const p = await api("/api/pulse", { quiet: true }), k = `${p.sig}|${p.wake}|${p.woke}`;
+        // нова версія сторінки на сервері (деплой) → перезавантажитись самій: вікна PD Watchlist інакше лишаються зі старим
+        // кодом — F5 у WebView2 не працює (власник 20.10). Поки фокус у полі вводу — чекаємо наступного такту
+        if (p.page) {
+          const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || "");
+          if (pageVer !== null && p.page !== pageVer && !typing) { location.reload(); return; }
+          if (pageVer === null) pageVer = p.page;
+        }
         if (pulseKey !== null && k !== pulseKey) {
           await loadList();
           if (st.view === "charts") loadCharts(); else if (st.view !== "journal" && st.view !== "list") loadTicker({ quiet: true });

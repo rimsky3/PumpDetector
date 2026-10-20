@@ -72,6 +72,23 @@
       return { x: xa + (xb - xa) * ((at - t0) / b), sp: xb - xa };
     };
 
+    // межі конуса на шкалі ціни (власник 20.10: «щоб межі 1–4 год були на ціновій шкалі, бо плутаюсь»): чотири вбудовані мітки
+    // Lightweight Charts — ±1σ на +1H і на +4H, без ліній через графік; оновлюються лише коли змінилась ціна / колір
+    const lines = {};
+    const axis = (A, col) => {
+      const s1 = A ? sigmaAt(1, A.e1, A.e4) : 0, s4 = A ? sigmaAt(HOURS, A.e1, A.e4) : 0;
+      const want = A ? { u4: [A.p * Math.exp(s4), "+4H", col], u1: [A.p * Math.exp(s1), "+1H", rgba(col, 0.6)],
+                         d1: [A.p * Math.exp(-s1), "−1H", rgba(col, 0.6)], d4: [A.p * Math.exp(-s4), "−4H", col] } : {};
+      Object.keys(lines).forEach((k) => { if (!want[k]) { try { series.removePriceLine(lines[k].line); } catch (e) { /* серію вже прибрано */ } delete lines[k]; } });
+      Object.entries(want).forEach(([k, [price, title, color]]) => {
+        const old = lines[k];
+        if (old && Math.abs(old.price - price) <= price * 1e-7 && old.color === color) return;
+        if (old) old.line.applyOptions({ price, color, title });
+        else lines[k] = { line: series.createPriceLine({ price, color, title, lineVisible: false, axisLabelVisible: true }) };
+        Object.assign(lines[k], { price, color });
+      });
+    };
+
     const draw = () => {
       const dpr = window.devicePixelRatio || 1, W = el.clientWidth, Hh = el.clientHeight;
       if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(Hh * dpr)) {
@@ -79,7 +96,7 @@
       }
       const ctx = cv.getContext("2d");
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, Hh);
-      if (mode === "off" || dead) return;
+      if (mode === "off" || dead) { if (!dead) axis(null); return; }
       // позиція власника (my_positions.py): конус від входу — пріоритетніший за ручний пін і живий (лише коли Cone увімкнено)
       const pos = opts.pos ? opts.pos() : null, pc = pos && pos.cone && pos.cone.p > 0 ? pos.cone : null;
       const pin = pc ? null : mode === "pin" ? loadPin(sym()) : null;
@@ -87,11 +104,12 @@
       if (pc) {
         const v = opts.vol() || {};
         A = { at: pc.at, p: pc.p, e1: pc.e1 ?? v.exp_1, e4: pc.e4 ?? v.exp_4, entry: pos.side, approx: pos.approx };
-        if (A.e4 == null) return;
+        if (A.e4 == null) { axis(null); return; }
       } else if (pin) A = pin;
       else {
         const v = opts.vol(), lc = lastCandle();
         if (!v || v.exp_4 == null || !lc) {
+          axis(null);
           ctx.font = "12px -apple-system, Segoe UI, sans-serif"; ctx.fillStyle = cssVar("--fg3", "#6b6a64");
           ctx.fillText("Cone: прогнозу для цієї монети ще немає", 8, paneH() - 10); return;
         }
@@ -101,6 +119,7 @@
       const perH = 3600 / bar(), xAt = (t) => xy.x + xy.sp * perH * t, yAt = (p) => series.priceToCoordinate(p);
       const amber = cssVar("--amber", "#ef9f27"), fg2 = cssVar("--fg2", "#a8a79f"), link = cssVar("--link", "#85b7eb");
       const fixed = !!(pin || pc), col = fixed ? link : amber;   // закріплений — блакитний, щоб не сплутати з живим
+      axis(A, col);
       ctx.save(); ctx.beginPath(); ctx.rect(0, 0, plotW(), paneH()); ctx.clip();
       const STEPS = 32;
       const band = (k, fill, stroke) => {
@@ -167,7 +186,7 @@
       reload() { if (mode !== "off") applyOffset(); redraw(); },
       redraw,
       destroy() {
-        dead = true; clearInterval(tick); ro.disconnect(); cv.remove();
+        axis(null); dead = true; clearInterval(tick); ro.disconnect(); cv.remove();
         chart.timeScale().unsubscribeVisibleLogicalRangeChange(redraw); chart.unsubscribeCrosshairMove(redraw);
         if (el._pdc === api) el._pdc = null;
       },
