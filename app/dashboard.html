@@ -786,7 +786,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           <button data-oi="coins" aria-pressed="true">OI монети</button><button data-oi="usd">USD</button>
         </div>
         <button class="tool fptool" id="logBtn" aria-pressed="false" title="Логарифмічна шкала ціни: однакова відстань на графіку = однакова зміна у %. Пояснення — у «?» ліворуч" aria-label="Логарифмічна шкала ціни">log</button>
-        <button class="tool fptool" id="coneBtn" aria-pressed="false" title="Конус очікуваного руху на 4 год (volfc.py, HAR). Клік: Off → Live (від поточної ціни — план «якщо зайти зараз») → Pin (закріпити від ціни й прогнозу цієї миті на 4 год — контроль угоди після входу; блакитний) → Off. яскраво ±1σ — ціна там приблизно у 2 з 3 випадків, бліде ±2σ — вихід рідко. Опис розмаху, не рівні" aria-label="Конус очікуваного руху">Cone</button>
+        <button class="tool fptool" id="coneBtn" aria-pressed="false" title="Очікуваний рух (volfc.py, HAR): смужка біля шкали ціни — темніше ±1σ на 1 год, світліше ±1σ на 4 год; мітки +4H / +1H / −1H / −4H на шкалі; наведи на смужку — зона, де ціна зараз у σ, скільки до −1σ і +1σ. Клік: Live (від поточної ціни) → Pin (закріпити зараз, блакитне) → вимкнено. Відкрита позиція на Binance — від твого входу автоматично" aria-label="Очікуваний рух">Range</button>
         <div class="mk-wrap">
           <button class="mk-btn" id="mkBtn" aria-haspopup="dialog" aria-expanded="false" aria-controls="mkPop"
                   title="Стан ринку альтів: частка альтів, дорожчих ніж тиждень тому"><span class="mk-dot" aria-hidden="true"></span>Market: <span class="mk-st" id="mkState">—</span><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
@@ -2052,7 +2052,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("xsBtn").setAttribute("aria-pressed", String(!!P.xs));
     $("logBtn").setAttribute("aria-pressed", String(!!P.log));
     const cb = $("coneBtn"); cb.setAttribute("aria-pressed", String(P.cone !== "off"));
-    cb.textContent = P.cone === "pin" ? (st.chartOnly ? "Pin" : "Cone · pin") : "Cone"; cb.classList.toggle("pin", P.cone === "pin");
+    cb.textContent = P.cone === "pin" ? (st.chartOnly ? "Pin" : "Range · pin") : "Range"; cb.classList.toggle("pin", P.cone === "pin");
     $("linkBtn").setAttribute("aria-pressed", String(st.link));
   };
   // лінковка вікон (кнопка біля FP): увімкнена — ТФ, FP і профіль обсягу міняються в обох вікнах, вимкнена — лише в активному
@@ -2115,7 +2115,7 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
   });
   $("xsBtn").addEventListener("click", () => { const v = !activePane().xs; targetPanes().forEach((p) => p.setXs(v)); renderToolbar(); });
   $("logBtn").addEventListener("click", () => { const v = !activePane().log; targetPanes().forEach((p) => p.setLog(v)); renderToolbar(); });
-  // Cone: Off → Live (від поточної ціни) → Pin (закріпити зараз: та ціна й прогноз на 4 год) → Off
+  // Range (смужка очікуваного руху, app/js/cone.js): Off → Live (від поточної ціни) → Pin (закріпити зараз) → Off
   $("coneBtn").addEventListener("click", () => {
     const next = { off: "live", live: "pin", pin: "off" }[activePane().cone] || "off";
     targetPanes().forEach((p) => p.setCone(next, next === "pin")); renderToolbar();

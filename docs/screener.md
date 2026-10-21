@@ -150,13 +150,14 @@ window; PD Watchlist windows follow each other). In the watchlist rows a small
 **Volatility ▾** button next to Dashboard ↗. The button is not called "Vol" because the list already uses `Vol ×5` for
 the 5-minute volume burst. Coins with an average turnover below $5M that are not in the screener list get no chip. It describes the market, not a model signal.
 
-**Cone** (button next to log; also in the PD Watchlist chart window; per chart window, `app/js/cone.js`): a fan from the
-last price 4 hours to the right — bright ±1σ (about 2 of 3 times the price stays inside), faint ±2σ, dotted +1H / +4H
-marks with the expected move. Between the 1 h and 4 h forecasts the variance grows linearly with time; bounds are
-price · e^(±kσ). Turning it on makes room on the right (4 hours of bars: 48 on 5m, 16 on 15m, 4 on 1h). It shows the
-range, not levels — the price does not bounce off the cone's edge. The button cycles **Live** (from the latest price,
-moves with it — "if I enter now") → **Pin** (blue; frozen at the click: that price and that forecast for 4 hours, kept per
-ticker in localStorage and restored after a reload — "how is my trade doing against the expected range") → off. The ±1σ bounds at +1H and +4H are also shown as labels on the price scale (+4H / +1H / −1H / −4H).
+**Range** (button next to log; also in the PD Watchlist chart window; per chart window, `app/js/cone.js`; since 2026-10-21 —
+it replaced a 4-hour fan that needed half the chart to the right): a 12 px bar just left of the price-scale labels — darker
+±1σ of the next hour, lighter ±1σ of the next 4 hours, white tick = current price — plus price-scale labels +4H / +1H /
+−1H / −4H. Hovering the bar shows the ±1σ zones, where the price is now in σ and the room left to −1σ / +1σ. Bounds are
+price · e^(±σ); between the 1 h and 4 h forecasts the variance grows linearly with time. The button cycles **Live** (from the
+latest price) → **Pin** (blue; frozen at the click: that price and forecast for 4 hours, per ticker in localStorage) → off.
+With an open position on the owner's Binance account (`my_positions.py`), the bar anchors to the entry automatically. It
+describes the range, not levels.
 
 ## Drivers card (since 2026-10-08)
 
