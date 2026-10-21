@@ -151,9 +151,9 @@ window; PD Watchlist windows follow each other). In the watchlist rows a small
 the 5-minute volume burst. Coins with an average turnover below $5M that are not in the screener list get no chip. It describes the market, not a model signal.
 
 **Range** (button next to log; also in the PD Watchlist chart window; per chart window, `app/js/cone.js`; since 2026-10-21 —
-it replaced a 4-hour fan that needed half the chart to the right): a 12 px bar just left of the price-scale labels — darker
-±1σ of the next hour, lighter ±1σ of the next 4 hours, white tick = current price — plus price-scale labels +4H / +1H /
-−1H / −4H. Hovering the bar shows the ±1σ zones, where the price is now in σ and the room left to −1σ / +1σ. Bounds are
+it replaced a 4-hour fan that needed half the chart to the right): a 12 px bar flush against the price scale — darker
+±1σ of the next hour, lighter ±1σ of the next 4 hours, white tick = current price (the last bar including the live one) —
+plus four price-scale labels without titles (4 h brighter, 1 h paler; a title would be drawn inside the pane over the bar). Hovering the bar shows the ±1σ zones, where the price is now in σ and the room left to −1σ / +1σ. Bounds are
 price · e^(±σ); between the 1 h and 4 h forecasts the variance grows linearly with time. The button cycles **Live** (from the
 latest price) → **Pin** (blue; frozen at the click: that price and forecast for 4 hours, per ticker in localStorage) → off.
 With an open position on the owner's Binance account (`my_positions.py`), the bar anchors to the entry automatically. It

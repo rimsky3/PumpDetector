@@ -2,7 +2,7 @@
 // місця, не практично», варіант A компактного макета + числа з варіанта C у підказці). Свічки займають усю ширину: місця
 // праворуч під прогноз не треба, як у ADR-рівнях / expected move професійних платформ.
 //   смужка (≈ 12 px біля шкали): темніше — ±1σ на наступну 1 год, світліше — ±1σ на 4 год; риска — якір (ціна / вхід / пін),
-//   біла риска — поточна ціна (коли якір не вона); мітки на шкалі ціни +4H / +1H / −1H / −4H;
+//   біла риска — поточна ціна (коли якір не вона); мітки на шкалі ціни ±1H (блідіші) і ±4H (яскравіші), без підписів;
 //   наведення на смужку — підказка: зона ±1σ на 1H / 4H, де ціна зараз у σ, скільки лишилось до −1σ і +1σ.
 // Дані — прогноз volfc.py (HAR, «від зараз» кожні 5 хв): exp_1 і exp_4 з /api/ticker → vol; межі — ціна · e^(±σ).
 // Між 1 і 4 год дисперсія росте лінійно з часом (sigmaAt). Це опис розмаху, НЕ рівні: від краю ціна не відскакує.
@@ -14,7 +14,9 @@
   "use strict";
 
   const HOURS = 4;
-  const BAR_W = 12, BAR_GAP = 50;         // ширина смужки і відступ від шкали ціни, px: лівіше підписів +4H / +1H (≈ 45 px)
+  // смужка впритул до шкали ціни (власник 21.10: «смужка далеко від шкали»); тому мітки на шкалі — без підписів +4H / +1H
+  // (бібліотека малює підпис усередині графіка біля шкали — саме там, де смужка): 4H яскравіші, 1H блідіші, як і на смужці
+  const BAR_W = 12, BAR_GAP = 2;
   const cssVar = (name, fb) => (getComputedStyle(document.documentElement).getPropertyValue(name) || "").trim() || fb;
   const rgba = (c, a) => {
     if (c.startsWith("#") && c.length === 7) { const n = parseInt(c.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
@@ -56,6 +58,11 @@
     const plotW = () => chart.timeScale().width();
     const fmt = (p) => { try { return series.priceFormatter().format(p); } catch (e) { return p.toPrecision(5); } };
     const lastCandle = () => {
+      // остання свічка разом з живою (WebSocket дошиває її через update): dataByIndex з «найближча зліва» — надійніше за data()
+      try {
+        const b = series.dataByIndex(1e9, -1);
+        if (b && b.close > 0) return b;
+      } catch (e) { /* стара версія бібліотеки — нижче */ }
       const data = series.data();
       let li = data.length - 1;
       while (li >= 0 && !(data[li].close > 0)) li--;           // наприкінці можуть бути порожні (whitespace) бари
@@ -72,8 +79,8 @@
       Object.entries(want).forEach(([k, [price, title, color]]) => {
         const old = lines[k];
         if (old && Math.abs(old.price - price) <= price * 1e-7 && old.color === color) return;
-        if (old) old.line.applyOptions({ price, color, title });
-        else lines[k] = { line: series.createPriceLine({ price, color, title, lineVisible: false, axisLabelVisible: true }) };
+        if (old) old.line.applyOptions({ price, color, title: "" });
+        else lines[k] = { line: series.createPriceLine({ price, color, title: "", lineVisible: false, axisLabelVisible: true }) };
         Object.assign(lines[k], { price, color });
       });
     };
