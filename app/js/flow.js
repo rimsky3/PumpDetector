@@ -88,7 +88,7 @@
 .flow-card .up { color: var(--ok); } .flow-card .dn { color: var(--hot-soft); } .flow-card b { font-weight: 600; }
 .flow-card .fl-hint { font-size: 10.5px; color: var(--amber); }
 /* окреме вікно (/flow, PD Flow): картка на все вікно */
-.flow-card.standalone { position: static; width: auto; border: 0; border-radius: 0; background: transparent; padding: 10px 12px; font-size: 12px; }
+.flow-card.standalone { position: static; width: auto; max-width: 460px; border: 0; border-radius: 0; background: transparent; padding: 10px 12px; font-size: 12px; }
 .flow-card.standalone .fl-g { font-size: 11.5px; }
 .flow-card .fl-pop { margin-left: 6px; padding: 0 5px; border: 1px solid var(--line2); border-radius: 5px; background: transparent; color: var(--fg2); font: inherit; font-size: 11px; cursor: pointer; }
 .flow-card .fl-pop:hover { color: var(--fg); border-color: var(--fg3); }
