@@ -68,38 +68,45 @@
     // зсув годинника комп'ютера відносно Binance (с): усі часи картки — біржові. На ноутбуці 22.10 годинник відставав на 35 с,
     // і свіжий знімок OI виглядав «з майбутнього» — картка писала «Waiting for OI»
     let skew = 0;
+    // що не прийшло — показуємо на картці замість голого «waiting for data» (власник 22.10: картка висіла без пояснень)
+    let diag = {};
+    const why = (k) => (e) => { diag[k] = String(e && e.message || e); return []; };
     const nowS = () => Date.now() / 1000 + skew;
 
     const reset = () => {
       if (sock) { sock.onclose = null; try { sock.close(); } catch (e) { /* уже закрито */ } }
       clearTimeout(wsRetry); timers.forEach(clearInterval);
-      sock = null; timers = []; k1m = new Map(); oi = []; liq = { m: [], live: false }; shown = null; cand = null; candN = 0; gen++;
+      sock = null; timers = []; k1m = new Map(); oi = []; liq = { m: [], live: false }; shown = null; cand = null; candN = 0; gen++; diag = {};
     };
 
     // ---------- дані ----------
     const putK = (t, o, h, l, c, q, qb) => k1m.set(t, { t, o, h, l, c, q, qb });
     const loadHist = async (g) => {
       const [kl, oh] = await Promise.all([
-        getJson(`${FAPI}/fapi/v1/klines?symbol=${sym}&interval=1m&limit=75`).catch(() => []),
-        getJson(`${FAPI}/futures/data/openInterestHist?symbol=${sym}&period=5m&limit=15`).catch(() => [])]);
+        getJson(`${FAPI}/fapi/v1/klines?symbol=${sym}&interval=1m&limit=75`).catch(why("klines")),
+        getJson(`${FAPI}/futures/data/openInterestHist?symbol=${sym}&period=5m&limit=15`).catch(why("OI hist"))]);
       if (g !== gen) return;
+      if (!Array.isArray(kl)) { diag.klines = JSON.stringify(kl).slice(0, 80); return; }
+      if (!Array.isArray(oh)) { diag["OI hist"] = JSON.stringify(oh).slice(0, 80); }
       kl.forEach((k) => putK(Math.floor(k[0] / 1000), +k[1], +k[2], +k[3], +k[4], +k[7], +k[10]));
-      const hs = oh.map((r) => [Math.floor(r.timestamp / 1000), +r.sumOpenInterest]).filter((r) => r[1] > 0);
+      const hs = (Array.isArray(oh) ? oh : []).map((r) => [Math.floor(r.timestamp / 1000), +r.sumOpenInterest]).filter((r) => r[1] > 0);
       oi = hs.concat(oi.filter((r) => !hs.length || r[0] > hs[hs.length - 1][0])).sort((a, b) => a[0] - b[0]);
     };
     const pollOi = async (g) => {
       try {
         const j = await getJson(`${FAPI}/fapi/v1/openInterest?symbol=${sym}`);
-        if (g !== gen || !(+j.openInterest > 0)) return;
+        if (g !== gen) return;
+        if (!(+j.openInterest > 0)) { diag.OI = JSON.stringify(j).slice(0, 80); return; }
+        delete diag.OI;
         skew = j.time / 1000 - Date.now() / 1000;
         oi.push([Math.floor(j.time / 1000), +j.openInterest]);
         const cut = nowS() - 4000;
         while (oi.length && oi[0][0] < cut) oi.shift();
-      } catch (e) { /* наступне опитування */ }
+      } catch (e) { if (g === gen) diag.OI = String(e.message || e); }
     };
     const pollLiq = async (g) => {
       if (!opts.base()) return;
-      try { const j = await getJson(`/api/liqs?symbol=${encodeURIComponent(opts.base())}`); if (g === gen) liq = j; } catch (e) { /* лишаємо попередні */ }
+      try { const j = await getJson(`/api/liqs?symbol=${encodeURIComponent(opts.base())}`); if (g === gen && j && Array.isArray(j.m)) liq = j; } catch (e) { /* лишаємо попередні */ }
     };
     const connect = (g) => {
       if (g !== gen || dead || !on) return;
@@ -121,7 +128,7 @@
       if (!sym) { card.innerHTML = `<div class="fl-h"><b>FLOW</b></div><div class="fl-note">Binance only — this coin has no Binance perp</div>`; return; }
       const g = gen;
       card.innerHTML = `<div class="fl-h"><b>FLOW · LIVE</b><span>loading…</span></div>`;
-      loadHist(g).then(() => { if (g === gen) { connect(g); render(); } });
+      loadHist(g).catch((e) => { diag.load = String(e.message || e); }).then(() => { if (g === gen) { connect(g); render(); } });
       pollOi(g); pollLiq(g);
       timers.push(setInterval(() => { if (!document.hidden) pollOi(g); }, OI_POLL));
       timers.push(setInterval(() => { if (!document.hidden) pollLiq(g); }, LIQ_POLL));
@@ -202,8 +209,18 @@
     };
     const render = () => {
       if (!on || dead || !sym) return;
+      try { draw(); } catch (e) {          // помилка розрахунку — видно на картці, а не тихо в консолі
+        card.innerHTML = `<div class="fl-h"><b>FLOW · LIVE</b><span>error</span></div><div class="fl-note">${esc(e.message || e)}</div>`; place();
+      }
+    };
+    const draw = () => {
       const R = compute();
-      if (!R) { card.innerHTML = `<div class="fl-h"><b>FLOW · LIVE</b><span>waiting for data…</span></div>`; place(); return; }
+      if (!R) {
+        const d = Object.entries(diag).map(([k, v]) => `${k}: ${v}`).join(" · ");
+        card.innerHTML = `<div class="fl-h"><b>FLOW · LIVE</b><span>waiting for data…</span></div>`
+          + `<div class="fl-note">${sym} · 1m bars ${k1m.size}/10 · OI points ${oi.length}/2${d ? " · " + esc(d) : ""}</div>`;
+        place(); return;
+      }
       // гістерезис: новий стан показуємо, коли він тримається HOLD тіків поспіль
       const k = R.w5.k;
       if (shown == null || k === shown) { shown = k; cand = null; candN = 0; } else if (k === cand) { if (++candN >= HOLD) { shown = k; cand = null; candN = 0; } } else { cand = k; candN = 1; }
