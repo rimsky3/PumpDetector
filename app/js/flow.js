@@ -11,6 +11,7 @@
 // Дані — напряму з браузера (Binance дозволяє CORS і WebSocket з будь-якої сторінки), сервер не навантажує:
 //   1m-свічки (ціна, обсяг, ринкові покупки): REST за годину + WebSocket /market/ws/<sym>@kline_1m;
 //   OI у монетах: /futures/data/openInterestHist 5m за годину + /fapi/v1/openInterest кожні 10 с (лише Binance);
+//   (REST — запасним шляхом через сервер /api/bn, якщо браузер не дістає fapi напряму);
 //   ліквідації: /api/liqs — власний записувач liq_recorder.py (Binance + Bybit + OKX) кожні 15 с;
 //   натовп / топ: ls_flow і top_ls з /api/ticker (15m-бари, як чіп Longs · Top у рядку над графіком).
 // Згорнути до одного рядка (стан + шкала) — клік по заголовку картки (pd-flow-compact, для всіх вікон).
@@ -45,6 +46,18 @@
   const arrow = (x, thr) => x == null ? "·" : x >= thr ? "↑" : x <= -thr ? "↓" : "→";
   const std = (a) => { if (a.length < 3) return null; const m = a.reduce((s, x) => s + x, 0) / a.length; return Math.sqrt(a.reduce((s, x) => s + (x - m) ** 2, 0) / (a.length - 1)); };
   const getJson = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error(r.status); return r.json(); };
+  // REST Binance: напряму, а якщо браузер не дістає fapi (22.10 у власника: «Failed to fetch» на всі запити, WebSocket
+  // працював) — через сервер /api/bn; перемикається один раз на всю сторінку
+  const BN = { klines: "/fapi/v1/klines?symbol={s}&interval=1m&limit=75", oihist: "/futures/data/openInterestHist?symbol={s}&period=5m&limit=15",
+               oi: "/fapi/v1/openInterest?symbol={s}" };
+  let viaServer = false;
+  const getBn = async (ep, sym) => {
+    if (!viaServer) {
+      try { return await getJson(FAPI + BN[ep].replace("{s}", sym)); }
+      catch (e) { if (!(e instanceof TypeError)) throw e; viaServer = true; }     // TypeError — мережа / CORS, не відповідь біржі
+    }
+    return getJson(`/api/bn?ep=${ep}&symbol=${encodeURIComponent(sym)}`);
+  };
 
   /** стан за зміною ціни dp і OI doi (частки) при порогах tp / to */
   const classify = (dp, doi, tp, to) => {
@@ -83,8 +96,8 @@
     const putK = (t, o, h, l, c, q, qb) => k1m.set(t, { t, o, h, l, c, q, qb });
     const loadHist = async (g) => {
       const [kl, oh] = await Promise.all([
-        getJson(`${FAPI}/fapi/v1/klines?symbol=${sym}&interval=1m&limit=75`).catch(why("klines")),
-        getJson(`${FAPI}/futures/data/openInterestHist?symbol=${sym}&period=5m&limit=15`).catch(why("OI hist"))]);
+        getBn("klines", sym).catch(why("klines")),
+        getBn("oihist", sym).catch(why("OI hist"))]);
       if (g !== gen) return;
       if (!Array.isArray(kl)) { diag.klines = JSON.stringify(kl).slice(0, 80); return; }
       if (!Array.isArray(oh)) { diag["OI hist"] = JSON.stringify(oh).slice(0, 80); }
@@ -94,7 +107,7 @@
     };
     const pollOi = async (g) => {
       try {
-        const j = await getJson(`${FAPI}/fapi/v1/openInterest?symbol=${sym}`);
+        const j = await getBn("oi", sym);
         if (g !== gen) return;
         if (!(+j.openInterest > 0)) { diag.OI = JSON.stringify(j).slice(0, 80); return; }
         delete diag.OI;

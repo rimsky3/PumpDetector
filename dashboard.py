@@ -43,7 +43,7 @@ from screener import SIGNALS_STAMP, load_model_15m, load_models
 from dashboard_app.common import JS_DIR, PAGE, ROOT, State, VENDOR, clean, list_tickers, meta
 from dashboard_app.watchlist_ops import add_to_watchlist, quick_add, remove_from_watchlist, scan_view, undo_remove
 from dashboard_app.listview import list_warmer, minicharts, watch_list
-from dashboard_app.tickerview import liq_minutes, refresh, ticker
+from dashboard_app.tickerview import binance_proxy, liq_minutes, refresh, ticker
 from dashboard_app.twaps import save_twap_config, twaps_view
 from dashboard_app.backtests import backtest_run, backtest_runs, backtest_start, backtest_status, rescore_on_start
 from dashboard_app.journal_view import journal_view, journal_warmer
@@ -151,6 +151,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, State.spread.detail(q.get("symbol", "").upper()))
         if url.path == "/api/liqs":            # картка Flow на графіку (app/js/flow.js): ліквідації по хвилинах за годину
             return self._route(lambda c: liq_minutes(c, q.get("symbol", "").upper()))
+        if url.path == "/api/bn":              # картка Flow: REST Binance через сервер, коли браузер не дістає fapi напряму
+            return self._send(*binance_proxy(q.get("ep", ""), q.get("symbol", "")))
         if url.path == "/api/profile":          # профіль обсягу: дні / тижні / фрагмент (app/js/profile.js)
             return self._route(lambda c: volume_profile.api(c, q))
         if url.path == "/api/ticker":

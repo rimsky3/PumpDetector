@@ -193,6 +193,10 @@ every 10 s; between snapshots OI is interpolated linearly), and the clock offset
 laptop clock 35 s behind made fresh OI look like "from the future"). Liquidations come from the own recorder (`liq_recorder.py`,
 Binance + Bybit + OKX) via `/api/liqs` every 15 s — per-minute sums for the last 65 minutes and a `live` flag; when the
 recorder is down the card says so instead of showing zeros. Coins without a Binance perp get no card.
+If the browser cannot reach `fapi.binance.com` REST (on the owner's PC every REST call failed with "Failed to fetch" while
+the WebSocket worked), the card switches once per page to `/api/bn?ep=klines|oihist|oi&symbol=` — the server fetches the
+same three whitelisted endpoints with a 5-second cache. While waiting, the card shows what is missing (1m bars, OI points,
+the error per source).
 
 ## Drivers card (since 2026-10-08)
 

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 import psycopg
+import requests
 
 import drivers as DRV
 import fetch_exchange
@@ -255,6 +256,36 @@ def liq_minutes(conn, base: str, minutes: int = 65) -> dict:
         conn.rollback()
         return {"m": [], "live": False}
     return {"m": [[int(t), float(a or 0), float(b or 0)] for t, a, b in rows], "live": bool(live)}
+
+
+# Запасний шлях картки Flow до REST Binance через сервер (22.10): на комп'ютері власника браузер не отримав жодної
+# REST-відповіді fapi.binance.com («Failed to fetch»), а WebSocket працював. Лише три запити, symbol — лише літери / цифри;
+# кеш 5 с на URL — кілька вікон з тією самою монетою роблять один запит (ліміт Binance спільний зі скринером).
+BINANCE_PROXY = {
+    "klines": "/fapi/v1/klines?symbol={s}&interval=1m&limit=75",
+    "oihist": "/futures/data/openInterestHist?symbol={s}&period=5m&limit=15",
+    "oi": "/fapi/v1/openInterest?symbol={s}",
+}
+_bn_cache: dict[str, tuple[float, int, object]] = {}
+
+
+def binance_proxy(ep: str, symbol: str) -> tuple[int, object]:
+    """(HTTP-код, JSON) відповіді Binance на один із BINANCE_PROXY."""
+    if ep not in BINANCE_PROXY or not symbol.isalnum():
+        return 400, {"error": "ep / symbol"}
+    url = "https://fapi.binance.com" + BINANCE_PROXY[ep].format(s=symbol.upper())
+    hit = _bn_cache.get(url)
+    if hit and time.time() - hit[0] < 5:
+        return hit[1], hit[2]
+    try:
+        r = requests.get(url, timeout=6)
+        out = (r.status_code, r.json())
+    except Exception as e:
+        return 502, {"error": str(e)[:200]}
+    if len(_bn_cache) > 500:
+        _bn_cache.clear()
+    _bn_cache[url] = (time.time(), *out)
+    return out
 
 
 def oi_share(conn, base: str) -> list[dict] | None:
