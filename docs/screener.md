@@ -164,7 +164,8 @@ describes the range, not levels.
 The second header row no longer repeats P · 1h · Alert (they are in the first row and on the P pane). In their place:
 `Longs 44% → · Top 64% → ▲21` and `Buy 1h 52%`. Longs — share of accounts long on Binance and Bybit (OI-weighted, people
 not money); Top — Binance top traders' long share by position size (`top_long_short`, money); arrows — change over 4 hours
-in p.p.; ▲ / ▼ — how many p.p. big money is more / less long than the crowd, with a green / red frame at ≥ 10 p.p.;
+in p.p., coloured only when unusual (≥ 2.5 p.p.: the long share moves slowly — median 0.2 p.p. per hour, 0.5 per 4 hours,
+95th percentile 1.1 / 2.6 over 30 days and 291 Binance coins); the 1-hour changes are in the hover text; ▲ / ▼ — how many p.p. big money is more / less long than the crowd, with a green / red frame at ≥ 10 p.p.;
 Buy 1h — share of taker buys in the last hour's volume (Binance and OKX report buy volume). Values are the latest, not the
 bar under the cursor. Description only: whether the gap says anything about trades is checked around 2026-11-10.
 

@@ -1589,7 +1589,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     const lsChip = (d) => {
       const f = d.ls_flow || {}, t = d.top_ls || {};
       const arrow = (x) => x == null ? "" : Math.abs(x) < 1 ? " →" : (x > 0 ? " ↑" : " ↓") + Math.round(Math.abs(x));
-      const acls = (x) => x == null || Math.abs(x) < 1 ? "dim" : x > 0 ? "ok" : "red";
+      // колір — лише при незвичній зміні за 4 год: ≥ 2.5 п.п. (рідше ніж у 5% вікон; 30 днів, 291 монета, 22.10) — частка
+      // лонгів змінюється повільно (медіана 0.5 п.п. / 4 год, 0.2 п.п. / 1 год), дрібні стрілки — сірі
+      const acls = (x) => x == null || Math.abs(x) < 2.5 ? "dim" : x > 0 ? "ok" : "red";
+      const pp = (x) => x == null ? "—" : Math.abs(x) < 0.05 ? "0.0" : (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(1);
       if (f.ls == null && t.pos == null && f.buy_1h == null) return;
       const w = el("span", "lsx");
       if (f.ls != null) { w.append("Longs ", el("b", "", Math.round(f.ls) + "%")); if (f.ls_chg_4h != null) w.append(el("b", acls(f.ls_chg_4h), arrow(f.ls_chg_4h))); }
@@ -1602,8 +1605,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
           w.classList.add(gap >= 10 ? "up" : gap <= -10 ? "down" : "flat");
         }
       }
-      w.title = "Longs — частка АКАУНТІВ у лонгах на Binance і Bybit (люди, не гроші). Top — частка лонгів за РОЗМІРОМ позицій топ-трейдерів Binance (≈ 20% найбільших акаунтів): куди стоять великі гроші.\n"
-        + "Стрілки — зміна за 4 год, п.п. ▲ / ▼ — на скільки п.п. великі гроші більше / менше в лонгах, ніж натовп: ▲ ≥ 10 (зелена рамка) — натовп шортить проти грошей, паливо для шорт-сквізу; ▼ ≥ 10 (червона) — навпаки.";
+      w.title = `Longs: за 1 год ${pp(f.ls_chg_1h)} п.п., за 4 год ${pp(f.ls_chg_4h)} · Top: за 1 год ${pp(t.pos_chg_1h)}, за 4 год ${pp(t.pos_chg_4h)}\n`
+        + "Longs — частка АКАУНТІВ у лонгах на Binance і Bybit (люди, не гроші). Top — частка лонгів за РОЗМІРОМ позицій топ-трейдерів Binance (≈ 20% найбільших акаунтів): куди стоять великі гроші.\n"
+        + "Стрілки — зміна за 4 год, п.п.; кольорові — незвична зміна (≥ 2.5 п.п.). ▲ / ▼ — на скільки п.п. великі гроші більше / менше в лонгах, ніж натовп: ▲ ≥ 10 (зелена рамка) — натовп шортить проти грошей, паливо для шорт-сквізу; ▼ ≥ 10 (червона) — навпаки.";
       ohlcEl.appendChild(w);
       if (f.buy_1h != null) {
         const b = el("span", "lsx");

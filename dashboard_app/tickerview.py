@@ -203,14 +203,15 @@ def ls_flow(h: pd.DataFrame) -> dict:
     """Для рядка заголовка графіка (варіант C макета, 22.10): частка лонгів натовпу зараз і її зміна за 4 год (п.п.),
     частка ринкових покупок в обсязі за останню годину (Binance і OKX дають buy volume; Bybit — ні). h — бари тікера
     будь-якого ТФ з індексом-часом."""
-    out = {"ls": None, "ls_chg_4h": None, "buy_1h": None}
+    out = {"ls": None, "ls_chg_1h": None, "ls_chg_4h": None, "buy_1h": None}
     if h.empty:
         return out
     ls = h["ls_long_pct"].dropna() if "ls_long_pct" in h else pd.Series(dtype=float)
     if len(ls):
         out["ls"] = float(ls.iloc[-1])
-        then = ls[ls.index <= ls.index[-1] - pd.Timedelta(hours=4)]
-        out["ls_chg_4h"] = float(ls.iloc[-1] - then.iloc[-1]) if len(then) else None
+        for k, hrs in (("ls_chg_1h", 1), ("ls_chg_4h", 4)):        # 1 год — у підказку, 4 год — стрілка
+            then = ls[ls.index <= ls.index[-1] - pd.Timedelta(hours=hrs)]
+            out[k] = float(ls.iloc[-1] - then.iloc[-1]) if len(then) else None
     if "buy_volume" in h and "volume_bv" in h:
         last = h[h.index > h.index[-1] - pd.Timedelta(minutes=59)]
         v = last["volume_bv"].sum()
@@ -232,9 +233,10 @@ def top_traders(conn, base: str) -> dict | None:
     if not rows:
         return None
     r = rows[0]
-    then = next((x for x in rows if x[0] <= r[0] - pd.Timedelta(hours=4)), None)     # 4 год тому — для стрілки
-    return {"ts": r[0], "acc": r[1], "pos": r[2],
-            "pos_chg_4h": r[2] - then[2] if then is not None and r[2] is not None and then[2] is not None else None}
+    def chg(hrs):                            # зміна частки позицій за hrs год (4 — стрілка, 1 — підказка)
+        then = next((x for x in rows if x[0] <= r[0] - pd.Timedelta(hours=hrs)), None)
+        return r[2] - then[2] if then is not None and r[2] is not None and then[2] is not None else None
+    return {"ts": r[0], "acc": r[1], "pos": r[2], "pos_chg_1h": chg(1), "pos_chg_4h": chg(4)}
 
 
 def oi_share(conn, base: str) -> list[dict] | None:
