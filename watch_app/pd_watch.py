@@ -10,13 +10,16 @@ WATCHLIST / QUIET, чіпи, значки, звук. Чого не вміє вк
   • клік по тікеру відкриває його в окремому вікні графіка «PD Chart» (одне на всі кліки — новий тікер підміняє попередній;
     браузер і дашборд у ньому не чіпає: у застосунку своє сховище налаштувань); Shift + клік — тікер у НОВОМУ окремому
     вікні (кілька графіків одночасно; хрестик закриває його насовсім); пункт трею «Відкрити дашборд» — браузер;
+  • Alt + клік по тікеру — окреме вікно «PD Flow» (лише картка Flow: хто зараз діє на монеті, сторінка /flow#TK; 22.10),
+    так само одне на всі Alt + кліки, Alt + Shift + клік — ще одне; кнопка ⇱ на картці Flow у вікні графіка — те саме;
   • Ctrl + / Ctrl − / Ctrl 0 — масштаб сторінки і розмір вікна разом, у кожному вікні окремо (запам'ятовується).
 
 Налаштування — %APPDATA%\\PD Watchlist\\config.json (створюється при першому запуску):
   url       — адреса дашборда (за замовчуванням https://45-76-90-13.sslip.io/; через тунель — http://localhost:8766/);
   user, password — логін дашборда, якщо не хочеш вводити його щоразу (інакше WebView2 спитає сам);
   on_top, x, y, width, height, zoom — вікно списку; chart_x, chart_y — основне вікно графіка; chart_width, chart_height,
-  chart_zoom — розмір і масштаб графіка, який змінювали останнім (з ними відкривається кожне нове вікно графіка).
+  chart_zoom — розмір і масштаб графіка, який змінювали останнім (з ними відкривається кожне нове вікно графіка);
+  flow_x, flow_y, flow_width, flow_height, flow_zoom — те саме для вікон PD Flow.
 
     python watch_app/pd_watch.py                       # запуск без збирання
     python watch_app/pd_watch.py --url http://127.0.0.1:8799/
@@ -37,7 +40,8 @@ CFG_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), APP)
 CFG_FILE = os.path.join(CFG_DIR, "config.json")
 DEFAULTS = {"url": "https://45-76-90-13.sslip.io/", "user": "", "password": "", "on_top": True,
             "x": None, "y": None, "width": 420, "height": 900, "zoom": 1.0,
-            "chart_x": None, "chart_y": None, "chart_width": 1100, "chart_height": 720, "chart_zoom": 1.0}
+            "chart_x": None, "chart_y": None, "chart_width": 1100, "chart_height": 720, "chart_zoom": 1.0,
+            "flow_x": None, "flow_y": None, "flow_width": 380, "flow_height": 330, "flow_zoom": 1.0}
 ZOOM_MIN, ZOOM_MAX, ZOOM_STEP = 0.5, 2.0, 0.1
 HERE = os.path.dirname(os.path.abspath(__file__))
 ICON_FILE = os.path.join(HERE, "pd_watch.ico")
@@ -70,13 +74,17 @@ def base_url(cfg: dict) -> str:
     return u if u.endswith("/") else u + "/"
 
 
-def page_url(cfg: dict, view: str = "list") -> str:
-    """Адреса вікна: сторінка дашборда з #view («list» — лише список, «chart/TK» — лише графік); логін, якщо заданий, — в адресі."""
+def page_url(cfg: dict, view: str = "list", page: str = "") -> str:
+    """Адреса вікна: сторінка дашборда з #view («list» — лише список, «chart/TK» — лише графік) або інша сторінка page
+    («flow» → /flow#TK — вікно PD Flow); логін, якщо заданий, — в адресі."""
     parts = urlsplit(base_url(cfg))
     netloc = parts.netloc
     if cfg.get("user") and cfg.get("password"):
         netloc = f"{quote(cfg['user'], safe='')}:{quote(cfg['password'], safe='')}@{parts.hostname}" + (f":{parts.port}" if parts.port else "")
-    return urlunsplit((parts.scheme, netloc, parts.path or "/", "", view))
+    path = parts.path or "/"
+    if page:
+        path = path.rstrip("/") + "/" + page
+    return urlunsplit((parts.scheme, netloc, path, "", view))
 
 
 # ---------------------------------------------------------------- іконка
@@ -116,6 +124,10 @@ class Api:
         """Клік по тікеру у списку: вікно графіка (браузер не чіпаємо); new=True (Shift + клік) — нове окреме вікно."""
         self._app.open_chart(ticker, bool(new))
 
+    def open_flow(self, ticker: str, new: bool = False) -> None:
+        """Alt + клік по тікеру у списку (або ⇱ на картці Flow): вікно PD Flow; new=True (Alt + Shift + клік) — ще одне."""
+        self._app.open_chart(ticker, bool(new), what="flow")
+
     def chart_title(self, ticker: str) -> None:
         self._app.chart_title(ticker, self._kind)
 
@@ -128,24 +140,28 @@ class Api:
 
 
 class ChartWin:
-    """Вікно графіка: основне (звичайний клік; хрестик ховає, позиція запам'ятовується) або додаткове (Shift + клік; хрестик
-    закриває насовсім, стає драбинкою від основного). Нове вікно відкривається з розміром і масштабом графіка, який змінювали
-    ОСТАННІМ (будь-якого, мишею чи Ctrl + / −): config chart_width / chart_height / chart_zoom — «останні», їх пише кожне вікно.
+    """Вікно графіка (what="chart") або PD Flow (what="flow", 22.10 — лише картка Flow, свої розмір / місце / масштаб у
+    config flow_*): основне (звичайний клік / Alt + клік; хрестик ховає, позиція запам'ятовується) або додаткове (з Shift;
+    хрестик закриває насовсім, стає драбинкою від основного). Нове вікно відкривається з розміром і масштабом вікна того ж
+    типу, яке змінювали ОСТАННІМ (мишею чи Ctrl + / −): config <what>_width / _height / _zoom — «останні», їх пише кожне вікно.
     У кожного вікна свій поточний масштаб — щоб Ctrl + в одному не рахувався від масштабу іншого."""
 
-    def __init__(self, app: "WatchApp", kind: str, ticker: str, main: bool, n: int = 0):
+    TITLE = {"chart": "PD Chart", "flow": "PD Flow"}
+
+    def __init__(self, app: "WatchApp", kind: str, ticker: str, main: bool, n: int = 0, what: str = "chart"):
         import webview
         c = app.cfg
-        self.app, self.kind, self.main = app, kind, main
-        self.zoom = float(c.get("chart_zoom") or 1.0)
-        self.width, self.height = int(c["chart_width"]), int(c["chart_height"])
+        self.app, self.kind, self.main, self.what = app, kind, main, what
+        self.zoom = float(c.get(f"{what}_zoom") or 1.0)
+        self.width, self.height = int(c[f"{what}_width"]), int(c[f"{what}_height"])
         shift = 0 if main else 32 * n                     # додаткові — драбинкою від основного, щоб не лягали одне на одне
-        x = c["chart_x"] + shift if c["chart_x"] is not None else None
-        y = c["chart_y"] + shift if c["chart_y"] is not None else None
+        x = c[f"{what}_x"] + shift if c[f"{what}_x"] is not None else None
+        y = c[f"{what}_y"] + shift if c[f"{what}_y"] is not None else None
+        url = page_url(c, f"chart/{ticker}") if what == "chart" else page_url(c, ticker, page="flow")
         self.win = webview.create_window(
-            f"{ticker} — PD Chart", page_url(c, f"chart/{ticker}"), js_api=Api(app, kind),
-            width=self.width, height=self.height, x=x, y=y, on_top=bool(c["on_top"]), min_size=(480, 360),
-            background_color="#141413", text_select=True)
+            f"{ticker} — {self.TITLE[what]}", url, js_api=Api(app, kind),
+            width=self.width, height=self.height, x=x, y=y, on_top=bool(c["on_top"]),
+            min_size=(480, 360) if what == "chart" else (280, 160), background_color="#141413", text_select=True)
         self.win.events.resized += self.on_resized
         self.win.events.loaded += self.on_loaded
         if main:
@@ -156,14 +172,14 @@ class ChartWin:
 
     def remember(self) -> None:
         """Цей графік змінили останнім — його розмір і масштаб стають стартовими для нових вікон."""
-        self.app.cfg.update(chart_width=self.width, chart_height=self.height, chart_zoom=self.zoom)
+        self.app.cfg.update({f"{self.what}_width": self.width, f"{self.what}_height": self.height, f"{self.what}_zoom": self.zoom})
 
     def on_resized(self, width, height):
         self.width, self.height = width, height
         self.remember()
 
     def on_moved(self, x, y):
-        self.app.cfg["chart_x"], self.app.cfg["chart_y"] = x, y
+        self.app.cfg[f"{self.what}_x"], self.app.cfg[f"{self.what}_y"] = x, y
 
     def on_loaded(self):
         if abs(self.zoom - 1.0) > 1e-6:
@@ -196,7 +212,8 @@ class WatchApp:
         self.cfg = cfg
         self.window = None                        # список
         self.chart: ChartWin | None = None        # основне вікно графіка (створюється при першому кліку по тікеру)
-        self.extra: dict[str, ChartWin] = {}      # додаткові вікна графіка (Shift + клік)
+        self.flow: ChartWin | None = None         # основне вікно PD Flow (перший Alt + клік)
+        self.extra: dict[str, ChartWin] = {}      # додаткові вікна графіка і Flow (з Shift)
         self._n_extra = 0
         self.tray = None
         self.visible = True
@@ -228,10 +245,10 @@ class WatchApp:
 
     # --- масштаб: WebView2.ZoomFactor (шрифт і все на сторінці) + розмір вікна в тій самій пропорції
     def _charts(self) -> list:
-        return [x for x in [self.chart, *self.extra.values()] if x is not None]
+        return [x for x in [self.chart, self.flow, *self.extra.values()] if x is not None]
 
     def _chart(self, kind: str):
-        return self.chart if kind == "chart" else self.extra.get(kind)
+        return {"chart": self.chart, "flow": self.flow}.get(kind) or self.extra.get(kind)
 
     @staticmethod
     def set_factor(win, z: float) -> None:
@@ -269,24 +286,31 @@ class WatchApp:
         t = re.sub(r"[^A-Z0-9]", "", str(ticker).upper())
         ch = self._chart(kind)
         if ch is not None and t:
-            ch.win.set_title(f"{t} — PD Chart")
+            ch.win.set_title(f"{t} — {ch.TITLE[ch.what]}")
 
-    def open_chart(self, ticker: str, new: bool = False) -> None:
+    def open_chart(self, ticker: str, new: bool = False, what: str = "chart") -> None:
+        """Вікно графіка (what="chart") або PD Flow (what="flow") для тікера."""
         t = re.sub(r"[^A-Z0-9]", "", str(ticker).upper())
         if not t:
             return
-        if new:                                       # Shift + клік: ще одне вікно, основне не чіпаємо
+        if new:                                       # з Shift: ще одне вікно, основне не чіпаємо
             self._n_extra += 1
             kind = f"x{self._n_extra}"
-            self.extra[kind] = ChartWin(self, kind, t, main=False, n=len(self.extra) + 1)
+            n = sum(1 for x in self.extra.values() if x.what == what) + 1
+            self.extra[kind] = ChartWin(self, kind, t, main=False, n=n, what=what)
             return
-        if self.chart is None:
-            self.chart = ChartWin(self, "chart", t, main=True)
+        main = self.chart if what == "chart" else self.flow
+        if main is None:
+            main = ChartWin(self, what, t, main=True, what=what)
+            if what == "chart":
+                self.chart = main
+            else:
+                self.flow = main
             return
         # вікно вже є: сторінка лишається завантаженою, міняємо лише тікер — без перезавантаження
-        w = self.chart.win
-        w.evaluate_js(f"location.hash = '#chart/{t}'")
-        self.chart_title(t)
+        w = main.win
+        w.evaluate_js(f"location.hash = '#chart/{t}'" if what == "chart" else f"location.hash = '#{t}'")
+        self.chart_title(t, what)
         w.show()
         w.restore()
         try:

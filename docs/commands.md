@@ -577,7 +577,11 @@ open at once; closing an additional window really closes it. Every new chart win
 chart window changed last (by mouse or Ctrl + / −), also after a restart; each window keeps its own zoom while open. The browser is not touched: the app has its own storage. The tray item «Відкрити
 дашборд» still opens the full dashboard in the default browser. Settings: `%APPDATA%\PD Watchlist\config.json` (`url`,
 optional `user` / `password`, `on_top`, list window position / size / `zoom`, `chart_x` / `chart_y` — main chart
-window position, `chart_width` / `chart_height` / `chart_zoom` — size and zoom of the chart window changed last).
+window position, `chart_width` / `chart_height` / `chart_zoom` — size and zoom of the chart window changed last;
+`flow_*` — the same for PD Flow windows).
+Alt + click a ticker opens a separate **PD Flow** window (since 2026-10-22: only the Flow card for that coin, page
+`/flow#TK`), reused for every Alt + click like the chart window; Alt + Shift + click opens one more. The ⇱ button on the
+chart's Flow card does the same. In a browser (full dashboard) Alt + click and ⇱ open a small popup window instead.
 
 ### `experiments/p_deciles_delay.py`
 

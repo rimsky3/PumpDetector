@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PD Flow</title>
+<style>
+/* Окреме вікно PD Flow (22.10): лише картка Flow (app/js/flow.js) для одного тікера — /flow#TK. Відкривається як вікна
+   графіка в PD Watchlist (Alt + клік по тікеру в списку; Alt + Shift + клік — ще одне вікно) або кнопкою ⇱ на картці графіка. */
+:root {
+  --bg: #0f0f0e; --card: #1c1c1a; --line: #262622; --line2: #33332e; --line3: #3a3a35;
+  --fg: #f0efec; --fg2: #a8a79f; --fg3: #6b6a64;
+  --hot: #e24b4a; --hot-soft: #f09595; --amber: #ef9f27; --ok: #97c459; --muted: #5f5e5a; --link: #85b7eb;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--card); color: var(--fg); font: 13px/1.45 -apple-system, "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; }
+#msg { padding: 14px; color: var(--fg2); font-size: 12px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<div id="msg" hidden></div>
+<script src="/js/flow.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const app = () => window.pywebview && window.pywebview.api;
+  const tkFromHash = () => (location.hash.slice(1).split("/")[0] || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let tk = "", info = null, flow = null;
+
+  // символ Binance і натовп / топ — з легкої відповіді /api/ticker (як вікно графіка); монети немає в базі — TKUSDT
+  const loadInfo = async () => {
+    const want = tk;
+    try {
+      const r = await fetch(`/api/ticker?symbol=${encodeURIComponent(want)}&light=1&days=1&tf=15m`);
+      const d = r.ok ? await r.json() : null;
+      if (want === tk) info = d && !d.error ? d : null;
+    } catch (e) { if (want === tk) info = null; }
+  };
+  const symbol = () => (info && info.live ? info.live.binance : null) || (info ? null : tk + "USDT");
+
+  const show = async () => {
+    tk = tkFromHash();
+    document.title = tk ? `${tk} — PD Flow` : "PD Flow";
+    if (app() && app().chart_title && tk) app().chart_title(tk);
+    if (!tk) { $("msg").hidden = false; $("msg").textContent = "No ticker: open the window from PD Watchlist (Alt + click a ticker)."; return; }
+    $("msg").hidden = true;
+    await loadInfo();
+    if (!flow) {
+      flow = PDFlow.create({ el: $("root"), chart: null, symbol, base: () => tk, title: () => tk,
+        crowd: () => ({ ls: info && info.ls_flow, top: info && info.top_ls }) });
+      flow.setOn(true);
+    } else flow.reload();
+  };
+  addEventListener("hashchange", show);
+  setInterval(async () => { if (!document.hidden && tk) { await loadInfo(); if (flow) flow.reload(); } }, 300000);   // натовп / топ — 15m-бари
+
+  // клавіші як у вікні графіка: Ctrl + / − / 0 — масштаб вікна PD Watchlist; F5 / Ctrl + R — оновити (у WebView2 самі не працюють)
+  addEventListener("keydown", (e) => {
+    const a = app();
+    if (a && a.zoom && (e.ctrlKey || e.metaKey)) {
+      const step = ["Equal", "NumpadAdd"].includes(e.code) || e.key === "+" || e.key === "=" ? 1
+        : ["Minus", "NumpadSubtract"].includes(e.code) || e.key === "-" ? -1 : ["Digit0", "Numpad0"].includes(e.code) ? 0 : null;
+      if (step !== null) { e.preventDefault(); a.zoom(step); return; }
+    }
+    if (e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "r")) { e.preventDefault(); location.reload(); }
+  });
+  // після деплою — перезавантажитись (як dashboard.html): /api/pulse → page
+  let page0 = null;
+  setInterval(async () => {
+    try {
+      const p = await (await fetch("/api/pulse")).json();
+      if (page0 == null) page0 = p.page; else if (p.page !== page0) location.reload();
+    } catch (e) { /* сервер недоступний — спробуємо пізніше */ }
+  }, 30000);
+
+  show();
+})();
+</script>
+</body>
+</html>

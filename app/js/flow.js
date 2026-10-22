@@ -68,11 +68,44 @@
     return pm ? "P" : "F";
   };
 
+  // стилі картки — тут, а не в dashboard.html: той самий модуль працює й на сторінці окремого вікна /flow (app/flow.html)
+  const CSS = `
+.flow-card { position: absolute; left: 8px; z-index: 6; width: 330px; padding: 8px 10px; border-radius: 10px; background: color-mix(in srgb, var(--card) 93%, transparent);
+  border: 1px solid var(--line2); display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; line-height: 1.35; color: var(--fg); font-variant-numeric: tabular-nums; }
+.flow-card .fl-h { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; }
+.flow-card .fl-h b { font-size: 10.5px; letter-spacing: .06em; color: var(--fg2); }
+.flow-card .fl-h span, .flow-card .fl-k, .flow-card .fl-note, .flow-card .fl-tla { font-size: 10px; color: var(--fg3); }
+.flow-card .fl-st { display: flex; gap: 8px; align-items: center; color: var(--fg2); flex-wrap: wrap; }
+.flow-card .fl-pill { padding: 1px 8px; border-radius: 6px; font-weight: 600; color: var(--c); border: 1px solid var(--c); }
+.flow-card .fl-why { font-size: 10.5px; color: var(--fg2); }
+.flow-card .fl-tl { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 2px; }
+.flow-card .fl-tl i { height: 12px; border-radius: 2px; border: 1px solid var(--line2); box-sizing: border-box; }
+.flow-card .fl-tla { display: flex; justify-content: space-between; margin-top: -3px; }
+.flow-card .fl-g { display: grid; grid-template-columns: 66px repeat(3, minmax(0, 1fr)); gap: 2px 6px; font-size: 11px; }
+.flow-card .fl-g > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.flow-card .fl-span { grid-column: span 3; } .flow-card .fl-span2 { grid-column: span 2; }
+.flow-card .fl-l { color: var(--fg2); } .flow-card .fl-m { color: var(--fg2); }
+.flow-card .up { color: var(--ok); } .flow-card .dn { color: var(--hot-soft); } .flow-card b { font-weight: 600; }
+.flow-card .fl-hint { font-size: 10.5px; color: var(--amber); }
+/* окреме вікно (/flow, PD Flow): картка на все вікно */
+.flow-card.standalone { position: static; width: auto; border: 0; border-radius: 0; background: transparent; padding: 10px 12px; font-size: 12px; }
+.flow-card.standalone .fl-g { font-size: 11.5px; }
+.flow-card .fl-pop { margin-left: 6px; padding: 0 5px; border: 1px solid var(--line2); border-radius: 5px; background: transparent; color: var(--fg2); font: inherit; font-size: 11px; cursor: pointer; }
+.flow-card .fl-pop:hover { color: var(--fg); border-color: var(--fg3); }
+`;
+  const addCss = () => {
+    if (document.getElementById("pd-flow-css")) return;
+    const st = document.createElement("style"); st.id = "pd-flow-css"; st.textContent = CSS; document.head.appendChild(st);
+  };
+
+  /** opts: el, chart (немає — окреме вікно, картка на все el), symbol(), base(), crowd(), title() — тікер у заголовку,
+   *  popOut() — кнопка ⇱ «відкрити окремим вікном» */
   function create(opts) {
+    addCss();
     const { el, chart } = opts;
     if (el._pdflow) el._pdflow.destroy();
     const card = document.createElement("div");
-    card.className = "flow-card"; card.hidden = true;
+    card.className = chart ? "flow-card" : "flow-card standalone"; card.hidden = true;
     el.appendChild(card);
 
     let on = false, dead = false, sym = null, sock = null, wsRetry = 0, timers = [];
@@ -85,6 +118,7 @@
     let diag = {};
     const why = (k) => (e) => { diag[k] = String(e && e.message || e); return []; };
     const nowS = () => Date.now() / 1000 + skew;
+    const label = () => (opts.title && opts.title() ? esc(opts.title()) + " · " : "") + "FLOW · LIVE";
 
     const reset = () => {
       if (sock) { sock.onclose = null; try { sock.close(); } catch (e) { /* уже закрито */ } }
@@ -138,9 +172,9 @@
       sym = opts.symbol();
       if (!on || dead) { card.hidden = true; return; }
       card.hidden = false;
-      if (!sym) { card.innerHTML = `<div class="fl-h"><b>FLOW</b></div><div class="fl-note">Binance only — this coin has no Binance perp</div>`; return; }
+      if (!sym) { card.innerHTML = `<div class="fl-h"><b>${label()}</b></div><div class="fl-note">Binance only — this coin has no Binance perp</div>`; return; }
       const g = gen;
-      card.innerHTML = `<div class="fl-h"><b>FLOW · LIVE</b><span>loading…</span></div>`;
+      card.innerHTML = `<div class="fl-h"><b>${label()}</b><span>loading…</span></div>`;
       loadHist(g).catch((e) => { diag.load = String(e.message || e); }).then(() => { if (g === gen) { connect(g); render(); } });
       pollOi(g); pollLiq(g);
       timers.push(setInterval(() => { if (!document.hidden) pollOi(g); }, OI_POLL));
@@ -216,6 +250,7 @@
     const buyCls = (x) => x == null ? "" : x >= 0.55 ? "up" : x <= 0.45 ? "dn" : "";
     const pxo = (w) => w.k === "?" ? "" : `${arrow(w.dp, w.t.p)}${arrow(w.doi, w.t.o)} `;
     const place = () => {
+      if (!chart) return;
       let ph = el.clientHeight;
       try { ph = chart.panes()[0].getHeight(); } catch (e) { /* одна панель */ }
       card.style.top = Math.max(4, ph - card.offsetHeight - 8) + "px";
@@ -223,14 +258,14 @@
     const render = () => {
       if (!on || dead || !sym) return;
       try { draw(); } catch (e) {          // помилка розрахунку — видно на картці, а не тихо в консолі
-        card.innerHTML = `<div class="fl-h"><b>FLOW · LIVE</b><span>error</span></div><div class="fl-note">${esc(e.message || e)}</div>`; place();
+        card.innerHTML = `<div class="fl-h"><b>${label()}</b><span>error</span></div><div class="fl-note">${esc(e.message || e)}</div>`; place();
       }
     };
     const draw = () => {
       const R = compute();
       if (!R) {
         const d = Object.entries(diag).map(([k, v]) => `${k}: ${v}`).join(" · ");
-        card.innerHTML = `<div class="fl-h"><b>FLOW · LIVE</b><span>waiting for data…</span></div>`
+        card.innerHTML = `<div class="fl-h"><b>${label()}</b><span>waiting for data…</span></div>`
           + `<div class="fl-note">${sym} · 1m bars ${k1m.size}/10 · OI points ${oi.length}/2${d ? " · " + esc(d) : ""}</div>`;
         place(); return;
       }
@@ -248,7 +283,7 @@
       }).join("");
       const sq = R.cells.findLastIndex((c) => c.k === "S");
       const mid = sq >= 0 && sq < CELLS - 2 ? `${hhmm(R.cells[sq].a)} squeeze` : "";
-      const head = `<div class="fl-h" title="Click to ${compact ? "expand" : "collapse"}"><b>FLOW · LIVE</b><span>${hhmm(R.now)} UTC ${compact ? "▸" : "▾"}</span></div>`
+      const head = `<div class="fl-h" title="Click to ${compact ? "expand" : "collapse"}"><b>${label()}</b><span>${hhmm(R.now)} UTC ${compact ? "▸" : "▾"}${opts.popOut ? `<button class="fl-pop" title="Open in a separate PD Flow window (in PD Watchlist — also Alt + click a ticker in the list)">⇱</button>` : ""}</span></div>`
         + `<div class="fl-st"><span class="fl-pill" style="--c:${tcol(shown)}">${s.name}</span><span>price ${pct(R.w5.dp)} · OI ${pct(R.w5.doi)} (5m)</span></div>`;
       const strip = `<div class="fl-tl">${cells}</div><div class="fl-tla"><span>${hhmm(R.cells[0].a)}</span><span>${mid}</span><span>now</span></div>`;
       if (compact) { card.innerHTML = head + strip; place(); return; }
@@ -269,6 +304,7 @@
     };
 
     card.addEventListener("click", (e) => {
+      if (e.target.closest(".fl-pop")) { e.stopPropagation(); opts.popOut(); return; }
       if (!e.target.closest(".fl-h")) return;
       compact = !compact; LS.set("pd-flow-compact", compact); render();
     });

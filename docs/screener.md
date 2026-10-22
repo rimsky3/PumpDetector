@@ -198,6 +198,12 @@ the WebSocket worked), the card switches once per page to `/api/bn?ep=klines|oih
 same three whitelisted endpoints with a 5-second cache. While waiting, the card shows what is missing (1m bars, OI points,
 the error per source).
 
+**Separate window** (since 2026-10-22): `/flow#TK` (`app/flow.html`) is a page with only the card for one ticker — it
+takes the Binance symbol and crowd / top from the light `/api/ticker` (refreshed every 5 minutes) and runs the same
+`app/js/flow.js` without a chart (styles live in the module). In PD Watchlist: Alt + click a ticker in the list — the PD
+Flow window (one for all Alt + clicks, the ticker is switched without reloading), Alt + Shift + click — another one, ⇱
+on the chart card — the same; own size / position / zoom (`flow_*` in config). In a browser it is a popup window.
+
 ## Drivers card (since 2026-10-08)
 
 Under the probability card the dashboard shows **DRIVERS** for the last scored 15m bar (`drivers.py`): a stacked bar of

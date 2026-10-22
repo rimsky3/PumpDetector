@@ -31,6 +31,7 @@ def last_atr(h: pd.DataFrame) -> float | None:
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))    # корінь проєкту (пакет — на рівень нижче)
 PAGE = os.path.join(ROOT, "app", "dashboard.html")
+FLOW_PAGE = os.path.join(ROOT, "app", "flow.html")   # окреме вікно PD Flow
 VENDOR = os.path.join(ROOT, "app", "vendor")
 JS_DIR = os.path.join(ROOT, "app", "js")                              # спільні скрипти сторінок
 MODEL_NAMES = {"lightgbm": "LightGBM", "logreg": "Логістична регресія"}

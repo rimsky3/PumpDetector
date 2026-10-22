@@ -40,7 +40,7 @@ import volume_profile
 import wake
 from screener import SIGNALS_STAMP, load_model_15m, load_models
 
-from dashboard_app.common import JS_DIR, PAGE, ROOT, State, VENDOR, clean, list_tickers, meta
+from dashboard_app.common import FLOW_PAGE, JS_DIR, PAGE, ROOT, State, VENDOR, clean, list_tickers, meta
 from dashboard_app.watchlist_ops import add_to_watchlist, quick_add, remove_from_watchlist, scan_view, undo_remove
 from dashboard_app.listview import list_warmer, minicharts, watch_list
 from dashboard_app.tickerview import binance_proxy, liq_minutes, refresh, ticker
@@ -80,6 +80,9 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/":
             with open(PAGE, "rb") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
+        if url.path == "/flow":                 # окреме вікно PD Flow (/flow#TK): лише картка Flow одного тікера
+            with open(FLOW_PAGE, "rb") as f:
+                return self._send(200, f.read(), "text/html; charset=utf-8")
         if url.path.startswith(("/vendor/", "/js/")):   # локальна копія бібліотеки графіків, інтернет не потрібен
             base_dir = VENDOR if url.path.startswith("/vendor/") else JS_DIR
             path = os.path.normpath(os.path.join(base_dir, os.path.basename(url.path)))
@@ -92,7 +95,7 @@ class Handler(BaseHTTPRequestHandler):
             mt = lambda p: os.path.getmtime(p) if os.path.exists(p) else 0      # noqa: E731
             # page — версія сторінки (найновіший час зміни dashboard.html і app/js/*): змінилась після деплою → вікна
             # (і PD Watchlist, де F5 не працює) перезавантажуються самі
-            page = max([mt(PAGE)] + [mt(os.path.join(JS_DIR, f)) for f in os.listdir(JS_DIR) if f.endswith(".js")])
+            page = max([mt(PAGE), mt(FLOW_PAGE)] + [mt(os.path.join(JS_DIR, f)) for f in os.listdir(JS_DIR) if f.endswith(".js")])
             return self._send(200, {"sig": mt(SIGNALS_STAMP), "wake": mt(wake.EVENTS_FILE), "woke": mt(scanner.WOKE_FILE), "page": page})
         if url.path == "/api/meta":
             return self._route(meta)
