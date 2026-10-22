@@ -239,6 +239,24 @@ def top_traders(conn, base: str) -> dict | None:
     return {"ts": r[0], "acc": r[1], "pos": r[2], "pos_chg_1h": chg(1), "pos_chg_4h": chg(4)}
 
 
+def liq_minutes(conn, base: str, minutes: int = 65) -> dict:
+    """Картка Flow на графіку (app/js/flow.js, 22.10): ліквідації тікера по хвилинах за останню годину — власний
+    записувач liq_recorder.py (Binance + Bybit + OKX, запис кожні 5 с). m — [час хвилини (с), лонги $, шорти $];
+    live — з'єднання Binance записувача живе (інакше нуль на картці означав би «не знаю», а не «ліквідацій немає»)."""
+    try:
+        rows = conn.execute("""SELECT extract(epoch FROM date_trunc('minute', l.ts))::bigint AS t,
+                                      sum(l.usd) FILTER (WHERE l.side = 'long'), sum(l.usd) FILTER (WHERE l.side = 'short')
+                               FROM liq_events l JOIN markets m ON m.symbol_on_exchange = l.symbol AND m.exchange_name = l.exchange
+                               WHERE m.base_asset = %s AND m.quote_asset = 'USDT' AND l.ts > now() - make_interval(mins => %s)
+                               GROUP BY 1 ORDER BY 1""", (base, minutes)).fetchall()
+        live = conn.execute("""SELECT max(last_seen) > now() - interval '2 minutes' FROM liq_ws_coverage
+                               WHERE exchange = 'Binance'""").fetchone()[0]
+    except Exception:                       # таблиць немає (локальна база без записувача)
+        conn.rollback()
+        return {"m": [], "live": False}
+    return {"m": [[int(t), float(a or 0), float(b or 0)] for t, a, b in rows], "live": bool(live)}
+
+
 def oi_share(conn, base: str) -> list[dict] | None:
     """Частка OI тікера за біржами (середнє за 30 днів, годинні дані Coinalyze по всіх біржах) і чи бачить її модель:
     15m-модель бере лише features.INTRADAY_EXCHANGES. Кеш на годину."""
@@ -465,7 +483,7 @@ def _ticker(conn, base: str, model: str, days: int, tf: str | None = None, strat
     if refreshing:                              # свіжі бари ще дописуються у фоні — наступний запит має перечитати базу
         _bars_cache.pop((base, days), None)
     res["oi_share"] = None if light else oi_share(conn, base)
-    res["top_ls"] = None if light else top_traders(conn, base)
+    res["top_ls"] = top_traders(conn, base)          # один легкий запит — і в «легкому» режимі (чіп у вікні графіка exe)
     res["scanner_entries"] = [] if light else scanner_entries(conn, base, days)
     return res
 

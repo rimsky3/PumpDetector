@@ -169,6 +169,31 @@ in p.p., coloured only when unusual (≥ 2.5 p.p.: the long share moves slowly �
 Buy 1h — share of taker buys in the last hour's volume (Binance and OKX report buy volume). Values are the latest, not the
 bar under the cursor. Description only: whether the gap says anything about trades is checked around 2026-11-10.
 
+## Flow card on the chart (since 2026-10-22)
+
+**Flow** button next to Range (also in the PD Watchlist chart window; per chart window, `app/js/flow.js`): a live card in
+the bottom-left corner of the price pane that describes who is acting on the coin right now. It is a description, not a
+signal.
+
+- **State (5 minutes)** — the price × OI quadrant: ↑↑ new longs, ↑↓ shorts closing (squeeze), ↓↑ new shorts, ↓↓ longs
+  exiting; OI moving with a flat price — positions building / closing; price moving with flat OI — "price only". A move
+  counts when it is at least ¾ of the coin's usual σ over the last hour (1-minute price changes, 5-minute OI changes; OI at
+  least 0.15%). The label switches only after the new state has held for 6 seconds (hysteresis).
+- **Timeline** — 12 five-minute UTC cells for the last hour (the last one is the open cell), coloured by state; hover shows
+  price / OI change, taker-buy share and liquidations of the cell. An empty cell means no OI data, not "flat".
+- **Rows** — price × OI over 5m / 15m / 1h, taker-buy share, liquidations of longs / shorts, crowd vs top traders
+  (`ls_flow`, `top_ls` from `/api/ticker`).
+- **⚠ line** — hypotheses from the MAGMA review of 2026-10-21 (a squeeze spends the short fuel; Top ≈ 50 means big money is
+  not long) and liquidation cascades. Not tested.
+- Click the card header to collapse it to the state and the timeline (`pd-flow-compact`, all windows).
+
+Data comes straight from Binance in the browser (CORS and WebSocket are open), so the server does no extra work: 1-minute
+klines (REST for the last hour + `/market/ws/<sym>@kline_1m`), OI in coins (`/futures/data/openInterestHist` 5m + `/fapi/v1/openInterest`
+every 10 s; between snapshots OI is interpolated linearly), and the clock offset to Binance is taken from the OI reply (a
+laptop clock 35 s behind made fresh OI look like "from the future"). Liquidations come from the own recorder (`liq_recorder.py`,
+Binance + Bybit + OKX) via `/api/liqs` every 15 s — per-minute sums for the last 65 minutes and a `live` flag; when the
+recorder is down the card says so instead of showing zeros. Coins without a Binance perp get no card.
+
 ## Drivers card (since 2026-10-08)
 
 Under the probability card the dashboard shows **DRIVERS** for the last scored 15m bar (`drivers.py`): a stacked bar of
