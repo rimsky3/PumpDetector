@@ -239,6 +239,11 @@ def download(exchange: str, sym: str, start: int, end: int, tf: str = "1h") -> d
             "oi": binance_hist("/futures/data/openInterestHist", sym, start, end, "sumOpenInterest", tf),   # у монетах
             "ls": binance_hist("/futures/data/globalLongShortAccountRatio", sym, start, end, "longAccount", tf),
             "funding": binance_funding(sym, start - FUNDING_LOOKBACK, end),
+            # «топ-трейдери» Binance (≈ 20% найбільших акаунтів за маржею): частка лонгів за КІЛЬКІСТЮ акаунтів і за РОЗМІРОМ
+            # позицій (22.10, власник: «натовп проти китів»); лише 15m — для панелі дашборда, у модель не йдуть
+            **({"top_acc": binance_hist("/futures/data/topLongShortAccountRatio", sym, start, end, "longAccount", tf),
+                "top_pos": binance_hist("/futures/data/topLongShortPositionRatio", sym, start, end, "longAccount", tf)}
+               if tf == "15m" else {}),
         }
     return {
         "klines": closed_only(bybit_klines(sym, start, end, tf), tf),
@@ -280,5 +285,10 @@ def normalize(data: dict[str, pd.DataFrame], tf: str) -> dict[str, pd.DataFrame]
     f = f.assign(o=f["c"], h=f["c"], l=f["c"])[["ts", "o", "h", "l", "c"]]
     ls = data["ls"].assign(long_pct=data["ls"]["value"] * 100)
     ls = ls.assign(short_pct=100 - ls["long_pct"], ratio=ls["long_pct"] / (100 - ls["long_pct"]))
+    top = pd.DataFrame(columns=["ts", "acc_long_pct", "pos_long_pct"])
+    if "top_acc" in data and "top_pos" in data:          # лише Binance 15m
+        a = data["top_acc"].set_index("ts")["value"].rename("acc_long_pct") * 100
+        p = data["top_pos"].set_index("ts")["value"].rename("pos_long_pct") * 100
+        top = pd.concat([a, p], axis=1).reset_index(names="ts")
     return {"ohlcv": k[["ts", "o", "h", "l", "c", "v", "bv"]], "oi": oi, "funding": f,
-            "ls": ls[["ts", "ratio", "long_pct", "short_pct"]]}
+            "ls": ls[["ts", "ratio", "long_pct", "short_pct"]], "top": top}

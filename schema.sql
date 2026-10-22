@@ -118,6 +118,14 @@ CREATE TABLE IF NOT EXISTS book_ratio (
 );
 
 -- Ліквідації напряму з бірж через WebSocket (liq_recorder.py, з 2026-10-06): кожна подія + періоди живих з'єднань.
+-- «Топ-трейдери» Binance (≈ 20% найбільших акаунтів за маржею), 15m, з 2026-10-22: частка лонгів за кількістю акаунтів
+-- і за розміром позицій, %. Лише для панелі дашборда (натовп проти великих грошей), у модель не йде. Біржа віддає 30 днів.
+CREATE TABLE IF NOT EXISTS top_long_short (
+    symbol TEXT REFERENCES markets(symbol), interval TEXT NOT NULL, ts TIMESTAMPTZ NOT NULL,
+    acc_long_pct DOUBLE PRECISION, pos_long_pct DOUBLE PRECISION,
+    PRIMARY KEY (symbol, interval, ts)
+);
+
 -- Виконання угод власника на Binance USDⓈ-M Futures (my_positions.py, з 2026-10-20; ключ лише читання): для заміру edge
 -- власника проти входів моделі на тих самих монетах. Позиції — з послідовності виконань (як my_trades.positions).
 CREATE TABLE IF NOT EXISTS my_fills (

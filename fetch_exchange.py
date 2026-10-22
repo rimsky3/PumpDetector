@@ -10,6 +10,7 @@ fetch_exchange.py — 15m і 5m дані напряму з Binance і Bybit у �
     open_interest      USD; свічка зі знімків: open = знімок на початку бару, close — на кінці, high/low — з них
     funding_rate       остання виплачена ставка, %
     long_short_ratio   частка лонг-акаунтів
+    top_long_short     «топ-трейдери» Binance (лише 15m): частка лонгів за акаунтами і за розміром позицій, %
 Ліквідацій біржі не зберігають — їх 15m/5m беремо з Coinalyze (fetch.collect_liquidations, потрібен ключ; --no-liq —
 пропустити). OI і long/short Binance — лише за останні 30 днів, Bybit — повні 60.
 Годинні дані (1hour) не чіпаємо: їх, як і раніше, збирає fetch.py.
@@ -42,7 +43,14 @@ TABLES = {   # ряд normalize() → таблиця і колонки
     "oi": ("open_interest", ["o", "h", "l", "c"]),
     "funding": ("funding_rate", ["o", "h", "l", "c"]),
     "ls": ("long_short_ratio", ["ratio", "long_pct", "short_pct"]),
+    "top": ("top_long_short", ["acc_long_pct", "pos_long_pct"]),     # «топ-трейдери» Binance, лише 15m (22.10)
 }
+TOP_DDL = """CREATE TABLE IF NOT EXISTS top_long_short (
+    symbol TEXT REFERENCES markets(symbol), interval TEXT NOT NULL, ts TIMESTAMPTZ NOT NULL,
+    acc_long_pct DOUBLE PRECISION, pos_long_pct DOUBLE PRECISION,
+    PRIMARY KEY (symbol, interval, ts)
+)"""
+_top_ready = False
 
 
 def upsert(conn, table: str, cols: list[str], symbol: str, interval: str, df) -> int:
@@ -61,6 +69,11 @@ def collect(conn, bases: list[str], tfs: list[str], days: float, log=print, exch
     """Завантажити tfs за days днів для ринків Binance/Bybit тікерів bases і записати в базу.
     Спільне для fetch_exchange.py і кнопки «Завантажити» в label.py. Повертає кількість записаних рядів.
     until — кінець вікна (за замовчуванням зараз): сліпий перегляд бере лише кілька днів до сигналу в минулому."""
+    global _top_ready
+    if not _top_ready:                               # нова таблиця (22.10) — створити один раз на процес, без ручної міграції
+        conn.execute(TOP_DDL)
+        conn.commit()
+        _top_ready = True
     end = int((pd.Timestamp(until) if until is not None else pd.Timestamp(datetime.now(timezone.utc))).timestamp() * 1000)
     start = int(end - days * 24 * MS_H)
     markets = conn.execute("""
@@ -88,7 +101,8 @@ def collect(conn, bases: list[str], tfs: list[str], days: float, log=print, exch
                 continue
             counts = {}
             for key, (table, cols) in TABLES.items():
-                counts[key] = upsert(conn, table, cols, symbol, INTERVAL[tf], data[key])
+                if key in data:
+                    counts[key] = upsert(conn, table, cols, symbol, INTERVAL[tf], data[key])
             conn.commit()
             done += 1
             oi_from = data["oi"]["ts"].min()

@@ -159,6 +159,15 @@ latest price) → **Pin** (blue; frozen at the click: that price and forecast fo
 With an open position on the owner's Binance account (`my_positions.py`), the bar anchors to the entry automatically. It
 describes the range, not levels.
 
+## Long / short in the chart header (since 2026-10-22)
+
+The second header row no longer repeats P · 1h · Alert (they are in the first row and on the P pane). In their place:
+`Longs 44% → · Top 64% → ▲21` and `Buy 1h 52%`. Longs — share of accounts long on Binance and Bybit (OI-weighted, people
+not money); Top — Binance top traders' long share by position size (`top_long_short`, money); arrows — change over 4 hours
+in p.p.; ▲ / ▼ — how many p.p. big money is more / less long than the crowd, with a green / red frame at ≥ 10 p.p.;
+Buy 1h — share of taker buys in the last hour's volume (Binance and OKX report buy volume). Values are the latest, not the
+bar under the cursor. Description only: whether the gap says anything about trades is checked around 2026-11-10.
+
 ## Drivers card (since 2026-10-08)
 
 Under the probability card the dashboard shows **DRIVERS** for the last scored 15m bar (`drivers.py`): a stacked bar of

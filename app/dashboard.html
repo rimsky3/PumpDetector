@@ -191,6 +191,10 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
 .vr.calm, .vx.calm { color: var(--link); } .vr.normal, .vx.normal { color: var(--fg2); }
 .vr.active, .vx.active { color: var(--amber); } .vr.hot, .vx.hot { color: var(--hot-soft); }
 .vx { font-weight: 600; }
+/* лонги / шорти в рядку заголовка графіка (22.10, варіант C): рамка — розрив «великі гроші проти натовпу» */
+.ohlc .lsx { padding: 0 7px; border-radius: 6px; background: var(--line); border: 1px solid transparent; cursor: default; }
+.ohlc .lsx.up { border-color: var(--ok); } .ohlc .lsx.down { border-color: var(--hot); }
+.ohlc .lsx .ok { color: var(--ok); } .ohlc .lsx .red { color: var(--hot); } .ohlc .lsx .dim { color: var(--fg3); }
 .vl-flt { align-items: center; gap: 6px; }
 .vl-flt input { width: 64px; height: 24px; border-radius: 6px; border: 1px solid var(--line3); background: var(--card); color: var(--fg); padding: 0 6px; }
 .vl-flt .err { color: var(--hot-soft); }
@@ -673,7 +677,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       <div class="card" style="padding-block: 2px;">
         <div class="kv"><span>Δ OI, 4 год <button class="help" data-help="metrics" aria-label="Що це?">?</button></span><b id="mOi">—</b></div>
         <div class="kv"><span>Volume z-score</span><b id="mVol">—</b></div>
-        <div class="kv"><span>Частка лонгів</span><b id="mLs">—</b></div>
+        <div class="kv"><span title="Усі акаунти на Binance і Bybit (вага — OI біржі): частка тих, хто в лонгах. Рахує людей, а не гроші">Частка лонгів</span><b id="mLs">—</b></div>
+        <div class="kv"><span title="Топ-трейдери Binance (≈ 20% найбільших акаунтів за маржею): частка тих, хто в лонгах, — за кількістю акаунтів">Топ-трейдери: акаунти</span><b id="mTopAcc">—</b></div>
+        <div class="kv"><span title="Топ-трейдери Binance: частка лонгів за РОЗМІРОМ позицій — куди стоять великі гроші. Натовп у шортах, а великі позиції в лонгах — паливо для шорт-сквізу">Топ-трейдери: позиції</span><b id="mTopPos">—</b></div>
         <div class="kv seen" id="mSeenRow" hidden>
           <div class="row"><span>Модель бачить OI <button class="help" data-help="seen" aria-label="Що це?">?</button></span><b id="mSeen">—</b></div>
           <div class="stack" id="mSeenBar"></div>
@@ -1368,6 +1374,11 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
     $("mOi").textContent = fmtPct(c.oi_chg_4h); $("mOi").className = pctCls(c.oi_chg_4h);
     $("mVol").textContent = c.volume_z_7d == null ? "—" : c.volume_z_7d.toFixed(1) + "σ";
     $("mLs").textContent = d.ls_long_pct == null ? "—" : Math.round(d.ls_long_pct) + "%";
+    // «топ-трейдери» Binance (22.10): за акаунтами і за розміром позицій; позиції ≥ 10 п.п. вище за весь натовп — підсвітка
+    const tl = d.top_ls;
+    $("mTopAcc").textContent = tl?.acc == null ? "—" : Math.round(tl.acc) + "%";
+    $("mTopPos").textContent = tl?.pos == null ? "—" : Math.round(tl.pos) + "%";
+    $("mTopPos").className = tl?.pos != null && d.ls_long_pct != null ? (tl.pos - d.ls_long_pct >= 10 ? "ok" : d.ls_long_pct - tl.pos >= 10 ? "red" : "") : "";
     // яку частку OI тікера (усі біржі, 30 днів) бачить модель — вона бере лише Binance і Bybit
     const sh = d.oi_share; $("mSeenRow").hidden = !sh || !sh.length;
     if (sh && sh.length) {
@@ -1561,9 +1572,9 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
       const add = (k, v, cls) => { const w = el("span", "", k ? k + " " : ""); const b = el("b", cls, v); w.appendChild(b); ohlcEl.appendChild(w); };
       // час і O / H / L / C бару прибрано (власник 08.10): час видно на шкалі графіка, ціни — на свічці
       add("OI", `${fmtUsd(s.oi[i])} · ${fmtNum(s.coin[i])}`); add(`OI ${d.tf || "1h"}`, fmtPct(oc), pctCls(oc));
-      add("Обсяг", fmtUsd(s.volume[i])); add("P", fmtP(pr), pr != null && pr >= d.threshold ? "hot" : "");
-      if (is15() && s.prob.ctx) add("1h", fmtP(s.prob.ctx[i]));
-      if (is15() && s.tier) { const tr = s.tier[i]; if (tr) add("", tr === 2 ? "Alert" : "Кандидат", tr === 2 ? "hot" : "amber"); }
+      add("Обсяг", fmtUsd(s.volume[i]));
+      // P · 1h · Alert прибрано (власник 22.10: дублюють перший рядок і панель P) — замість них лонги / шорти (варіант C макета)
+      lsChip(d);
       const wk = wakeAt.get(s.t[i]);
       if (wk) add("прокидається", `обсяг ×${wk.vol_x.toFixed(1)} до тижня${wk.vol_x4h != null ? `, ×${wk.vol_x4h.toFixed(1)} до 4 год` : ""} · ціна ${fmtPct(wk.ret15)} · OI ${fmtPct(wk.oi1h)}`, "wake");
       (fpAt.get(s.t[i]) || []).forEach((f) => add(f.kind === "b" ? "b · залочка" : "p · на хаях", fpText(f), f.kind === "b" ? "fpb" : "fpp"));
@@ -1572,6 +1583,34 @@ a { color: var(--link); text-decoration: none; } a:hover { color: #b5d4f4; }
         add("P 5m", fmtP(rl.p15), rl.tier === "alert" ? "hot" : rl.tier === "candidate" ? "amber" : "");
       }
       ohlcEl.appendChild(xsBtn);                              // чіп «Δ бірж» — останнім у рядку, після «P 5m»
+    };
+    // Longs 31% ↓6 · Top 51% ↑3 ▲20 · Buy 1h 58% — натовп (акаунти Binance + Bybit) проти великих грошей (топ-трейдери
+    // Binance за розміром позицій), зміни за 4 год, частка ринкових покупок за годину; поточні значення, не бару під курсором
+    const lsChip = (d) => {
+      const f = d.ls_flow || {}, t = d.top_ls || {};
+      const arrow = (x) => x == null ? "" : Math.abs(x) < 1 ? " →" : (x > 0 ? " ↑" : " ↓") + Math.round(Math.abs(x));
+      const acls = (x) => x == null || Math.abs(x) < 1 ? "dim" : x > 0 ? "ok" : "red";
+      if (f.ls == null && t.pos == null && f.buy_1h == null) return;
+      const w = el("span", "lsx");
+      if (f.ls != null) { w.append("Longs ", el("b", "", Math.round(f.ls) + "%")); if (f.ls_chg_4h != null) w.append(el("b", acls(f.ls_chg_4h), arrow(f.ls_chg_4h))); }
+      if (t.pos != null) {
+        w.append(f.ls != null ? " · Top " : "Top ", el("b", "", Math.round(t.pos) + "%"));
+        if (t.pos_chg_4h != null) w.append(el("b", acls(t.pos_chg_4h), arrow(t.pos_chg_4h)));
+        if (f.ls != null) {
+          const gap = t.pos - f.ls, g = Math.round(gap);
+          w.append(" ", el("b", gap >= 10 ? "ok" : gap <= -10 ? "red" : "dim", (g >= 0 ? "▲" : "▼") + Math.abs(g)));
+          w.classList.add(gap >= 10 ? "up" : gap <= -10 ? "down" : "flat");
+        }
+      }
+      w.title = "Longs — частка АКАУНТІВ у лонгах на Binance і Bybit (люди, не гроші). Top — частка лонгів за РОЗМІРОМ позицій топ-трейдерів Binance (≈ 20% найбільших акаунтів): куди стоять великі гроші.\n"
+        + "Стрілки — зміна за 4 год, п.п. ▲ / ▼ — на скільки п.п. великі гроші більше / менше в лонгах, ніж натовп: ▲ ≥ 10 (зелена рамка) — натовп шортить проти грошей, паливо для шорт-сквізу; ▼ ≥ 10 (червона) — навпаки.";
+      ohlcEl.appendChild(w);
+      if (f.buy_1h != null) {
+        const b = el("span", "lsx");
+        b.append("Buy 1h ", el("b", f.buy_1h >= 0.55 ? "ok" : f.buy_1h <= 0.45 ? "red" : "", Math.round(f.buy_1h * 100) + "%"));
+        b.title = "Частка ринкових (taker) покупок в обсязі за останню годину, Binance (+ OKX): хто тисне ціну просто зараз. Це потік угод, а не позиції.";
+        ohlcEl.appendChild(b);
+      }
     };
     const setRange = () => {
       const t = P.data?.series.t; if (!chart || !t?.length) return;

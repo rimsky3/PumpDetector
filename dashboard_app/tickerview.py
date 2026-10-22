@@ -134,6 +134,7 @@ def ticker_15m(conn, base: str, days: int, strat: dict | None = None, light: boo
         "streak": streak, "streak_min": streak * 15, "chg_24h": chg24,
         "price": h["price"].iloc[-1] if len(h) else None,
         "ls_long_pct": h["ls_long_pct"].dropna().iloc[-1] if h["ls_long_pct"].notna().any() else None,
+        "ls_flow": ls_flow(h),
         "exit_bars": exit_bars, "atr": last_atr(h),
         "last_bar": view.index.max(),
         "in_sample": bool(last["in_sample"]) if last is not None else None,
@@ -196,6 +197,44 @@ def wake_marks(conn, base: str, since: pd.Timestamp) -> list[dict]:
         _wake_cache.clear()
     _wake_cache[key] = (slot, res)
     return [w for w in res if w["ts"] >= since]
+
+
+def ls_flow(h: pd.DataFrame) -> dict:
+    """Для рядка заголовка графіка (варіант C макета, 22.10): частка лонгів натовпу зараз і її зміна за 4 год (п.п.),
+    частка ринкових покупок в обсязі за останню годину (Binance і OKX дають buy volume; Bybit — ні). h — бари тікера
+    будь-якого ТФ з індексом-часом."""
+    out = {"ls": None, "ls_chg_4h": None, "buy_1h": None}
+    if h.empty:
+        return out
+    ls = h["ls_long_pct"].dropna() if "ls_long_pct" in h else pd.Series(dtype=float)
+    if len(ls):
+        out["ls"] = float(ls.iloc[-1])
+        then = ls[ls.index <= ls.index[-1] - pd.Timedelta(hours=4)]
+        out["ls_chg_4h"] = float(ls.iloc[-1] - then.iloc[-1]) if len(then) else None
+    if "buy_volume" in h and "volume_bv" in h:
+        last = h[h.index > h.index[-1] - pd.Timedelta(minutes=59)]
+        v = last["volume_bv"].sum()
+        out["buy_1h"] = float(last["buy_volume"].sum() / v) if v > 0 else None
+    return out
+
+
+def top_traders(conn, base: str) -> dict | None:
+    """«Топ-трейдери» Binance на останньому 15m-барі (top_long_short): частка лонгів за акаунтами і за розміром позицій.
+    Поруч із «Часткою лонгів» (усі акаунти) — видно, коли натовп і великі гроші стоять у різні боки."""
+    try:
+        rows = conn.execute("""SELECT t.ts, t.acc_long_pct, t.pos_long_pct FROM top_long_short t JOIN markets m USING (symbol)
+                              WHERE m.base_asset = %s AND m.exchange_name = 'Binance' AND m.quote_asset = 'USDT'
+                                AND t.interval = '15min' AND t.ts > now() - interval '1 day'
+                              ORDER BY t.ts DESC LIMIT 20""", (base,)).fetchall()
+    except Exception:                       # таблиці ще немає (скринер не створив) — без рядка
+        conn.rollback()
+        return None
+    if not rows:
+        return None
+    r = rows[0]
+    then = next((x for x in rows if x[0] <= r[0] - pd.Timedelta(hours=4)), None)     # 4 год тому — для стрілки
+    return {"ts": r[0], "acc": r[1], "pos": r[2],
+            "pos_chg_4h": r[2] - then[2] if then is not None and r[2] is not None and then[2] is not None else None}
 
 
 def oi_share(conn, base: str) -> list[dict] | None:
@@ -424,6 +463,7 @@ def _ticker(conn, base: str, model: str, days: int, tf: str | None = None, strat
     if refreshing:                              # свіжі бари ще дописуються у фоні — наступний запит має перечитати базу
         _bars_cache.pop((base, days), None)
     res["oi_share"] = None if light else oi_share(conn, base)
+    res["top_ls"] = None if light else top_traders(conn, base)
     res["scanner_entries"] = [] if light else scanner_entries(conn, base, days)
     return res
 
@@ -461,6 +501,7 @@ def ticker_1h(conn, base: str, model: str, days: int) -> dict:
         "streak_min": streak * 60, "chg_24h": chg24,
         "price": h["price"].iloc[-1] if len(h) else None,
         "ls_long_pct": h["ls_long_pct"].dropna().iloc[-1] if h["ls_long_pct"].notna().any() else None,
+        "ls_flow": ls_flow(h),
         "exit_bars": EXIT_BARS, "atr": last_atr(h),
         "last_bar": view.index.max(),
         "in_sample": bool(last["in_sample"]) if last is not None else None,

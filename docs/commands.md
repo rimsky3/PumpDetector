@@ -162,7 +162,9 @@ snapshot (shifted +5 min), and OI = 0 appears on rare snapshots (dropped). Daily
 | `--exchanges …` | `Binance Bybit OKX` | which exchanges to collect from |
 
 Writes the same raw tables as `fetch.py` with `interval` = `15min` / `5min`: candles (buy volume on Binance and OKX),
-open interest, funding, long/short from the exchanges, and liquidations from Coinalyze (exchanges keep no
+open interest, funding, long/short from the exchanges, Binance "top trader" long shares on 15m into `top_long_short`
+(by account count and by position size, since 2026-10-22; dashboard panel only, not a model feature; the table is created on
+first use), and liquidations from Coinalyze (exchanges keep no
 liquidation history), with their coverage start in `liquidation_coverage`. Binance OI and long/short go back
 30 days, Bybit the full 60. Public endpoints, no key; ~2,000 requests for 10 tickers, markets in parallel.
 Hourly data is untouched. Markets come from the `markets` table, so run `fetch.py` for a ticker first.
