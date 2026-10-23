@@ -29,6 +29,8 @@ experiments/cache/
 reports/backtests/
 reports/*.html
 reports/my_trades/
+# звіт за власними угодами власника (experiments/position_sizing.py) — особиста торгова статистика, не для портфоліо
+reports/position_sizing.md
 data/
 reports/signals_stamp
 # кеші експериментів (перераховуються скриптами; experiments/entry_model.py — ~25 МБ)
